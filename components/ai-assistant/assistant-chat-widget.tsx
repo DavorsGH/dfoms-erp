@@ -13,6 +13,8 @@ import AssistantMarkdown from "@/components/ai-assistant/assistant-markdown";
 import { useFloatingUiAvoidanceInsets } from "@/components/floating-ui-avoidance";
 import { useAssistantBubblePosition } from "@/components/ai-assistant/use-assistant-bubble-position";
 import { subscribeRegisterDetailDrawerOpen } from "@/app/dashboard/register-detail-drawer-visibility";
+import { useDialogKeyboard } from "@/components/feedback/use-dialog-keyboard";
+import { useFocusTrap } from "@/components/feedback/use-focus-trap";
 
 type ChatRole = "user" | "assistant";
 
@@ -52,6 +54,23 @@ function ChatBubbleIcon({ className }: { className?: string }) {
   );
 }
 
+function NewConversationIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
 function SendIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -78,17 +97,102 @@ function renderMessageContent(message: ChatMessage) {
   return <AssistantMarkdown content={message.content} />;
 }
 
+type AssistantPanelConfirmDialogProps = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+};
+
+function AssistantPanelConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  cancelLabel,
+  onConfirm,
+  onCancel,
+}: AssistantPanelConfirmDialogProps) {
+  const titleId = useId();
+  const bodyId = useId();
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
+  useFocusTrap(true, overlayRef);
+  useDialogKeyboard(true, {
+    onPrimary: onConfirm,
+    onDismiss: onCancel,
+    primaryButtonRef: confirmRef,
+  });
+
+  return (
+    <div
+      ref={overlayRef}
+      className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 p-3"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={bodyId}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onCancel();
+        }
+      }}
+    >
+      <div
+        className="max-h-full w-full max-w-[calc(100%-0.5rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white p-4 shadow-xl sm:p-5"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <h3 id={titleId} className="text-base font-semibold text-[#0f2744] sm:text-lg">
+          {title}
+        </h3>
+        <p
+          id={bodyId}
+          className="mt-2 break-words text-sm leading-relaxed text-slate-700 sm:mt-3"
+        >
+          {message}
+        </p>
+        <div className="mt-4 flex flex-col-reverse gap-2 min-[360px]:flex-row min-[360px]:justify-end sm:mt-5">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="w-full rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 min-[360px]:w-auto"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            ref={confirmRef}
+            type="button"
+            onClick={onConfirm}
+            className="w-full rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a3a5c] min-[360px]:w-auto"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AssistantChatWidget() {
   const titleId = useId();
   const inputId = useId();
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const newConversationButtonRef = useRef<HTMLButtonElement>(null);
+  const sendAbortRef = useRef<AbortController | null>(null);
+  const conversationSessionRef = useRef(0);
 
   const [isOpen, setIsOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [registerDetailDrawerOpen, setRegisterDetailDrawerOpen] = useState(false);
+  const [showNewConversationConfirm, setShowNewConversationConfirm] =
+    useState(false);
+
+  const hasConversation = messages.length > 0;
 
   useEffect(
     () => subscribeRegisterDetailDrawerOpen(setRegisterDetailDrawerOpen),
@@ -116,11 +220,17 @@ export default function AssistantChatWidget() {
   }, []);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !showNewConversationConfirm) {
       scrollToBottom();
       inputRef.current?.focus();
     }
-  }, [isOpen, messages.length, isLoading, scrollToBottom]);
+  }, [
+    isOpen,
+    messages.length,
+    isLoading,
+    showNewConversationConfirm,
+    scrollToBottom,
+  ]);
 
   function handleToggleOpen() {
     setIsOpen((current) => !current);
@@ -128,6 +238,35 @@ export default function AssistantChatWidget() {
 
   function handleClose() {
     setIsOpen(false);
+  }
+
+  function handleRequestNewConversation() {
+    if (!hasConversation || isLoading) {
+      return;
+    }
+    setShowNewConversationConfirm(true);
+  }
+
+  function handleCancelNewConversation() {
+    setShowNewConversationConfirm(false);
+    requestAnimationFrame(() => {
+      newConversationButtonRef.current?.focus();
+    });
+  }
+
+  function handleConfirmNewConversation() {
+    sendAbortRef.current?.abort();
+    sendAbortRef.current = null;
+    setShowNewConversationConfirm(false);
+    setMessages([]);
+    setDraft("");
+    setIsLoading(false);
+    conversationSessionRef.current += 1;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+      });
+    });
   }
 
   async function handleSend(event?: FormEvent) {
@@ -152,9 +291,14 @@ export default function AssistantChatWidget() {
         content: message.content,
       }));
 
+    const sessionAtSend = conversationSessionRef.current;
+
     setMessages((current) => [...current, userMessage]);
     setDraft("");
     setIsLoading(true);
+
+    const abortController = new AbortController();
+    sendAbortRef.current = abortController;
 
     try {
       const response = await fetch("/api/assistant/chat", {
@@ -162,6 +306,7 @@ export default function AssistantChatWidget() {
         headers: {
           "Content-Type": "application/json",
         },
+        signal: abortController.signal,
         body: JSON.stringify({
           message: trimmed,
           conversationHistory,
@@ -175,6 +320,10 @@ export default function AssistantChatWidget() {
         throw new Error(data.error ?? ERROR_MESSAGE);
       }
 
+      if (sessionAtSend !== conversationSessionRef.current) {
+        return;
+      }
+
       setMessages((current) => [
         ...current,
         {
@@ -184,7 +333,13 @@ export default function AssistantChatWidget() {
           createdAt: Date.now(),
         },
       ]);
-    } catch {
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+      if (sessionAtSend !== conversationSessionRef.current) {
+        return;
+      }
       setMessages((current) => [
         ...current,
         {
@@ -196,7 +351,12 @@ export default function AssistantChatWidget() {
         },
       ]);
     } finally {
-      setIsLoading(false);
+      if (sendAbortRef.current === abortController) {
+        sendAbortRef.current = null;
+      }
+      if (sessionAtSend === conversationSessionRef.current) {
+        setIsLoading(false);
+      }
     }
   }
 
@@ -236,24 +396,37 @@ export default function AssistantChatWidget() {
                 Your workspace assistant
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleClose}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-white transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-              aria-label="Close assistant"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                className="h-4 w-4"
-                aria-hidden
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                ref={newConversationButtonRef}
+                type="button"
+                onClick={handleRequestNewConversation}
+                disabled={!hasConversation || isLoading}
+                title="New conversation"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-white transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="New conversation"
               >
-                <path d="M18 6 6 18M6 6l12 12" />
-              </svg>
-            </button>
+                <NewConversationIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleClose}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-white transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                aria-label="Close assistant"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  className="h-4 w-4"
+                  aria-hidden
+                >
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </header>
 
           <div
@@ -327,6 +500,17 @@ export default function AssistantChatWidget() {
               </button>
             </div>
           </form>
+
+          {showNewConversationConfirm ? (
+            <AssistantPanelConfirmDialog
+              title="Start a new conversation?"
+              message="This clears the current conversation."
+              confirmLabel="Start new"
+              cancelLabel="Cancel"
+              onConfirm={handleConfirmNewConversation}
+              onCancel={handleCancelNewConversation}
+            />
+          ) : null}
         </section>
 
         <button

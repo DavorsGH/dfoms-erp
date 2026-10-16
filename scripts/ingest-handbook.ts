@@ -31,6 +31,12 @@ const VOYAGE_429_BACKOFF_MS = [60_000, 90_000] as const;
 
 const HANDBOOK_FILES = [
   { file: "staff-handbook.md", persona: "staff" as const },
+  { file: "budget-how-to.md", persona: "staff" as const },
+  { file: "directors-scorecard-how-to.md", persona: "staff" as const },
+  { file: "consumables-how-to.md", persona: "staff" as const },
+  { file: "contract-profitability-how-to.md", persona: "staff" as const },
+  { file: "cost-tagging-how-to.md", persona: "staff" as const },
+  { file: "inter-unit-transfers-how-to.md", persona: "staff" as const },
   { file: "landlord-handbook.md", persona: "landlord" as const },
   { file: "tenant-handbook.md", persona: "tenant" as const },
   { file: "facility-handbook.md", persona: "facility_manager" as const },
@@ -374,16 +380,35 @@ async function main() {
     staff: 0,
     landlord: 0,
     tenant: 0,
+    facility_manager: 0,
   };
+
+  const perFileSummary: Array<{ file: string; persona: Persona; chunks: number }> =
+    [];
+
+  const filesByPersona = new Map<Persona, Array<(typeof HANDBOOK_FILES)[number]>>();
+  for (const entry of HANDBOOK_FILES) {
+    const bucket = filesByPersona.get(entry.persona) ?? [];
+    bucket.push(entry);
+    filesByPersona.set(entry.persona, bucket);
+  }
 
   let isFirstEmbeddingBatch = true;
 
-  for (const { file, persona } of HANDBOOK_FILES) {
-    const filePath = resolve(process.cwd(), "content/handbook", file);
-    console.log(`\n=== ${file} (${persona}) ===`);
-    const markdown = readFileSync(filePath, "utf8");
-    const drafts = chunkMarkdown(markdown, persona);
-    console.log(`Parsed ${drafts.length} chunk(s).`);
+  for (const [persona, files] of filesByPersona) {
+    console.log(`\n=== persona ${persona} (${files.length} file(s)) ===`);
+    const drafts: ChunkDraft[] = [];
+
+    for (const { file } of files) {
+      const filePath = resolve(process.cwd(), "content/handbook", file);
+      const markdown = readFileSync(filePath, "utf8");
+      const fileDrafts = chunkMarkdown(markdown, persona);
+      console.log(`  ${file}: ${fileDrafts.length} chunk(s)`);
+      perFileSummary.push({ file, persona, chunks: fileDrafts.length });
+      drafts.push(...fileDrafts);
+    }
+
+    console.log(`Parsed ${drafts.length} chunk(s) total for ${persona}.`);
 
     if (dryRun) {
       for (const chunk of drafts) {
@@ -446,6 +471,10 @@ async function main() {
   }
 
   console.log("\n=== Ingestion complete ===");
+  console.log("Per file:");
+  for (const row of perFileSummary) {
+    console.log(`  ${row.file} (${row.persona}): ${row.chunks} chunk(s)`);
+  }
   for (const [persona, count] of Object.entries(summary)) {
     console.log(`  ${persona}: ${count} chunk(s)`);
   }

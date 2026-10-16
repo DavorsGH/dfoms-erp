@@ -23,6 +23,7 @@ import {
   getSupplierContractsStatus,
   getTaxLedgerStatus,
 } from "@/utils/assistant-staff-tools-finance";
+import { getDirectorScorecard } from "@/utils/assistant-staff-tools-director-scorecard";
 import {
   getContractProfitabilitySummary,
   getCostTaggingHealth,
@@ -141,6 +142,7 @@ export const GET_CONTRACT_PROFITABILITY_SUMMARY_TOOL_NAME =
   "get_contract_profitability_summary";
 export const GET_COST_TAGGING_HEALTH_TOOL_NAME = "get_cost_tagging_health";
 export const GET_INTER_UNIT_TRANSFERS_TOOL_NAME = "get_inter_unit_transfers";
+export const GET_DIRECTOR_SCORECARD_TOOL_NAME = "get_director_scorecard";
 export const GET_CONSUMABLES_STORE_STOCK_TOOL_NAME =
   "get_consumables_store_stock";
 export const GET_CONSUMABLES_SITE_USAGE_TOOL_NAME = "get_consumables_site_usage";
@@ -283,6 +285,21 @@ export function getStaffAssistantTools(
           fromDate: { type: "string", description: "ISO date YYYY-MM-DD." },
           toDate: { type: "string", description: "ISO date YYYY-MM-DD." },
           limit: { type: "number", description: "Max transfers returned (default 20)." },
+        },
+      ),
+      tool(
+        GET_DIRECTOR_SCORECARD_TOOL_NAME,
+        "Director's Scorecard for a calendar month — same figures as Dashboard → Director's Scorecard (revenue, costs, PBT, CIT/GSL/WHT credit, tax to set aside, PAT, 30/20/50 split, quarter dividend gross/WHT/net, five dividend checklist items with Done/To do/Overdue, over-budget budget lines). Directors and super_admin only; other roles receive an access message with no figures. Month without year uses the most recent occurrence (Accra). Always call this for dividend safety and scorecard tax-to-set-aside questions before answering.",
+        {
+          month: {
+            type: "number",
+            description: "Calendar month 1–12 (default: current month in Accra).",
+          },
+          year: {
+            type: "number",
+            description:
+              "Calendar year (optional; if omitted, month resolves to the latest occurrence on or before today).",
+          },
         },
       ),
     );
@@ -638,6 +655,8 @@ export async function executeStaffAssistantTool(
       return getConsumablesStoreStock(toolInput);
     case GET_CONSUMABLES_SITE_USAGE_TOOL_NAME:
       return getConsumablesSiteUsage(toolInput);
+    case GET_DIRECTOR_SCORECARD_TOOL_NAME:
+      return getDirectorScorecard(toolInput);
     default:
       return { error: `Unknown tool: ${toolName}` };
   }
@@ -664,7 +683,14 @@ export function staffAccountToolsSystemPromptAddition(
       "- get_cost_tagging_health: untagged costs this month on Expense Register, Accounts Payable, and Supplier Contracts; projects with null projects.service_contract_id (same rule as Contract Profitability) — when listing them, add that internal/overhead projects (e.g. office) are expected to have no contract and can be ignored",
       "- get_inter_unit_transfers: Finance → Inter-unit Transfers — internal movements between business units; net pair positions (X owes Y). On a single-unit Balance Sheet these appear as Due from/to other business units; they cancel under View All Businesses",
       "- get_balance_sheet_status now includes Due from/to other business units when present (single-unit view)",
+      "- get_director_scorecard: Dashboard Director's Scorecard (directors and super_admin only). Always call for dividend readiness and scorecard tax-to-set-aside questions. If the tool returns an access error, relay that message exactly and do not quote scorecard figures from other tools.",
     );
+
+    if (role === "director" || role === "super_admin") {
+      lines.push(
+        "- Dividend answers: state the five-item checklist result first; never say a dividend is safe unless all five checks are Done. Remind users figures are planning figures, not tax advice.",
+      );
+    }
   }
 
   if (options?.showRealEstate === true) {
