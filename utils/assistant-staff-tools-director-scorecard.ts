@@ -1,6 +1,9 @@
 import "server-only";
 
-import type { DirectorScorecardChecklistChipStatus } from "@/app/dashboard/director-scorecard-build";
+import {
+  DIRECTOR_SCORECARD_PAYROLL_FOUND_EPSILON,
+  directorScorecardChecklistStatusLabel,
+} from "@/app/dashboard/director-scorecard-checklist-utils";
 import type { DirectorScorecardSessionScope } from "@/app/dashboard/director-scorecard-load";
 import { loadDirectorScorecardForSession } from "@/app/dashboard/director-scorecard-load";
 import { parseAssistantYearMonth } from "@/utils/assistant-period-resolve";
@@ -15,23 +18,6 @@ export const DIRECTOR_SCORECARD_ACCESS_DENIED_MESSAGE =
   "The Director's Scorecard is available to directors and administrators only.";
 
 const FINANCIAL_ACTIVITY_EPSILON = 0.005;
-const PAYROLL_FOUND_EPSILON = 0.005;
-
-const CASH_CHECKLIST_IDS = new Set(["cash-reserve", "dividend-cash"]);
-
-function checklistStatusLabel(
-  status: DirectorScorecardChecklistChipStatus,
-): string {
-  switch (status) {
-    case "done":
-      return "Done";
-    case "overdue":
-      return "Overdue";
-    case "todo":
-    default:
-      return "To do";
-  }
-}
 
 function hasFinancialActivity(input: {
   revenueGhs: number;
@@ -41,7 +27,7 @@ function hasFinancialActivity(input: {
   return (
     Math.abs(input.revenueGhs) > FINANCIAL_ACTIVITY_EPSILON ||
     Math.abs(input.totalCostsGhs) > FINANCIAL_ACTIVITY_EPSILON ||
-    input.payrollCostGhs > PAYROLL_FOUND_EPSILON
+    input.payrollCostGhs > DIRECTOR_SCORECARD_PAYROLL_FOUND_EPSILON
   );
 }
 
@@ -133,36 +119,15 @@ export function formatDirectorScorecardToolPayload(
       netGhs: snapshot.dividendQuarter.net,
     },
     dividendChecklist: {
-      ready: snapshot.checklist.items.every((item) => {
-        if (
-          CASH_CHECKLIST_IDS.has(item.id) &&
-          payrollCostGhs <= PAYROLL_FOUND_EPSILON
-        ) {
-          return false;
-        }
-        return item.pass;
-      }),
-      items: snapshot.checklist.items.map((item) => {
-        if (
-          CASH_CHECKLIST_IDS.has(item.id) &&
-          payrollCostGhs <= PAYROLL_FOUND_EPSILON
-        ) {
-          return {
-            id: item.id,
-            label: item.label,
-            status: "Not enough data" as const,
-            pass: null,
-            message: `${item.reason} Payroll was not found for this month in the selected business unit — check the business unit in the header.`,
-          };
-        }
-        return {
-          id: item.id,
-          label: item.label,
-          status: checklistStatusLabel(item.chipStatus),
-          pass: item.pass,
-          message: item.reason,
-        };
-      }),
+      ready: snapshot.checklist.ready,
+      items: snapshot.checklist.items.map((item) => ({
+        id: item.id,
+        label: item.label,
+        status: directorScorecardChecklistStatusLabel(item.chipStatus),
+        pass:
+          item.chipStatus === "not-enough-data" ? null : item.pass,
+        message: item.reason,
+      })),
     },
     overBudgetLines,
     fetchWarning: pageData.fetchError,

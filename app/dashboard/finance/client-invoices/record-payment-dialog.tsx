@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useAlert, useToast } from "@/components/feedback";
 import {
   computeClientInvoiceCashOutstanding,
   computeClientInvoiceNetCashDue,
@@ -36,6 +37,8 @@ export default function RecordPaymentDialog({
   onSuccess,
 }: RecordPaymentDialogProps) {
   const router = useRouter();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
   const hasWht = toNumber(whtAmount) > 0;
   const netCashDue = computeClientInvoiceNetCashDue(totalDue, whtAmount);
   const cashOutstanding = computeClientInvoiceCashOutstanding(
@@ -48,12 +51,10 @@ export default function RecordPaymentDialog({
   const [amount, setAmount] = useState(cashOutstanding > 0 ? cashOutstanding : 0);
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0] ?? "");
   const [notes, setNotes] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    setError(null);
     setSubmitting(true);
 
     const body: RecordClientInvoicePaymentBody = {
@@ -75,11 +76,14 @@ export default function RecordPaymentDialog({
         | null;
 
       if (!response.ok) {
-        setError(payload?.error ?? "Unable to record payment.");
+        void alertError(payload?.error ?? "Unable to record payment.", {
+          title: "Could not record payment",
+        });
         setSubmitting(false);
         return;
       }
 
+      toast("Payment recorded.");
       onSuccess?.();
       router.refresh();
       onClose();
@@ -88,7 +92,9 @@ export default function RecordPaymentDialog({
         router.push(`/dashboard/finance/client-receipts/${payload.receipt.id}`);
       }
     } catch {
-      setError("Unable to record payment. Check your connection and try again.");
+      void alertError("Unable to record payment. Check your connection and try again.", {
+        title: "Could not record payment",
+      });
       setSubmitting(false);
     }
   }
@@ -136,12 +142,6 @@ export default function RecordPaymentDialog({
               withheld tax in the payment amount.
             </p>
           </div>
-        ) : null}
-
-        {error ? (
-          <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </p>
         ) : null}
 
         <form onSubmit={(event) => void handleSubmit(event)} className="mt-4 space-y-4">

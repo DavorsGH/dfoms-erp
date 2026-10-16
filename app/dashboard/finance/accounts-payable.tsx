@@ -177,6 +177,13 @@ export default function AccountsPayable({
   const searchParams = useSearchParams();
   const { alertError } = useAlert();
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError, { title: "Could not load accounts payable" });
+    }
+  }, [alertError, fetchError]);
+
   const apIdFromQueryHandled = useRef<string | null>(null);
   const payableFormRef = useRef<HTMLFormElement>(null);
   const projectSelectRef = useRef<HTMLSelectElement>(null);
@@ -199,7 +206,6 @@ export default function AccountsPayable({
   const [form, setForm] = useState(emptyForm);
   const [whtAmountEdited, setWhtAmountEdited] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(fetchError);
   const [paymentEntry, setPaymentEntry] = useState<AccountsPayableEntry | null>(
     null,
   );
@@ -400,7 +406,7 @@ export default function AccountsPayable({
         categoriesError?.message ?? subcategoriesError?.message ?? null;
 
       if (lookupError) {
-        setError(lookupError);
+        void alertError(lookupError, { title: "Could not complete action" });
         return;
       }
 
@@ -422,7 +428,7 @@ export default function AccountsPayable({
     ).order("due_date", { ascending: true });
 
     if (refreshError) {
-      setError(refreshError.message);
+      void alertError(refreshError.message, { title: "Could not complete action" });
       return;
     }
 
@@ -431,7 +437,6 @@ export default function AccountsPayable({
         normalizeAccountsPayableEntry(entry),
       ),
     );
-    setError(null);
   }
 
   function openAddForm() {
@@ -497,11 +502,10 @@ export default function AccountsPayable({
     }
 
     setDeletingId(id);
-    setError(null);
 
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      void alertError(buContext.error, { title: "Could not complete action" });
       setDeletingId(null);
       return;
     }
@@ -513,7 +517,7 @@ export default function AccountsPayable({
         existing?.business_unit_id,
       );
     } catch (accessError) {
-      setError(formatBusinessUnitAccessError(accessError));
+      void alertError(formatBusinessUnitAccessError(accessError), { title: "Could not complete action" });
       setDeletingId(null);
       return;
     }
@@ -521,7 +525,7 @@ export default function AccountsPayable({
     const { tenantId, error: tenantError } =
       await resolveSessionTenantId(supabase);
     if (tenantError || !tenantId) {
-      setError(tenantError ?? "Unable to resolve workspace.");
+      void alertError(tenantError ?? "Unable to resolve workspace.", { title: "Could not complete action" });
       setDeletingId(null);
       return;
     }
@@ -532,7 +536,7 @@ export default function AccountsPayable({
     });
 
     if (deleteError) {
-      setError(deleteError.message);
+      void alertError(deleteError.message, { title: "Could not complete action" });
       setDeletingId(null);
       return;
     }
@@ -541,6 +545,7 @@ export default function AccountsPayable({
       closeForm();
     }
 
+    toast("Bill deleted.");
     await refreshEntries();
     setDeletingId(null);
   }
@@ -573,7 +578,6 @@ export default function AccountsPayable({
       : null;
 
     setLoading(true);
-    setError(null);
 
     try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
@@ -846,26 +850,23 @@ export default function AccountsPayable({
     }
 
     setRecordingPayment(true);
-    setError(null);
 
     try {
     const amount = Number(paymentForm.amount) || 0;
     if (amount <= 0) {
-      setError("Payment amount must be greater than zero.");
+      void alertError("Payment amount must be greater than zero.", { title: "Could not complete action" });
       return;
     }
 
     const remaining = getRemainingPayableBalance(paymentEntry);
     if (amount > remaining + 0.005) {
-      setError(
-        `Payment exceeds balance due (${formatGHS(remaining)} remaining).`,
-      );
+      void alertError(`Payment exceeds balance due (${formatGHS(remaining)} remaining).`, { title: "Could not complete action" });
       return;
     }
 
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      void alertError(buContext.error, { title: "Could not complete action" });
       return;
     }
 
@@ -875,14 +876,14 @@ export default function AccountsPayable({
         paymentEntry.business_unit_id,
       );
     } catch (accessError) {
-      setError(formatBusinessUnitAccessError(accessError));
+      void alertError(formatBusinessUnitAccessError(accessError), { title: "Could not complete action" });
       return;
     }
 
     const { tenantId, error: tenantError } =
       await resolveSessionTenantId(supabase);
     if (tenantError || !tenantId) {
-      setError(tenantError ?? "Unable to resolve workspace.");
+      void alertError(tenantError ?? "Unable to resolve workspace.", { title: "Could not complete action" });
       return;
     }
 
@@ -899,7 +900,7 @@ export default function AccountsPayable({
       });
 
     if (insertError) {
-      setError(insertError.message);
+      void alertError(insertError.message, { title: "Could not complete action" });
       return;
     }
 
@@ -910,18 +911,17 @@ export default function AccountsPayable({
 
     closeRecordPayment();
     await refreshEntries();
+    toast("Payment recorded.");
 
     if (recomputeError) {
-      setError(
-        `Payment recorded but payable totals could not be refreshed: ${recomputeError.message}`,
-      );
+      void alertError(`Payment recorded but payable totals could not be refreshed: ${recomputeError.message}`, {
+        title: "Payable totals not refreshed",
+      });
     }
     } catch (unexpected) {
-      setError(
-        unexpected instanceof Error
+      void alertError(unexpected instanceof Error
           ? unexpected.message
-          : "Unable to record payment.",
-      );
+          : "Unable to record payment.", { title: "Could not complete action" });
     } finally {
       setRecordingPayment(false);
     }
@@ -992,12 +992,6 @@ export default function AccountsPayable({
           {showForm ? "Cancel" : "Add Entry"}
         </button>
       </div>
-
-      {error && (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       {showForm && (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

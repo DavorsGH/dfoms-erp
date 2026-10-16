@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useAlert, useToast } from "@/components/feedback";
 import { LoadingState } from "@/components/loading-indicator";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
@@ -45,8 +46,10 @@ const secondaryButtonClassName =
 const cardClassName = serviceContractCardClassName;
 
 export default function ServiceContractView({ contractId }: ServiceContractViewProps) {
+  const { alertError } = useAlert();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [contract, setContract] = useState<ServiceContractHeaderRow | null>(null);
   const [lineItems, setLineItems] = useState<ServiceContractLineItemRow[]>([]);
   const [generatedInvoices, setGeneratedInvoices] = useState<ServiceContractGeneratedInvoice[]>(
@@ -58,14 +61,13 @@ export default function ServiceContractView({ contractId }: ServiceContractViewP
   );
   const [resendConfirm, setResendConfirm] = useState(false);
   const [resending, setResending] = useState(false);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       setLoading(true);
-      setError(null);
+      setLoadFailed(false);
 
       const response = await fetch(`/api/service-contracts/${contractId}`);
       const payload = (await response.json().catch(() => null)) as
@@ -84,7 +86,11 @@ export default function ServiceContractView({ contractId }: ServiceContractViewP
       }
 
       if (!response.ok || !payload?.service_contract) {
-        setError(payload?.error ?? "Service contract not found.");
+        void alertError(payload?.error ?? "Service contract not found.", {
+          title: "Could not load service contract",
+        });
+        setLoadFailed(true);
+        setContract(null);
         setLoading(false);
         return;
       }
@@ -120,17 +126,24 @@ export default function ServiceContractView({ contractId }: ServiceContractViewP
     return () => {
       cancelled = true;
     };
-  }, [contractId]);
+  }, [alertError, contractId]);
 
   if (loading) {
     return <LoadingState label="Loading service contract…" />;
   }
 
-  if (error || !contract) {
+  if (loadFailed || !contract) {
     return (
-      <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-        {error ?? "Service contract not found."}
-      </p>
+      <div className="space-y-4">
+        <p className="text-sm text-slate-600">
+          {loadFailed
+            ? "This service contract could not be loaded."
+            : "Service contract not found."}
+        </p>
+        <Link href="/dashboard/finance/service-contracts" className={secondaryButtonClassName}>
+          Back to list
+        </Link>
+      </div>
     );
   }
 
@@ -142,8 +155,6 @@ export default function ServiceContractView({ contractId }: ServiceContractViewP
 
   async function handleResendDocument() {
     setResending(true);
-    setActionMessage(null);
-    setError(null);
 
     try {
       const response = await fetch(
@@ -155,11 +166,13 @@ export default function ServiceContractView({ contractId }: ServiceContractViewP
         | null;
 
       if (!response.ok) {
-        setError(payload?.error ?? "Unable to resend contract document.");
+        void alertError(payload?.error ?? "Unable to resend contract document.", {
+          title: "Could not resend contract document",
+        });
         return;
       }
 
-      setActionMessage("Contract document notification sent.");
+      toast("Contract document notification sent.");
       setResendConfirm(false);
       const refresh = await fetch(`/api/service-contracts/${contractId}`);
       const refreshed = (await refresh.json().catch(() => null)) as
@@ -169,7 +182,10 @@ export default function ServiceContractView({ contractId }: ServiceContractViewP
         setContract(normalizeServiceContractHeaderRow(refreshed.service_contract));
       }
     } catch {
-      setError("Unable to resend contract document. Check your connection and try again.");
+      void alertError(
+        "Unable to resend contract document. Check your connection and try again.",
+        { title: "Could not resend contract document" },
+      );
     } finally {
       setResending(false);
     }
@@ -220,12 +236,6 @@ export default function ServiceContractView({ contractId }: ServiceContractViewP
           Back to list
         </Link>
       </div>
-
-      {actionMessage ? (
-        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {actionMessage}
-        </p>
-      ) : null}
 
       <ServiceContractRecordHeader
         contractNumber={contract.contract_number}

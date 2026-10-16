@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAlert, useToast } from "@/components/feedback";
 import { createClient } from "@/utils/supabase/client";
 import LineItemsEditor, { reindexLineItems } from "@/components/line-items-editor";
 import PromoCodeField from "@/components/promo-code-field";
@@ -48,6 +49,10 @@ import type {
 } from "@/utils/service-contracts-types";
 import { buildClientInvoicePreviewDisplay } from "./client-invoice-display-utils";
 import ClientInvoicePreviewDialog from "./client-invoice-preview-dialog";
+import {
+  reportClientInvoiceFormValidity,
+  syncClientInvoiceFormCustomValidity,
+} from "./client-invoice-form-validity";
 
 type ClientInvoiceFormState = Omit<ClientInvoiceWriteBody, "line_items"> &
   ClientInvoiceFormAuthorizedByState & {
@@ -114,11 +119,16 @@ export default function ClientInvoiceForm({
   const stampBusinessUnit = useStampBusinessUnitId();
   const { units } = useBusinessUnitView();
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
+  const invoiceFormRef = useRef<HTMLFormElement>(null);
+  const clientSelectRef = useRef<HTMLSelectElement>(null);
+  const billToNameRef = useRef<HTMLInputElement>(null);
+  const invoiceDateRef = useRef<HTMLInputElement>(null);
+  const lineItemsGateRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState<ClientInvoiceFormState>(initialForm);
-  const [error, setError] = useState<string | null>(fetchError);
   const [saving, setSaving] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
   const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
   const [promoDiscount, setPromoDiscount] = useState(0);
 
@@ -318,32 +328,35 @@ export default function ClientInvoiceForm({
     salesTaxBasis,
   ]);
 
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError, { title: "Could not load invoice" });
+    }
+  }, [alertError, fetchError]);
+
+  function validateInvoiceForm(options: { preview: boolean }): boolean {
+    const formElement = invoiceFormRef.current;
+    if (!formElement) {
+      return false;
+    }
+
+    syncClientInvoiceFormCustomValidity(
+      {
+        clientSelect: clientSelectRef.current,
+        billToName: billToNameRef.current,
+        invoiceDate: invoiceDateRef.current,
+        lineItemsGate: lineItemsGateRef.current,
+      },
+      form,
+      formElement,
+      options,
+    );
+
+    return reportClientInvoiceFormValidity(formElement);
+  }
+
   function handlePreview() {
-    setPreviewError(null);
-
-    if (!form.client_id.trim()) {
-      setPreviewError("Select a customer before previewing.");
-      return;
-    }
-
-    if (!form.bill_to_name.trim()) {
-      setPreviewError("Bill-to name is required before previewing.");
-      return;
-    }
-
-    if (!form.invoice_date) {
-      setPreviewError("Invoice date is required before previewing.");
-      return;
-    }
-
-    if (form.line_items.length === 0) {
-      setPreviewError("Add at least one line item before previewing.");
-      return;
-    }
-
-    const hasInvalidLine = form.line_items.some((line) => !line.description.trim());
-    if (hasInvalidLine) {
-      setPreviewError("Each line item needs a description before previewing.");
+    if (!validateInvoiceForm({ preview: true })) {
       return;
     }
 
@@ -374,8 +387,12 @@ export default function ClientInvoiceForm({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+
+    if (!validateInvoiceForm({ preview: false })) {
+      return;
+    }
+
     setSaving(true);
-    setError(null);
 
     const authorizedBy = resolveAuthorizedByFields(
       form.authorized_by_selection,
@@ -436,28 +453,29 @@ export default function ClientInvoiceForm({
       | null;
 
     if (!response.ok) {
-      setError(result?.error ?? "Unable to save invoice.");
+      void alertError(result?.error ?? "Unable to save invoice.", {
+        title: "Could not save invoice",
+      });
       setSaving(false);
       return;
     }
 
+    toast(mode === "create" ? "Invoice saved." : "Invoice updated.");
     router.push("/dashboard/finance/client-invoices");
     router.refresh();
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
-      {previewError ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {previewError}
-        </p>
-      ) : null}
+    <form ref={invoiceFormRef} onSubmit={handleSubmit} className="space-y-6">
+      <input
+        ref={lineItemsGateRef}
+        type="text"
+        tabIndex={-1}
+        aria-hidden="true"
+        readOnly
+        value={form.line_items.length > 0 ? "ok" : ""}
+        className="pointer-events-none absolute h-0 w-0 opacity-0"
+      />
 
       {mode === "edit" && invoiceHasBeenSent(form.status) ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -479,9 +497,13 @@ export default function ClientInvoiceForm({
               Customer *
             </label>
             <select
+              ref={clientSelectRef}
               required
               value={form.client_id}
-              onChange={(event) => handleClientChange(event.target.value)}
+              onChange={(event) => {
+                clientSelectRef.current?.setCustomValidity("");
+                handleClientChange(event.target.value);
+              }}
               className={inputClassName}
             >
               <option value="">Select customer</option>
@@ -532,15 +554,17 @@ export default function ClientInvoiceForm({
               Bill To Name *
             </label>
             <input
+              ref={billToNameRef}
               type="text"
               required
               value={form.bill_to_name}
-              onChange={(event) =>
+              onChange={(event) => {
+                billToNameRef.current?.setCustomValidity("");
                 setForm((current) => ({
                   ...current,
                   bill_to_name: event.target.value,
-                }))
-              }
+                }));
+              }}
               className={inputClassName}
             />
           </div>
@@ -647,15 +671,17 @@ export default function ClientInvoiceForm({
               Invoice Date *
             </label>
             <input
+              ref={invoiceDateRef}
               type="date"
               required
               value={form.invoice_date}
-              onChange={(event) =>
+              onChange={(event) => {
+                invoiceDateRef.current?.setCustomValidity("");
                 setForm((current) => ({
                   ...current,
                   invoice_date: event.target.value,
-                }))
-              }
+                }));
+              }}
               className={inputClassName}
             />
           </div>

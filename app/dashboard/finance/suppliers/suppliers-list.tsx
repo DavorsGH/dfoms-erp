@@ -1,5 +1,6 @@
 "use client";
 
+import { useAlert, useToast } from "@/components/feedback";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -60,6 +61,14 @@ export default function SuppliersList({
 }: SuppliersListProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError, { title: "Could not load suppliers" });
+    }
+  }, [alertError, fetchError]);
   const [suppliers, setSuppliers] = useState(initialSuppliers);
   const [showForm, setShowForm] = useState(false);
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
@@ -74,8 +83,6 @@ export default function SuppliersList({
     id: string;
     text: string;
   } | null>(null);
-  const [error, setError] = useState<string | null>(fetchError);
-  const [success, setSuccess] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState("");
 
   useEffect(() => {
@@ -112,14 +119,13 @@ export default function SuppliersList({
       | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to refresh suppliers.");
+      void alertError(payload?.error ?? "Unable to refresh suppliers.", { title: "Could not complete action" });
       return;
     }
 
     setSuppliers(
       (payload?.suppliers ?? []).map((row) => normalizeSupplier(row)),
     );
-    setError(null);
   }
 
   function openAddForm() {
@@ -127,8 +133,6 @@ export default function SuppliersList({
     setEditingSupplierId(null);
     setForm(emptySupplierForm());
     setShowForm(true);
-    setError(null);
-    setSuccess(null);
   }
 
   function openEditForm(supplier: SupplierRow) {
@@ -136,8 +140,6 @@ export default function SuppliersList({
     setEditingSupplierId(supplier.id);
     setForm(supplierToForm(supplier));
     setShowForm(true);
-    setError(null);
-    setSuccess(null);
   }
 
   function closeForm() {
@@ -166,13 +168,11 @@ export default function SuppliersList({
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);
-    setError(null);
-    setSuccess(null);
 
     try {
     const validationError = validateSupplierInput(form);
     if (validationError) {
-      setError(validationError);
+      void alertError(validationError, { title: "Could not complete action" });
       return;
     }
 
@@ -191,7 +191,7 @@ export default function SuppliersList({
       | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to save supplier.");
+      void alertError(payload?.error ?? "Unable to save supplier.", { title: "Could not complete action" });
       return;
     }
 
@@ -214,15 +214,13 @@ export default function SuppliersList({
       await refreshSuppliers();
     }
 
-    setSuccess(isEditing ? "Supplier updated." : "Supplier created.");
+    toast(isEditing ? "Supplier updated." : "Supplier created.");
     closeForm();
     router.refresh();
     } catch (unexpected) {
-      setError(
-        unexpected instanceof Error
+      void alertError(unexpected instanceof Error
           ? unexpected.message
-          : "Unable to save supplier.",
-      );
+          : "Unable to save supplier.", { title: "Could not complete action" });
     } finally {
       setLoading(false);
     }
@@ -232,8 +230,6 @@ export default function SuppliersList({
     setCheckingSupplierId(supplier.id);
     setConfirmingSupplierId(null);
     setBlockedSupplierMessage(null);
-    setError(null);
-    setSuccess(null);
 
     try {
       const previewResponse = await fetch(`/api/suppliers/${supplier.id}`, {
@@ -264,13 +260,13 @@ export default function SuppliersList({
         previewPayload?.can_delete !== true ||
         !previewPayload.requires_confirmation
       ) {
-        setError(previewPayload?.error ?? "Unable to preview supplier delete.");
+        void alertError(previewPayload?.error ?? "Unable to preview supplier delete.", { title: "Could not complete action" });
         return;
       }
 
       setConfirmingSupplierId(supplier.id);
     } catch {
-      setError("Unable to preview supplier delete. Try again.");
+      void alertError("Unable to preview supplier delete. Try again.", { title: "Could not complete action" });
     } finally {
       setCheckingSupplierId(null);
     }
@@ -278,7 +274,6 @@ export default function SuppliersList({
 
   async function confirmDelete(supplier: SupplierRow) {
     setDeletingSupplierId(supplier.id);
-    setError(null);
 
     try {
       const deleteResponse = await fetch(`/api/suppliers/${supplier.id}`, {
@@ -292,7 +287,7 @@ export default function SuppliersList({
         | null;
 
       if (!deleteResponse.ok) {
-        setError(deletePayload?.error ?? "Unable to delete supplier.");
+        void alertError(deletePayload?.error ?? "Unable to delete supplier.", { title: "Could not complete action" });
         return;
       }
 
@@ -305,10 +300,10 @@ export default function SuppliersList({
       );
       setConfirmingSupplierId(null);
       setBlockedSupplierMessage(null);
-      setSuccess("Supplier deleted.");
+      toast("Supplier deleted.");
       router.refresh();
     } catch {
-      setError("Unable to delete supplier. Try again.");
+      void alertError("Unable to delete supplier. Try again.", { title: "Could not complete action" });
     } finally {
       setDeletingSupplierId(null);
     }
@@ -348,18 +343,6 @@ export default function SuppliersList({
           </div>
         ) : null}
       </div>
-
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
-      {success ? (
-        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {success}
-        </p>
-      ) : null}
 
       {showForm && !readOnly ? (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

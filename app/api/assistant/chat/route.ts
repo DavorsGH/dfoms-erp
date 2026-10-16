@@ -32,29 +32,13 @@ import {
 } from "@/utils/dashboard-auth";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { buildStaffWorkspaceStructurePrompt } from "@/utils/assistant-staff-workspace-context";
+import { buildAssistantCoreSystemPrompt } from "@/utils/assistant-system-prompt-core";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 
 const MODEL = "claude-sonnet-4-6";
 const HANDBOOK_MATCH_COUNT = 5;
 const MAX_TOOL_ROUNDS = 5;
-
-const SYSTEM_PROMPT_BASE = `You are the DavSuite assistant, a helpful AI assistant embedded in DavSuite.
-
-Style: answer directly and briefly. Lead with the number, fact, or answer first. Skip preamble, filler phrases, and restating the question. Use short sentences. Avoid unnecessary explanation unless the user asks for detail. Stay polite.
-
-Naming disambiguation: "Davors" can refer to three different things:
-1. Davors Technologies Ltd — the technology and telecommunications company that developed and operates DavSuite (the parent/platform company).
-2. Davors Facilities (Management Services Ltd) — a cleaning and facilities management business (services include cleaning, property/facilities management, gardening/landscaping, fumigation/pest control, real estate, and project/construction management). It is one of the businesses that uses DavSuite as its own tenant on the platform — not the same as the platform company.
-3. DavSuite — the software/ERP system itself, built by Davors Technologies Ltd.
-
-When a user asks an ambiguous question that only says "Davors" without clarifying which one they mean (for example, "what is Davors" or "tell me about Davors"), either ask them to clarify which one they mean, or give a brief rundown of all three — whichever fits the question better. When the question clearly specifies one (for example, "what is DavSuite", "what does Davors Technologies Ltd do", or "what does Davors Facilities do"), answer about that one directly without disambiguation.
-
-Finance & payroll rules (follow even when handbook excerpts are vague):
-- Company-paid capital equipment and property: record ONLY in Finance → Fixed Assets (cash payment method records cash; Credit creates AP). Never duplicate in Expense Register. New Expense Register entries cannot select Fixed Assets; operating repairs use categories like Direct Operational.
-- Supplier Contracts (Finance → Supplier Contracts): summary card, Activate (Draft), Edit contract settings, Change Amount, Monthly bills (Accounts Payable) with AP links, Record replacement payment (payment method + notes, credit carry-forward). Written agreements need PDF/image upload. Use get_supplier_contracts_status when available.
-- Director's Loan (handbook §6.5): Finance → Manual Financial Entries → Director's Loan **ledger** — each movement is a dated line (type, amount, business unit, description, notes, optional linked expense). Types: "I lent the company money", "Company repaid me", "Company paid for my personal expense", "I repaid the company". Cash and who-owes-whom follow the type. Position line shows company owes director vs director owes company; **Due from Director** on the Balance Sheet is the asset when the director owes the company. Correct mistakes with **Edit** or **Reverse** (reason required) — never delete ledger rows. If company money paid for the director's **personal** expense, do **not** use Expense Register — use "Company paid for my personal expense" on the ledger. Bank Loans / Other LTL still use the **monthly** manual row (loan proceeds/repayments there are bank/LTL cash only, not Director's Loan).
-- Ghana PAYE/SSNIT/casual rates are platform-wide statutory tables maintained by Davors, by effective date (Act 1178 PAYE bands from 1 Sept 2026 — see handbook §8.2a). Payroll lock is blocked with a banner if rates for the period end date are missing.
-- Balance Sheet Accounts Payable is outstanding at each month-end; payments after month-end do not reduce earlier months. Nightly integrity check runs per tenant and business unit.`;
 
 const STAFF_ACCOUNT_ACCESS =
   "You do not yet have access to any account-specific data - if asked about specific account data (like balances or invoices), explain that this capability is coming soon.";
@@ -84,7 +68,11 @@ function isConversationMessage(value: unknown): value is ConversationMessage {
 function buildBaseSystemPrompt(
   persona: HandbookPersona,
   staffRole: AppRole | null,
-  showRealEstate = false,
+  options: {
+    tenantId: string | null | undefined;
+    userMessage: string;
+    showRealEstate?: boolean;
+  },
 ): string {
   const accountAccessLine =
     persona === "tenant"
@@ -94,10 +82,17 @@ function buildBaseSystemPrompt(
         : persona === "facility_manager"
           ? facilityManagerAccountToolsSystemPromptAddition()
           : persona === "staff"
-            ? staffAccountToolsSystemPromptAddition(staffRole, { showRealEstate })
+            ? staffAccountToolsSystemPromptAddition(staffRole, {
+                showRealEstate: options.showRealEstate === true,
+              })
             : STAFF_ACCOUNT_ACCESS;
 
-  return `${SYSTEM_PROMPT_BASE}\n\n${accountAccessLine}`;
+  const core = buildAssistantCoreSystemPrompt({
+    tenantId: options.tenantId,
+    userMessage: options.userMessage,
+  });
+
+  return `${core}\n\n${accountAccessLine}`;
 }
 
 function extractTextReply(content: Anthropic.ContentBlock[]): string {
@@ -270,8 +265,23 @@ export async function POST(request: Request) {
     );
   }
 
+  let systemPromptBase = buildBaseSystemPrompt(handbookPersona, staffRole, {
+    tenantId: account?.tenant_id,
+    userMessage: message,
+    showRealEstate,
+  });
+  if (handbookPersona === "staff" && account?.tenant_id?.trim()) {
+    const workspaceStructurePrompt = await buildStaffWorkspaceStructurePrompt(
+      account.tenant_id.trim(),
+      supabase,
+    );
+    if (workspaceStructurePrompt) {
+      systemPromptBase = `${systemPromptBase}\n\n${workspaceStructurePrompt}`;
+    }
+  }
+
   const systemPrompt = buildSystemPromptWithRetrieval(
-    buildBaseSystemPrompt(handbookPersona, staffRole, showRealEstate),
+    systemPromptBase,
     handbookChunks,
   );
 

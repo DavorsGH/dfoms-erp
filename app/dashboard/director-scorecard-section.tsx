@@ -93,6 +93,8 @@ function checklistChipClassName(status: DirectorScorecardChecklistChipStatus): s
       return "border-emerald-200 bg-emerald-50 text-emerald-900";
     case "overdue":
       return "border-red-200 bg-red-50 text-red-800";
+    case "not-enough-data":
+      return "border-slate-200 bg-slate-100 text-slate-700";
     case "todo":
     default:
       return "border-amber-200 bg-amber-50 text-amber-950";
@@ -105,6 +107,8 @@ function checklistChipLabel(status: DirectorScorecardChecklistChipStatus): strin
       return "Done";
     case "overdue":
       return "Overdue";
+    case "not-enough-data":
+      return "Not enough data";
     case "todo":
     default:
       return "To do";
@@ -353,20 +357,28 @@ export default function DirectorScorecardSection({
     let done = 0;
     let todo = 0;
     let overdue = 0;
+    let notEnoughData = 0;
     for (const item of snapshot.checklist.items) {
       if (item.chipStatus === "done") {
         done += 1;
       } else if (item.chipStatus === "overdue") {
         overdue += 1;
+      } else if (item.chipStatus === "not-enough-data") {
+        notEnoughData += 1;
       } else {
         todo += 1;
       }
     }
-    return { done, todo, overdue };
+    return { done, todo, overdue, notEnoughData };
   }, [snapshot.checklist.items]);
 
-  const overdueChecklistItems = useMemo(
-    () => snapshot.checklist.items.filter((item) => item.chipStatus === "overdue"),
+  const collapsedChecklistItems = useMemo(
+    () =>
+      snapshot.checklist.items.filter(
+        (item) =>
+          item.chipStatus === "overdue" ||
+          item.chipStatus === "not-enough-data",
+      ),
     [snapshot.checklist.items],
   );
 
@@ -385,7 +397,17 @@ export default function DirectorScorecardSection({
 
   const checklistBannerText = snapshot.checklist.ready
     ? "Ready — all checks complete. You can declare a dividend."
-    : `Not yet — ${checklistCounts.done} done · ${checklistCounts.todo} to do · ${checklistCounts.overdue} overdue`;
+    : [
+        "Not yet",
+        `${checklistCounts.done} done`,
+        `${checklistCounts.todo} to do`,
+        `${checklistCounts.overdue} overdue`,
+        checklistCounts.notEnoughData > 0
+          ? `${checklistCounts.notEnoughData} not enough data`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
 
   const lineCount = snapshot.budget.rows.length;
 
@@ -539,11 +561,11 @@ export default function DirectorScorecardSection({
 
         {!checklistOpen ? (
           <div className="p-4" id="scorecard-checklist-panel">
-            {overdueChecklistItems.length === 0 ? (
+            {collapsedChecklistItems.length === 0 ? (
               <p className="text-sm text-slate-500">No overdue checks.</p>
             ) : (
               <ul className="space-y-4">
-                {overdueChecklistItems.map((item) => (
+                {collapsedChecklistItems.map((item) => (
                   <ChecklistItemRow key={item.id} item={item} />
                 ))}
               </ul>

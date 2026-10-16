@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAlert } from "@/components/feedback";
 import LineItemsEditor, { reindexLineItems } from "@/components/line-items-editor";
 import type { ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import type { SalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
@@ -62,10 +63,16 @@ export default function ServiceContractForm({
   fetchError = null,
 }: ServiceContractFormProps) {
   const router = useRouter();
+  const { alertError } = useAlert();
   const [form, setForm] = useState<ServiceContractFormState>(initialForm);
   const [documentSignedUrl, setDocumentSignedUrl] = useState(initialDocumentSignedUrl);
-  const [error, setError] = useState<string | null>(fetchError);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError, { title: "Could not load service contract" });
+    }
+  }, [alertError, fetchError]);
   const [uploadingDocument, setUploadingDocument] = useState(false);
   const [pendingDocument, setPendingDocument] = useState<File[]>([]);
 
@@ -169,7 +176,6 @@ export default function ServiceContractForm({
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setSaving(true);
-    setError(null);
 
     try {
       const intendedStatus = (form.status ?? "draft") as ServiceContractStatus;
@@ -216,10 +222,11 @@ export default function ServiceContractForm({
       );
       router.refresh();
     } catch (submitError) {
-      setError(
+      void alertError(
         submitError instanceof Error
           ? submitError.message
           : "Unable to save service contract.",
+        { title: "Could not save service contract" },
       );
     } finally {
       setSaving(false);
@@ -228,12 +235,6 @@ export default function ServiceContractForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       <ServiceContractRecordHeader
         contractNumber={displayContractNumber || "Assigned on save"}
         status={(form.status ?? "draft") as ServiceContractStatus}

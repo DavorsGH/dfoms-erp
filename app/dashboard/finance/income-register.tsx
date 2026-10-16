@@ -1,5 +1,6 @@
 "use client";
 
+import { useAlert, useToast } from "@/components/feedback";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import type { ClientEntry } from "../operations/clients-utils";
@@ -141,6 +142,15 @@ export default function IncomeRegister({
   activeBusinessUnitId = null,
 }: IncomeRegisterProps) {
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError, { title: "Could not load income register" });
+    }
+  }, [alertError, fetchError]);
+
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(
@@ -161,7 +171,6 @@ export default function IncomeRegister({
   // Once the user types a WHT amount we stop overwriting it from Amount × rate.
   const [whtAmountEdited, setWhtAmountEdited] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(fetchError);
 
   const defaultWhtRate = formatRateValue(resolveDefaultWhtRate(taxSettings));
 
@@ -291,7 +300,7 @@ export default function IncomeRegister({
         .order("name", { ascending: true });
 
       if (refreshError) {
-        setError(refreshError.message);
+        void alertError(refreshError.message, { title: "Could not complete action" });
         return;
       }
 
@@ -311,7 +320,7 @@ export default function IncomeRegister({
     ).order("date", { ascending: false });
 
     if (refreshError) {
-      setError(refreshError.message);
+      void alertError(refreshError.message, { title: "Could not complete action" });
       return;
     }
 
@@ -320,7 +329,6 @@ export default function IncomeRegister({
         normalizeIncomeRegisterEntry(entry),
       ),
     );
-    setError(null);
   }
 
   function openAddForm() {
@@ -342,10 +350,8 @@ export default function IncomeRegister({
   function openEditForm(entry: IncomeRegisterEntry) {
     const lock = detectAutoPostedIncomeRegisterEntry(entry);
     if (lock.autoPosted) {
-      setError(
-        lock.lockMessage ??
-          "This system-managed income row cannot be edited in the Income Register.",
-      );
+      void alertError(lock.lockMessage ??
+          "This system-managed income row cannot be edited in the Income Register.", { title: "Could not complete action" });
       return;
     }
     setEditingId(entry.id);
@@ -375,10 +381,8 @@ export default function IncomeRegister({
     if (target) {
       const lock = detectAutoPostedIncomeRegisterEntry(target);
       if (lock.autoPosted) {
-        setError(
-          lock.lockMessage ??
-            "This system-managed income row cannot be deleted from the Income Register.",
-        );
+        void alertError(lock.lockMessage ??
+            "This system-managed income row cannot be deleted from the Income Register.", { title: "Could not complete action" });
         return;
       }
     }
@@ -387,7 +391,6 @@ export default function IncomeRegister({
     }
 
     setDeletingId(id);
-    setError(null);
 
     const { error: deleteError } = await supabase
       .from("income_register")
@@ -395,7 +398,7 @@ export default function IncomeRegister({
       .eq("id", id);
 
     if (deleteError) {
-      setError(deleteError.message);
+      void alertError(deleteError.message, { title: "Could not complete action" });
       setDeletingId(null);
       return;
     }
@@ -408,15 +411,14 @@ export default function IncomeRegister({
     );
 
     if (ledgerError) {
-      setError(
-        `Entry deleted, but its tax ledger entries could not be removed: ${ledgerError}`,
-      );
+      void alertError(`Entry deleted, but its tax ledger entries could not be removed: ${ledgerError}`, { title: "Could not complete action" });
     }
 
     if (editingId === id) {
       closeForm();
     }
 
+    toast("Income entry deleted.");
     await refreshEntries();
     setDeletingId(null);
   }
@@ -424,12 +426,11 @@ export default function IncomeRegister({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setError(null);
 
     try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      void alertError(buContext.error, { title: "Could not complete action" });
       setLoading(false);
       return;
     }
@@ -441,7 +442,7 @@ export default function IncomeRegister({
         stamp: stampBusinessUnit,
       });
       if (!stampResult.ok) {
-        setError(stampResult.error);
+        void alertError(stampResult.error, { title: "Could not complete action" });
         setLoading(false);
         return;
       }
@@ -451,10 +452,8 @@ export default function IncomeRegister({
     if (editingId) {
       const editing = entries.find((entry) => entry.id === editingId);
       if (editing && isAutoPostedIncomeRegisterEntry(editing)) {
-        setError(
-          detectAutoPostedIncomeRegisterEntry(editing).lockMessage ??
-            "This system-managed income row cannot be saved from the Income Register.",
-        );
+        void alertError(detectAutoPostedIncomeRegisterEntry(editing).lockMessage ??
+            "This system-managed income row cannot be saved from the Income Register.", { title: "Could not complete action" });
         setLoading(false);
         return;
       }
@@ -479,7 +478,7 @@ export default function IncomeRegister({
     const otherPayerName = form.customer_name.trim() || null;
 
     if (!clientId && !otherPayerName) {
-      setError("Select a contract client or enter an other payer name.");
+      void alertError("Select a contract client or enter an other payer name.", { title: "Could not complete action" });
       setLoading(false);
       return;
     }
@@ -515,7 +514,7 @@ export default function IncomeRegister({
         .eq("id", editingId);
 
       if (updateError) {
-        setError(updateError.message);
+        void alertError(updateError.message, { title: "Could not complete action" });
         setLoading(false);
         return;
       }
@@ -530,7 +529,7 @@ export default function IncomeRegister({
         .single();
 
       if (insertError || !inserted) {
-        setError(insertError?.message ?? "Unable to save the income entry.");
+        void alertError(insertError?.message ?? "Unable to save the income entry.", { title: "Could not complete action" });
         setLoading(false);
         return;
       }
@@ -561,20 +560,20 @@ export default function IncomeRegister({
         : {}),
     });
 
+    const wasEditing = Boolean(editingId);
     closeForm();
     await refreshEntries();
+    toast(wasEditing ? "Income entry updated." : "Income entry saved.");
 
     if (ledgerError) {
-      setError(
-        `Entry saved, but the tax ledger could not be updated: ${ledgerError}`,
-      );
+      void alertError(`Entry saved, but the tax ledger could not be updated: ${ledgerError}`, {
+        title: "Tax ledger not updated",
+      });
     }
     } catch (unexpected) {
-      setError(
-        unexpected instanceof Error
+      void alertError(unexpected instanceof Error
           ? unexpected.message
-          : "Unable to save the income entry.",
-      );
+          : "Unable to save the income entry.", { title: "Could not complete action" });
     } finally {
       setLoading(false);
     }
@@ -645,12 +644,6 @@ export default function IncomeRegister({
           {showForm ? "Cancel" : "Add Entry"}
         </button>
       </div>
-
-      {error && (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       {showForm && (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

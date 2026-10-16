@@ -126,6 +126,13 @@ export default function Budget({
   const supabase = createClient();
   const { alertError } = useAlert();
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError, { title: "Could not load budget" });
+    }
+  }, [alertError, fetchError]);
+
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const defaultPeriod = getDefaultPeriodSelection();
@@ -151,7 +158,6 @@ export default function Budget({
     () => new Set(),
   );
   const [copyingBudget, setCopyingBudget] = useState(false);
-  const [error, setError] = useState<string | null>(fetchError);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
   const availableYears = useMemo(() => {
@@ -232,7 +238,7 @@ export default function Budget({
       .order("category", { ascending: true });
 
     if (refreshError) {
-      setError(refreshError.message);
+      void alertError(refreshError.message, { title: "Could not complete action" });
       return null;
     }
 
@@ -243,7 +249,6 @@ export default function Budget({
     const next = await fetchBudgetEntriesFromDb();
     if (next) {
       setEntries(next);
-      setError(null);
     }
   }
 
@@ -281,13 +286,13 @@ export default function Budget({
   ): boolean {
     const category = form.category.trim();
     if (!category) {
-      setError("Category is required.");
+      void alertError("Category is required.", { title: "Could not complete action" });
       return false;
     }
 
     const budgetedAmount = Number(form.budgeted_amount);
     if (!Number.isFinite(budgetedAmount) || budgetedAmount < 0) {
-      setError("Budgeted amount must be zero or greater.");
+      void alertError("Budgeted amount must be zero or greater.", { title: "Could not complete action" });
       return false;
     }
 
@@ -308,7 +313,7 @@ export default function Budget({
     );
 
     if (duplicate) {
-      setError(formatDuplicateBudgetMessage(duplicate, projects));
+      void alertError(formatDuplicateBudgetMessage(duplicate, projects), { title: "Could not complete action" });
       return false;
     }
 
@@ -600,7 +605,6 @@ export default function Budget({
     }
 
     setCopyingBudget(true);
-    setError(null);
 
     try {
       let dbEntries = await fetchBudgetEntriesFromDb();
@@ -727,11 +731,10 @@ export default function Budget({
     }
 
     setDeletingId(entry.id);
-    setError(null);
 
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      void alertError(buContext.error, { title: "Could not complete action" });
       setDeletingId(null);
       return;
     }
@@ -742,7 +745,7 @@ export default function Budget({
         entry.business_unit_id,
       );
     } catch (accessError) {
-      setError(formatBusinessUnitAccessError(accessError));
+      void alertError(formatBusinessUnitAccessError(accessError), { title: "Could not complete action" });
       setDeletingId(null);
       return;
     }
@@ -754,7 +757,7 @@ export default function Budget({
       .eq("tenant_id", tenantId);
 
     if (deleteError) {
-      setError(deleteError.message);
+      void alertError(deleteError.message, { title: "Could not complete action" });
       setDeletingId(null);
       return;
     }
@@ -763,6 +766,7 @@ export default function Budget({
       closeForm();
     }
 
+    toast("Budget line deleted.");
     await refreshEntries();
     setDeletingId(null);
     router.refresh();
@@ -771,13 +775,12 @@ export default function Budget({
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);
-    setError(null);
     setInfoMessage(null);
 
     try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      void alertError(buContext.error, { title: "Could not complete action" });
       return;
     }
 
@@ -790,7 +793,7 @@ export default function Budget({
           existing?.business_unit_id,
         );
       } catch (accessError) {
-        setError(formatBusinessUnitAccessError(accessError));
+        void alertError(formatBusinessUnitAccessError(accessError), { title: "Could not complete action" });
         return;
       }
     } else {
@@ -799,7 +802,7 @@ export default function Budget({
         stamp: stampBusinessUnit,
       });
       if (!stampResult.ok) {
-        setError(stampResult.error);
+        void alertError(stampResult.error, { title: "Could not complete action" });
         return;
       }
       stampedBusinessUnitId = stampResult.businessUnitId;
@@ -850,28 +853,26 @@ export default function Budget({
         });
         if (existing) {
           openEditForm(existing);
-          setError(formatDuplicateBudgetMessage(existing, projects));
+          void alertError(formatDuplicateBudgetMessage(existing, projects), { title: "Could not complete action" });
         } else {
-          setError(
-            "A budget line already exists for this project, category, subcategory, period type, and period.",
-          );
+          void alertError("A budget line already exists for this project, category, subcategory, period type, and period.", { title: "Could not complete action" });
         }
       } else {
-        setError(saveError.message);
+        void alertError(saveError.message, { title: "Could not complete action" });
       }
 
       return;
     }
 
+    const wasEditing = Boolean(editingId);
     closeForm();
     await refreshEntries();
     router.refresh();
+    toast(wasEditing ? "Budget line updated." : "Budget line saved.");
     } catch (unexpected) {
-      setError(
-        unexpected instanceof Error
+      void alertError(unexpected instanceof Error
           ? unexpected.message
-          : "Unable to save the budget line.",
-      );
+          : "Unable to save the budget line.", { title: "Could not complete action" });
     } finally {
       setLoading(false);
     }
@@ -934,12 +935,6 @@ export default function Budget({
           </button>
         </div>
       </div>
-
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       {infoMessage ? (
         <p className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">

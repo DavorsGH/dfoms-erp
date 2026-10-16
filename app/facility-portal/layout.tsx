@@ -25,7 +25,7 @@ export default async function FacilityPortalLayout({
           isAuthenticated={Boolean(session)}
         >
           {children}
-          {session ? <AssistantChatWidget /> : null}
+          {session ? <AssistantChatWidget persona="facility_manager" /> : null}
         </PortalLayoutClient>
       </FeedbackShell>
     </StickyBottomBarProvider>

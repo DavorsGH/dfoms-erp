@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useAlert, useToast } from "@/components/feedback";
 import ScrollableTable, {
@@ -105,8 +105,13 @@ export default function BusinessUnitTransfers({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [listError, setListError] = useState<string | null>(fetchError);
   const [form, setForm] = useState(emptyForm);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError, { title: "Could not load inter-unit transfers" });
+    }
+  }, [alertError, fetchError]);
 
   const unitNameById = useMemo(
     () => new Map(businessUnits.map((unit) => [unit.id, unit.name])),
@@ -246,7 +251,7 @@ export default function BusinessUnitTransfers({
       .order("created_at", { ascending: false });
 
     if (error) {
-      setListError(error.message);
+      void alertError(error.message, { title: "Could not refresh transfers" });
       return;
     }
 
@@ -255,7 +260,6 @@ export default function BusinessUnitTransfers({
         normalizeBusinessUnitTransferRecord,
       ),
     );
-    setListError(null);
   }
 
   function openAddForm() {
@@ -293,7 +297,6 @@ export default function BusinessUnitTransfers({
     }
 
     setDeletingId(id);
-    setListError(null);
 
     const existing = transfers.find((row) => row.id === id);
     const buContext = await loadWriteBusinessUnitContext(supabase);
@@ -424,12 +427,6 @@ export default function BusinessUnitTransfers({
 
   return (
     <div className="space-y-6">
-      {listError ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-          {listError}
-        </p>
-      ) : null}
-
       {pairSummaries.length > 0 ? (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-3 text-lg font-semibold text-[#0f2744]">

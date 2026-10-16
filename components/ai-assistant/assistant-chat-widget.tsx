@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -15,6 +16,11 @@ import { useAssistantBubblePosition } from "@/components/ai-assistant/use-assist
 import { subscribeRegisterDetailDrawerOpen } from "@/app/dashboard/register-detail-drawer-visibility";
 import { useDialogKeyboard } from "@/components/feedback/use-dialog-keyboard";
 import { useFocusTrap } from "@/components/feedback/use-focus-trap";
+import type { AppRole } from "@/app/dashboard/user-account-types";
+import {
+  getAssistantChatSuggestions,
+  type AssistantChatPersona,
+} from "@/components/ai-assistant/assistant-chat-suggestions";
 
 type ChatRole = "user" | "assistant";
 
@@ -175,7 +181,15 @@ function AssistantPanelConfirmDialog({
   );
 }
 
-export default function AssistantChatWidget() {
+type AssistantChatWidgetProps = {
+  persona?: AssistantChatPersona;
+  staffRole?: AppRole | null;
+};
+
+export default function AssistantChatWidget({
+  persona = "staff",
+  staffRole = null,
+}: AssistantChatWidgetProps) {
   const titleId = useId();
   const inputId = useId();
   const listRef = useRef<HTMLDivElement>(null);
@@ -193,6 +207,11 @@ export default function AssistantChatWidget() {
     useState(false);
 
   const hasConversation = messages.length > 0;
+
+  const suggestionChips = useMemo(
+    () => getAssistantChatSuggestions({ persona, staffRole }),
+    [persona, staffRole],
+  );
 
   useEffect(
     () => subscribeRegisterDetailDrawerOpen(setRegisterDetailDrawerOpen),
@@ -269,49 +288,48 @@ export default function AssistantChatWidget() {
     });
   }
 
-  async function handleSend(event?: FormEvent) {
-    event?.preventDefault();
+  const sendUserMessage = useCallback(
+    async (rawText: string) => {
+      const trimmed = rawText.trim();
+      if (!trimmed || isLoading) {
+        return;
+      }
 
-    const trimmed = draft.trim();
-    if (!trimmed || isLoading) {
-      return;
-    }
+      const userMessage: ChatMessage = {
+        id: createMessageId(),
+        role: "user",
+        content: trimmed,
+        createdAt: Date.now(),
+      };
 
-    const userMessage: ChatMessage = {
-      id: createMessageId(),
-      role: "user",
-      content: trimmed,
-      createdAt: Date.now(),
-    };
+      const conversationHistory = messages
+        .filter((message) => !message.isError)
+        .map((message) => ({
+          role: message.role,
+          content: message.content,
+        }));
 
-    const conversationHistory = messages
-      .filter((message) => !message.isError)
-      .map((message) => ({
-        role: message.role,
-        content: message.content,
-      }));
+      const sessionAtSend = conversationSessionRef.current;
 
-    const sessionAtSend = conversationSessionRef.current;
+      setMessages((current) => [...current, userMessage]);
+      setDraft("");
+      setIsLoading(true);
 
-    setMessages((current) => [...current, userMessage]);
-    setDraft("");
-    setIsLoading(true);
+      const abortController = new AbortController();
+      sendAbortRef.current = abortController;
 
-    const abortController = new AbortController();
-    sendAbortRef.current = abortController;
-
-    try {
-      const response = await fetch("/api/assistant/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        signal: abortController.signal,
-        body: JSON.stringify({
-          message: trimmed,
-          conversationHistory,
-        }),
-      });
+      try {
+        const response = await fetch("/api/assistant/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          signal: abortController.signal,
+          body: JSON.stringify({
+            message: trimmed,
+            conversationHistory,
+          }),
+        });
 
       const data = (await response.json()) as { reply?: string; error?: string };
       const reply = data.reply?.trim();
@@ -358,6 +376,13 @@ export default function AssistantChatWidget() {
         setIsLoading(false);
       }
     }
+    },
+    [isLoading, messages],
+  );
+
+  async function handleSend(event?: FormEvent) {
+    event?.preventDefault();
+    await sendUserMessage(draft);
   }
 
   function handleInputKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -441,6 +466,26 @@ export default function AssistantChatWidget() {
                 {WELCOME_MESSAGE}
               </div>
             </div>
+
+            {!hasConversation && !isLoading ? (
+              <div
+                className="flex flex-wrap gap-2"
+                role="group"
+                aria-label="Suggested questions"
+              >
+                {suggestionChips.map((label) => (
+                  <button
+                    key={label}
+                    type="button"
+                    disabled={isLoading}
+                    onClick={() => void sendUserMessage(label)}
+                    className="max-w-full rounded-full border border-slate-300 bg-white px-3 py-1.5 text-left text-xs leading-snug text-[#0f2744] shadow-sm transition-colors hover:border-[#0f2744] hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f2744] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
             {messages.map((message) => (
               <div

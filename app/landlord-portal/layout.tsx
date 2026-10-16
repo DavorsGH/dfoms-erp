@@ -62,7 +62,7 @@ export default async function LandlordPortalLayout({
       >
         {children}
       </PortalLayoutClient>
-      {session ? <AssistantChatWidget /> : null}
+      {session ? <AssistantChatWidget persona="landlord" /> : null}
       </FeedbackShell>
     </StickyBottomBarProvider>
   );

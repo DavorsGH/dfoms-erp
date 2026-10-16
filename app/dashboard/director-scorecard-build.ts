@@ -43,8 +43,16 @@ import {
   type DirectorScorecardChecklistLink,
   type DirectorScorecardUnpaidInvoiceLink,
 } from "@/app/dashboard/director-scorecard-links";
+import {
+  directorScorecardPayrollNotFoundMessage,
+  isDirectorScorecardPayrollMissing,
+} from "@/app/dashboard/director-scorecard-checklist-utils";
 
-export type DirectorScorecardChecklistChipStatus = "done" | "todo" | "overdue";
+export type DirectorScorecardChecklistChipStatus =
+  | "done"
+  | "todo"
+  | "overdue"
+  | "not-enough-data";
 
 export type DirectorScorecardChecklistItem = {
   id: string;
@@ -443,6 +451,8 @@ function checklistChipStatus(
 function buildChecklist(input: {
   year: number;
   month: number;
+  periodLabel: string;
+  businessUnitLabel: string;
   clientInvoices: DirectorScorecardClientInvoiceRow[];
   taxLedgerSources: TaxLedgerBalanceSource[];
   taxSettings: TaxSettingsDueRules;
@@ -454,6 +464,11 @@ function buildChecklist(input: {
   taxToSetAside: number;
   todayIso: string;
 }): { ready: boolean; items: DirectorScorecardChecklistItem[] } {
+  const payrollMissing = isDirectorScorecardPayrollMissing(input.payrollCost);
+  const payrollNotFoundReason = directorScorecardPayrollNotFoundMessage(
+    input.periodLabel,
+    input.businessUnitLabel,
+  );
   const unpaidInvoices = input.clientInvoices.filter((invoice) => {
     if (invoice.status === "draft" || invoice.status === "voided") {
       return false;
@@ -578,9 +593,11 @@ function buildChecklist(input: {
     {
       id: "cash-reserve",
       label: "Cash cushion of one month's payroll",
-      pass: cashReservePass,
-      chipStatus: checklistChipStatus(cashReservePass, "cash-reserve", false, false),
-      reason: cashReserveReason,
+      pass: payrollMissing ? false : cashReservePass,
+      chipStatus: payrollMissing
+        ? "not-enough-data"
+        : checklistChipStatus(cashReservePass, "cash-reserve", false, false),
+      reason: payrollMissing ? payrollNotFoundReason : cashReserveReason,
       links: [
         {
           label: "View cash position →",
@@ -604,9 +621,11 @@ function buildChecklist(input: {
     {
       id: "dividend-cash",
       label: "Enough cash after the dividend",
-      pass: dividendCashPass,
-      chipStatus: checklistChipStatus(dividendCashPass, "dividend-cash", false, false),
-      reason: dividendCashReason,
+      pass: payrollMissing ? false : dividendCashPass,
+      chipStatus: payrollMissing
+        ? "not-enough-data"
+        : checklistChipStatus(dividendCashPass, "dividend-cash", false, false),
+      reason: payrollMissing ? payrollNotFoundReason : dividendCashReason,
       links: [
         {
           label: "View cash position →",
@@ -617,7 +636,9 @@ function buildChecklist(input: {
   ];
 
   return {
-    ready: items.every((item) => item.pass),
+    ready: items.every(
+      (item) => item.pass && item.chipStatus !== "not-enough-data",
+    ),
     items,
   };
 }
@@ -675,6 +696,7 @@ export function buildDirectorScorecardByMonthKey(input: {
   budgetReportData: BudgetVsActualReportData;
   clientInvoices: DirectorScorecardClientInvoiceRow[];
   taxSettings: TaxSettingsDueRules | null;
+  businessUnitLabel: string;
   todayIso?: string;
 }): Record<string, DirectorScorecardSnapshot> {
   const todayIso = input.todayIso ?? new Date().toISOString().slice(0, 10);
@@ -760,6 +782,8 @@ export function buildDirectorScorecardByMonthKey(input: {
     const checklist = buildChecklist({
       year: option.year,
       month: option.month,
+      periodLabel: option.label,
+      businessUnitLabel: input.businessUnitLabel,
       clientInvoices: input.clientInvoices,
       taxLedgerSources: taxSources,
       taxSettings,
