@@ -39,6 +39,10 @@ import {
   buildStandardBalanceSheetReport,
   getBalanceSheetMonthCheck,
 } from "@/lib/finance/balance-sheet-standard-report";
+import type {
+  DividendBalanceSheetDeclaration,
+  DividendBalanceSheetLine,
+} from "./dividends-types";
 import {
   resolveInterUnitTransferCashScope,
   type BusinessUnitTransferRecord,
@@ -80,6 +84,8 @@ type BalanceSheetProps = {
   initialCreditNotesForCustomerCredits?: CustomerCreditsCreditNoteRow[];
   initialRefundsForCustomerCredits?: CustomerCreditsRefundRow[];
   initialCreditNoteApplications?: CustomerCreditsApplicationRow[];
+  initialDividendDeclarations?: DividendBalanceSheetDeclaration[];
+  initialDividendLines?: DividendBalanceSheetLine[];
   availableYears: number[];
   fetchError: string | null;
   initialFocusMonth?: number | null;
@@ -203,6 +209,8 @@ export default function BalanceSheet({
   initialCreditNotesForCustomerCredits = [],
   initialRefundsForCustomerCredits = [],
   initialCreditNoteApplications = [],
+  initialDividendDeclarations = [],
+  initialDividendLines = [],
 }: BalanceSheetProps) {
   const [selectedYear, setSelectedYear] = useState(() => {
     if (
@@ -268,6 +276,8 @@ export default function BalanceSheet({
           initialRefundsForCustomerCredits,
           initialCreditNoteApplications,
           initialBusinessUnitTransfers,
+          initialDividendDeclarations,
+          initialDividendLines,
         },
         tenantId,
         selectedYear,
@@ -277,6 +287,9 @@ export default function BalanceSheet({
             ? initialRawManualEntries
             : undefined,
           interUnitTransferScope,
+          balanceSheetBusinessUnitId: viewAllBusinessUnits
+            ? null
+            : activeBusinessUnitId,
         },
       ),
     [

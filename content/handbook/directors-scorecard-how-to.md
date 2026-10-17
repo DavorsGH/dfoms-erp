@@ -12,9 +12,10 @@ It is read-only — it does not change any records. The figures are planning fig
 
 ## Who can see it and where
 
-- Visible to **Directors** and **Administrators** only. Other roles (including Finance) do not see it.
-- It is on the **Dashboard**, below the summary cards.
-- It follows the **Summary Month** selected on the Dashboard and the **business unit** selected in the header. In "All businesses", transfers between your own business units are left out so nothing is counted twice.
+- Visible to **Directors** and **Administrators** (super_admin) only. Other roles (including Finance) do not see it.
+- Open **Directors** in the sidebar (above Administration), then the **Scorecard** tab. The Dashboard shows a compact **Director's summary** card with a link **Open Directors board**.
+- It follows the **Summary month** on the Directors board (or the Dashboard month for the summary card) and the **business unit** selected in the header. In "All businesses", transfers between your own business units are left out so nothing is counted twice.
+- **Dividends** and **Shareholders** are on their own tabs on the Directors board. **Settings** (CIT, GSL, dividend WHT, profit split) is the **Settings** tab there—not on Finance.
 
 ## The figures
 
@@ -61,5 +62,5 @@ When everything is Done the banner says **"Ready — all checks complete. You ca
 ## Things to know
 
 - **Rates used** (footer on the scorecard): shows the CIT, GSL, dividend WHT, and profit split percentages currently applied to every month on the scorecard.
-- **Changing rates:** Directors and Administrators open **Settings** on the Director's Scorecard header. Set CIT, GSL, dividend WHT, and the Reserve / Reinvest / Owners split. The three split percentages must total **100%**. Changes apply to all months on the scorecard (planning figures, not tax advice). Other roles do not see Settings.
-- The scorecard does not record a dividend. Paying and recording a dividend is done outside the scorecard.
+- **Changing rates:** Directors and Administrators open **Directors → Settings**. Set CIT, GSL, dividend WHT, and the Reserve / Reinvest / Owners split. The three split percentages must total **100%**. Changes apply to all months on the scorecard (planning figures, not tax advice). Other roles do not see Settings.
+- Declaring and paying dividends is done on **Directors → Dividends** and **Shareholders**, not from the scorecard tiles alone. Step-by-step declare, pay, remit WHT, and cancel: see **Dividends — how to declare and pay** (staff handbook).

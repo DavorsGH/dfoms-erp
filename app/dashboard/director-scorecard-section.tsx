@@ -38,6 +38,8 @@ type DirectorScorecardSectionProps = {
   snapshot: DirectorScorecardSnapshot;
   monthKey: string;
   canManageSettings: boolean;
+  /** When true, settings live on the Directors board Settings tab. */
+  hideSettingsButton?: boolean;
   initialSettings: DirectorScorecardSettingsMeta | null;
 };
 
@@ -341,6 +343,7 @@ export default function DirectorScorecardSection({
   snapshot: initialSnapshot,
   monthKey,
   canManageSettings,
+  hideSettingsButton = false,
   initialSettings,
 }: DirectorScorecardSectionProps) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
@@ -384,6 +387,16 @@ export default function DirectorScorecardSection({
       setRefreshing(false);
     }
   }, [monthKey]);
+
+  useEffect(() => {
+    const onSettingsSaved = () => {
+      void refreshScorecard();
+    };
+    window.addEventListener("dfoms:scorecard-settings-saved", onSettingsSaved);
+    return () => {
+      window.removeEventListener("dfoms:scorecard-settings-saved", onSettingsSaved);
+    };
+  }, [refreshScorecard]);
 
   const budgetTotals = sumBudgetVsActualTotals(snapshot.budget.rows);
   const reportHref = `/dashboard/reports/finance/budget-vs-actual?year=${snapshot.year}&month=${snapshot.month}`;
@@ -489,7 +502,7 @@ export default function DirectorScorecardSection({
             {refreshing ? " Updating…" : null}
           </p>
         </div>
-        {canManageSettings ? (
+        {canManageSettings && !hideSettingsButton ? (
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
@@ -520,7 +533,7 @@ export default function DirectorScorecardSection({
         <Tile
           title="Dividend available this quarter"
           value={formatGHS(snapshot.dividendQuarter.net)}
-          subtitle={`${snapshot.dividendQuarter.quarterLabel}: gross ${formatGHS(snapshot.dividendQuarter.gross)}, WHT ${formatGHS(snapshot.dividendQuarter.wht)}`}
+          subtitle={`${snapshot.dividendQuarter.quarterLabel}: available gross ${formatGHS(snapshot.dividendQuarter.gross)} (WHT ${formatGHS(snapshot.dividendQuarter.wht)})${snapshot.dividendQuarter.declaredGross > 0.005 ? ` · Declared this quarter: ${formatGHS(snapshot.dividendQuarter.declaredGross)}` : ""}`}
         />
       </div>
 
@@ -665,7 +678,7 @@ export default function DirectorScorecardSection({
         })()}
       </p>
 
-      {canManageSettings ? (
+      {canManageSettings && !hideSettingsButton ? (
         <DirectorScorecardSettingsDialog
           open={settingsOpen}
           initialSettings={settingsMeta}

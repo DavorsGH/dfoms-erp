@@ -15,7 +15,7 @@ import {
 } from "@/utils/assistant-staff-tool-common";
 
 export const DIRECTOR_SCORECARD_ACCESS_DENIED_MESSAGE =
-  "The Director's Scorecard is available to directors and administrators only.";
+  "The Director's Scorecard is on the Directors board (Scorecard tab) and is available to directors and administrators only.";
 
 const FINANCIAL_ACTIVITY_EPSILON = 0.005;
 

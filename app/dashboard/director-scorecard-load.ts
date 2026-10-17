@@ -224,6 +224,10 @@ export async function attachDirectorScorecardToViewModel(
     ),
     businessUnitLabel,
     planning: scorecardSettingsLoad.planning,
+    scorecardBusinessUnitId:
+      buScope.mode === "unit"
+        ? buScope.id
+        : activeBusinessUnitId?.trim() || null,
   });
 
   return {

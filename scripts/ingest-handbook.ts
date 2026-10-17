@@ -33,6 +33,7 @@ const HANDBOOK_FILES = [
   { file: "staff-handbook.md", persona: "staff" as const },
   { file: "budget-how-to.md", persona: "staff" as const },
   { file: "directors-scorecard-how-to.md", persona: "staff" as const },
+  { file: "dividends-how-to.md", persona: "staff" as const },
   { file: "consumables-how-to.md", persona: "staff" as const },
   { file: "contract-profitability-how-to.md", persona: "staff" as const },
   { file: "cost-tagging-how-to.md", persona: "staff" as const },

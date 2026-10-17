@@ -69,6 +69,8 @@ export default async function BalanceSheetPage({ searchParams }: BalanceSheetPag
     initialRefundsForCustomerCredits,
     initialCreditNoteApplications,
     initialBusinessUnitTransfers,
+    initialDividendDeclarations,
+    initialDividendLines,
     availableYears,
     fetchError,
   } = data;
@@ -102,6 +104,8 @@ export default async function BalanceSheetPage({ searchParams }: BalanceSheetPag
         }
         initialRefundsForCustomerCredits={initialRefundsForCustomerCredits}
         initialCreditNoteApplications={initialCreditNoteApplications}
+        initialDividendDeclarations={initialDividendDeclarations}
+        initialDividendLines={initialDividendLines}
         availableYears={availableYears}
         fetchError={fetchError}
         initialFocusMonth={initialFocusMonth}

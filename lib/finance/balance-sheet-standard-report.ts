@@ -6,6 +6,12 @@ import type {
   BusinessUnitTransferRecord,
   InterUnitTransferCashScope,
 } from "@/app/dashboard/finance/business-unit-transfers-utils";
+import type {
+  DividendBalanceSheetDeclaration,
+  DividendBalanceSheetLine,
+} from "@/app/dashboard/finance/dividends-types";
+import { resolveBalanceSheetDividendBusinessUnitId } from "@/lib/finance/dividends-load";
+import type { BusinessUnitReadScope } from "@/utils/business-unit-view";
 
 export type StandardBalanceSheetDataSlice = Pick<
   BalanceSheetPageData,
@@ -20,6 +26,8 @@ export type StandardBalanceSheetDataSlice = Pick<
 export type StandardBalanceSheetReportData = StandardBalanceSheetDataSlice &
   Pick<
     BalanceSheetPageData,
+    | "initialDividendDeclarations"
+    | "initialDividendLines"
     | "initialIncomeEntries"
     | "initialExpenseEntries"
     | "initialFixedAssets"
@@ -47,13 +55,35 @@ export type StandardBalanceSheetReportExtras = {
   allBusinessUnitsDirectorsLoan?: boolean;
   rawManualFinancialEntries?: CashMovementManualEntry[];
   interUnitTransferScope?: InterUnitTransferCashScope;
+  dividendDeclarations?: DividendBalanceSheetDeclaration[];
+  dividendLines?: DividendBalanceSheetLine[];
+  balanceSheetBusinessUnitId?: string | null;
 };
+
+export function dividendOptionsFromPageData(
+  data: Pick<
+    BalanceSheetPageData,
+    "initialDividendDeclarations" | "initialDividendLines"
+  >,
+  buScope: BusinessUnitReadScope,
+): Pick<
+  BalanceSheetReportOptions,
+  "dividendDeclarations" | "dividendLines" | "balanceSheetBusinessUnitId"
+> {
+  return {
+    dividendDeclarations: data.initialDividendDeclarations ?? [],
+    dividendLines: data.initialDividendLines ?? [],
+    balanceSheetBusinessUnitId: resolveBalanceSheetDividendBusinessUnitId(buScope),
+  };
+}
 
 export function buildStandardBalanceSheetReportOptions(
   tenantId: string,
   data: StandardBalanceSheetDataSlice & {
     initialStaffSalaryAdvanceEntries?: StaffAdvanceBalanceSheetEntry[];
     initialBusinessUnitTransfers?: BusinessUnitTransferRecord[];
+    initialDividendDeclarations?: DividendBalanceSheetDeclaration[];
+    initialDividendLines?: DividendBalanceSheetLine[];
   },
   extras: StandardBalanceSheetReportExtras = {},
 ): BalanceSheetReportOptions {
@@ -70,6 +100,10 @@ export function buildStandardBalanceSheetReportOptions(
     }),
     businessUnitTransfers: data.initialBusinessUnitTransfers,
     interUnitTransferScope: extras.interUnitTransferScope,
+    dividendDeclarations:
+      extras.dividendDeclarations ?? data.initialDividendDeclarations ?? [],
+    dividendLines: extras.dividendLines ?? data.initialDividendLines ?? [],
+    balanceSheetBusinessUnitId: extras.balanceSheetBusinessUnitId ?? null,
   };
 }
 

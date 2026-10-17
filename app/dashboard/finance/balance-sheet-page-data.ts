@@ -96,6 +96,11 @@ import {
   BUSINESS_UNIT_TRANSFER_SELECT,
   type BusinessUnitTransferRecord,
 } from "./business-unit-transfers-utils";
+import { fetchDividendBalanceSheetData } from "@/lib/finance/dividends-load";
+import type {
+  DividendBalanceSheetDeclaration,
+  DividendBalanceSheetLine,
+} from "./dividends-types";
 
 /** Columns required for live open-month payroll recalc (display-only; never written back). */
 export const PAYROLL_PROCESSING_SELECT =
@@ -227,6 +232,8 @@ export type BalanceSheetPageData = {
   initialRefundsForCustomerCredits: CustomerCreditsRefundRow[];
   initialCreditNoteApplications: CustomerCreditsApplicationRow[];
   initialBusinessUnitTransfers: BusinessUnitTransferRecord[];
+  initialDividendDeclarations: DividendBalanceSheetDeclaration[];
+  initialDividendLines: DividendBalanceSheetLine[];
   /** Full month-end rows (Dashboard lock status / payroll widgets). */
   initialMonthEndCloseRecords: MonthEndCloseRecord[];
   /** Open-period payroll processing rows (Dashboard gross-pay trend). */
@@ -745,7 +752,7 @@ export async function fetchBalanceSheetPageData(
     supabase
       .from("expense_register")
       .select(
-        `${EXPENSE_REGISTER_PROFIT_LOSS_SELECT}, payment_status, description, receipt_no, notes`,
+        `id, ${EXPENSE_REGISTER_PROFIT_LOSS_SELECT}, payment_status, description, receipt_no, notes`,
       )
       .eq("tenant_id", tenantId),
     buScope,
@@ -843,10 +850,10 @@ export async function fetchBalanceSheetPageData(
     supabase
       .from("tax_ledger_entries")
       .select(
-        "entry_date, period_month, direction, tax_component, tax_amount, status",
+        "id, entry_date, period_month, direction, tax_component, tax_amount, status, remitted_at, source_type, source_id",
       )
       .eq("tenant_id", tenantId)
-      .eq("status", "open"),
+      .in("status", ["open", "paid"]),
     buScope,
   ).order("entry_date", { ascending: true });
   let welfareFundQuery = applyBusinessUnitScope(
@@ -942,6 +949,7 @@ export async function fetchBalanceSheetPageData(
     { data: creditApplicationsRows, error: creditApplicationsError },
     { data: businessUnitTransfers, error: businessUnitTransfersError },
     inventoryBalanceSheet,
+    dividendBalanceSheetResult,
   ] = await Promise.all([
     incomeQuery,
     expenseFetch,
@@ -973,10 +981,17 @@ export async function fetchBalanceSheetPageData(
       .eq("tenant_id", tenantId)
       .order("transfer_date", { ascending: true }),
     inventoryFetch,
+    fetchDividendBalanceSheetData(supabase, tenantId),
   ]);
 
+  const dividendBalanceSheet = dividendBalanceSheetResult ?? {
+    declarations: [],
+    lines: [],
+    error: null,
+  };
+
   if (requestCounter) {
-    let parallelBatchCount = 18;
+    let parallelBatchCount = 19;
     if (useSharedRegisters) {
       parallelBatchCount -= 3;
     }
@@ -1043,6 +1058,7 @@ export async function fetchBalanceSheetPageData(
     expenseEntries?.map((entry) => {
       const row = entry as typeof entry & { is_customer_refund?: boolean | null };
       return {
+        id: String((row as { id: string }).id),
         date: row.date,
         expense_category: row.expense_category,
         sub_category: row.sub_category,
@@ -1148,6 +1164,8 @@ export async function fetchBalanceSheetPageData(
     initialCreditNoteApplications,
     initialBusinessUnitTransfers:
       (businessUnitTransfers as BusinessUnitTransferRecord[] | null) ?? [],
+    initialDividendDeclarations: dividendBalanceSheet.declarations,
+    initialDividendLines: dividendBalanceSheet.lines,
     availableYears: buildAvailableYears(
       (incomeEntries ?? []).map((entry) => entry.date),
       (expenseEntries ?? []).map((entry) => entry.date),

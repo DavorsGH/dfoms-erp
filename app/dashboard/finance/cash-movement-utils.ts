@@ -60,6 +60,11 @@ import {
   type BusinessUnitTransferRecord,
   type InterUnitTransferCashScope,
 } from "./business-unit-transfers-utils";
+import { calculateDividendCashOutflowsByMonth } from "./dividends-balance-sheet-utils";
+import type {
+  DividendBalanceSheetDeclaration,
+  DividendBalanceSheetLine,
+} from "./dividends-types";
 
 export {
   parseCashPaidFromExpenseNotes,
@@ -128,6 +133,9 @@ export type CashMovementInputs = {
   staffSalaryAdvanceEntries?: StaffAdvanceBalanceSheetEntry[];
   businessUnitTransfers?: BusinessUnitTransferRecord[];
   interUnitTransferScope?: InterUnitTransferCashScope;
+  dividendDeclarations?: DividendBalanceSheetDeclaration[];
+  dividendLines?: DividendBalanceSheetLine[];
+  balanceSheetBusinessUnitId?: string | null;
 };
 
 export type MonthlyCashComponents = {
@@ -145,6 +153,7 @@ export type MonthlyCashComponents = {
   fixedAssetPurchases: MonthlyTotals;
   interUnitTransferInflows: MonthlyTotals;
   interUnitTransferOutflows: MonthlyTotals;
+  dividendPayments: MonthlyTotals;
   /** Signed net movement per month (inflows − outflows). */
   netMovement: MonthlyTotals;
 };
@@ -472,6 +481,14 @@ export function buildMonthlyCashComponents(
           financialYear,
         )
       : createEmptyMonthlyTotals();
+  const dividendPayments = roundMonthlyTotals(
+    calculateDividendCashOutflowsByMonth(
+      inputs.dividendLines ?? [],
+      inputs.dividendDeclarations ?? [],
+      financialYear,
+      inputs.balanceSheetBusinessUnitId ?? null,
+    ),
+  );
 
   const totalInflows = addMonthlyTotals(
     addMonthlyTotals(
@@ -507,8 +524,8 @@ export function buildMonthlyCashComponents(
     fixedAssetPurchases,
   );
   const totalOutflowsWithInterUnit = addMonthlyTotals(
-    totalOutflows,
-    interUnitTransferOutflows,
+    addMonthlyTotals(totalOutflows, interUnitTransferOutflows),
+    dividendPayments,
   );
   const netMovement = subtractMonthlyTotals(
     totalInflowsWithInterUnit,
@@ -530,6 +547,7 @@ export function buildMonthlyCashComponents(
     fixedAssetPurchases,
     interUnitTransferInflows,
     interUnitTransferOutflows,
+    dividendPayments,
     netMovement,
   };
 }

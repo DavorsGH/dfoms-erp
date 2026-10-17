@@ -201,6 +201,20 @@ export function canAccessFinanceSection(role: AppRole | null): boolean {
   return roleIn(role, FINANCE_SECTION_ROLES);
 }
 
+/** Directors board (scorecard, dividends, shareholders, settings). */
+export function canAccessDirectorsBoard(role: AppRole | null): boolean {
+  return roleIn(role, ["director", "super_admin"] as const);
+}
+
+/** @deprecated Finance no longer has a Dividends tab — use Directors board. */
+export function canAccessDividendsTab(role: AppRole | null): boolean {
+  return canAccessDirectorsBoard(role);
+}
+
+export function canManageDividends(role: AppRole | null): boolean {
+  return canAccessDirectorsBoard(role);
+}
+
 export function isFinanceSuppliersPath(pathname: string): boolean {
   return (
     pathname === "/dashboard/finance/suppliers" ||
@@ -447,6 +461,10 @@ export function getSidebarNavItems(
 
   if (getAccessibleReportCategoryIds(role).length > 0) {
     items.push({ label: "Reports", href: "/dashboard/reports" });
+  }
+
+  if (canAccessDirectorsBoard(role)) {
+    items.push({ label: "Directors", href: "/dashboard/directors" });
   }
 
   if (role === "super_admin") {

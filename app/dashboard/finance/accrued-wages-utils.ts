@@ -34,6 +34,7 @@ export type MonthEndCloseNetPayEntry = {
 };
 
 export type StaffSalariesExpenseEntry = {
+  id?: string;
   date: string;
   expense_category: string;
   sub_category: string;

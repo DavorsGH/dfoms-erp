@@ -23,7 +23,7 @@ import DashboardSalesAnalysis from "./dashboard-sales-analysis";
 import { DashboardBudgetStatusCard } from "./dashboard-budget-status-card";
 import { SummaryCard } from "./summary-card";
 import DashboardBalanceSheetIntegrityBanner from "./dashboard-balance-sheet-integrity-banner";
-import DirectorScorecardSection from "./director-scorecard-section";
+import DirectorSummaryCard from "./directors/director-summary-card";
 
 type DashboardProps = {
   data: DashboardViewModel;
@@ -264,11 +264,9 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
       ) : null}
 
       {visibility.showDirectorScorecard && directorScorecard ? (
-        <DirectorScorecardSection
+        <DirectorSummaryCard
           snapshot={directorScorecard}
           monthKey={scorecardMonthKey}
-          canManageSettings={visibility.showDirectorScorecard}
-          initialSettings={data.directorScorecardSettings ?? null}
         />
       ) : null}
 

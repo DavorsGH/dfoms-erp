@@ -19,7 +19,8 @@ export type TaxLedgerSourceType =
   | "manual"
   | "settlement"
   | "payroll_period"
-  | "fixed_asset";
+  | "fixed_asset"
+  | "dividend_declaration";
 
 export type TaxLedgerEntryInsert = {
   tenant_id?: string;

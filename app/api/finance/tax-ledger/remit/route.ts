@@ -13,6 +13,8 @@ import type { RemitTaxForPeriodResult, RemitTaxKind } from "@/app/dashboard/fina
 type RemitBody = {
   periodMonth?: string;
   kind?: RemitTaxKind;
+  tax_ledger_entry_id?: string;
+  remittance_date?: string;
 };
 
 const REMIT_KINDS: RemitTaxKind[] = ["ssnit", "paye", "vat", "wht"];
@@ -65,19 +67,44 @@ export async function POST(request: Request) {
   });
 
   const admin = createAdminClient();
-  const { data, error } = await admin.rpc("remit_tax_for_period", {
-    p_tenant_id: tenantId,
-    p_business_unit_id: activeBusinessUnitId,
-    p_period_month: periodMonth,
-    p_kind: kind,
-    p_view_all_business_units: viewAllBusinessUnits,
-  });
+  const { remitTaxForPeriod } = await import(
+    "@/app/dashboard/finance/tax-ledger-remit"
+  );
+  const { TAX_SETTINGS_FULL_SELECT } = await import(
+    "@/app/dashboard/finance/tax-utils"
+  );
+  const { scopeTaxSettingsRead } = await import(
+    "@/utils/phase5e-key-structure"
+  );
+  type TaxDueDateSettingsSlice = import("@/app/dashboard/finance/tax-ledger-utils").TaxDueDateSettingsSlice;
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  if (!activeBusinessUnitId) {
+    return NextResponse.json({ error: "Business unit is required." }, { status: 400 });
   }
 
-  const result = (data ?? {}) as RemitTaxForPeriodResult;
+  const { data: taxSettingsRow } = await scopeTaxSettingsRead(
+    admin
+      .from("tax_settings")
+      .select(TAX_SETTINGS_FULL_SELECT)
+      .eq("tenant_id", tenantId),
+    activeBusinessUnitId,
+  ).maybeSingle();
+  const settings = (taxSettingsRow ??
+    {}) as unknown as TaxDueDateSettingsSlice;
+  const entryId = body.tax_ledger_entry_id?.trim();
+  const remittanceDate = body.remittance_date?.slice(0, 10);
+
+  const result = await remitTaxForPeriod(admin, {
+    tenantId,
+    periodMonth,
+    kind,
+    settings,
+    businessUnitId: activeBusinessUnitId,
+    readScope: { mode: "unit", id: activeBusinessUnitId },
+    viewAllBusinessUnits,
+    taxLedgerEntryIds: entryId ? [entryId] : undefined,
+    remittanceDate,
+  });
 
   if (result.error) {
     return NextResponse.json(result, { status: 400 });

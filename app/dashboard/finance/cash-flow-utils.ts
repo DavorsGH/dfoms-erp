@@ -50,6 +50,9 @@ export type CashFlowReportOptions = {
   staffSalaryAdvanceEntries?: StaffAdvanceBalanceSheetEntry[];
   businessUnitTransfers?: BusinessUnitTransferRecord[];
   interUnitTransferScope?: InterUnitTransferCashScope;
+  dividendDeclarations?: import("./dividends-types").DividendBalanceSheetDeclaration[];
+  dividendLines?: import("./dividends-types").DividendBalanceSheetLine[];
+  balanceSheetBusinessUnitId?: string | null;
 };
 
 export { MONTH_LABELS, FULL_YEAR_INDEX } from "./profit-loss-utils";
@@ -259,6 +262,9 @@ export function buildCashFlowReport(
       staffSalaryAdvanceEntries: options.staffSalaryAdvanceEntries,
       businessUnitTransfers: options.businessUnitTransfers,
       interUnitTransferScope: options.interUnitTransferScope,
+      dividendDeclarations: options.dividendDeclarations,
+      dividendLines: options.dividendLines,
+      balanceSheetBusinessUnitId: options.balanceSheetBusinessUnitId,
     },
     financialYear,
   );
@@ -399,13 +405,15 @@ export function buildCashFlowReport(
   const directorsLoanInflows = components.directorsLoanInflows;
   const interUnitTransferInflows = components.interUnitTransferInflows;
   const interUnitTransferOutflows = components.interUnitTransferOutflows;
+  const dividendPayments = components.dividendPayments;
   const netFinancing = loanProceeds.map((value, index) =>
     (value ?? 0) +
     (directorsLoanInflows[index] ?? 0) +
     (interUnitTransferInflows[index] ?? 0) -
     (loanRepayments[index] ?? 0) -
     (directorsLoanRepayments[index] ?? 0) -
-    (interUnitTransferOutflows[index] ?? 0),
+    (interUnitTransferOutflows[index] ?? 0) -
+    (dividendPayments[index] ?? 0),
   );
 
   rows.push({
@@ -463,6 +471,16 @@ export function buildCashFlowReport(
       amounts: directorsLoanRepayments,
       kind: "data",
     },
+    ...(dividendPayments.some((amount) => amount !== 0)
+      ? [
+          {
+            key: "dividends-paid",
+            label: "Dividends paid",
+            amounts: dividendPayments,
+            kind: "data" as const,
+          },
+        ]
+      : []),
     {
       key: "net-financing",
       label: "Net Financing Cash Flows",

@@ -42,6 +42,7 @@ import {
   BUSINESS_UNIT_TRANSFER_SELECT,
   type BusinessUnitTransferRecord,
 } from "../business-unit-transfers-utils";
+import { fetchDividendBalanceSheetData } from "@/lib/finance/dividends-load";
 
 export default async function CashFlowPage() {
   const cookieStore = await cookies();
@@ -109,6 +110,7 @@ export default async function CashFlowPage() {
     { data: scopedCreditNotesRows, error: scopedCreditNotesError },
     { data: creditApplicationsRows, error: creditApplicationsError },
     { data: businessUnitTransfers, error: businessUnitTransfersError },
+    dividendBalanceSheetResult,
   ] = await Promise.all([
     applyBusinessUnitScope(
       supabase
@@ -206,6 +208,7 @@ export default async function CashFlowPage() {
       .select(BUSINESS_UNIT_TRANSFER_SELECT)
       .eq("tenant_id", tenantId)
       .order("transfer_date", { ascending: true }),
+    fetchDividendBalanceSheetData(supabase, tenantId),
   ]);
 
   const initialCreditNoteApplications = filterCreditNoteChildRowsForScopedNotes(
@@ -225,6 +228,9 @@ export default async function CashFlowPage() {
           rawManualEntries,
         ) as ManualFinancialEntry[])
       : (rawManualEntries as ManualFinancialEntry[]);
+
+  const dividendBalanceSheet =
+    dividendBalanceSheetResult ?? { declarations: [], lines: [], error: null };
 
   const fetchError =
     scopedEmployees.error ??
@@ -295,6 +301,8 @@ export default async function CashFlowPage() {
         initialBusinessUnitTransfers={
           (businessUnitTransfers as BusinessUnitTransferRecord[] | null) ?? []
         }
+        initialDividendDeclarations={dividendBalanceSheet.declarations}
+        initialDividendLines={dividendBalanceSheet.lines}
         viewAllBusinessUnits={viewAllBusinessUnits}
         activeBusinessUnitId={activeBusinessUnitId}
         availableYears={availableYears}

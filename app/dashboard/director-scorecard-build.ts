@@ -40,6 +40,8 @@ import {
   directorScorecardPayrollNotFoundMessage,
   isDirectorScorecardPayrollMissing,
 } from "@/app/dashboard/director-scorecard-checklist-utils";
+import { sumDeclaredGrossInQuarter } from "@/app/dashboard/finance/dividends-balance-sheet-utils";
+import type { DividendBalanceSheetDeclaration } from "@/app/dashboard/finance/dividends-types";
 
 export type DirectorScorecardChecklistChipStatus =
   | "done"
@@ -76,6 +78,11 @@ export type DirectorScorecardSnapshot = {
   ownersShareAmount: number;
   dividendQuarter: {
     quarterLabel: string;
+    /** Planning gross before declarations this quarter. */
+    planningGross: number;
+    /** Gross already declared this quarter (same BU). */
+    declaredGross: number;
+    /** Remaining gross available to declare. */
     gross: number;
     wht: number;
     net: number;
@@ -649,7 +656,16 @@ function computeQuarterDividend(
   year: number,
   throughMonth: number,
   planning: DirectorScorecardPlanningSettings,
-): { gross: number; wht: number; net: number; quarterLabel: string } {
+  declarations: DividendBalanceSheetDeclaration[],
+  businessUnitId: string | null,
+): {
+  planningGross: number;
+  declaredGross: number;
+  gross: number;
+  wht: number;
+  net: number;
+  quarterLabel: string;
+} {
   const startMonth = quarterStartMonth(throughMonth);
   let quarterPatSum = 0;
 
@@ -676,13 +692,26 @@ function computeQuarterDividend(
     quarterPatSum += profitAfterTax;
   }
 
-  const gross = roundCurrency(
+  const planningGross = roundCurrency(
     Math.max(0, quarterPatSum) * planning.ownersShare,
   );
+  const declaredGross =
+    businessUnitId != null
+      ? sumDeclaredGrossInQuarter({
+          declarations,
+          businessUnitId,
+          year,
+          quarterStartMonth: startMonth,
+          throughMonth,
+        })
+      : 0;
+  const gross = roundCurrency(Math.max(0, planningGross - declaredGross));
   const wht = roundCurrency(gross * planning.dividendWhtRate);
   const net = roundCurrency(gross - wht);
 
   return {
+    planningGross,
+    declaredGross,
     gross,
     wht,
     net,
@@ -698,6 +727,7 @@ export function buildDirectorScorecardByMonthKey(input: {
   taxSettings: TaxSettingsDueRules | null;
   businessUnitLabel: string;
   planning: DirectorScorecardPlanningSettings;
+  scorecardBusinessUnitId?: string | null;
   todayIso?: string;
 }): Record<string, DirectorScorecardSnapshot> {
   const todayIso = input.todayIso ?? new Date().toISOString().slice(0, 10);
@@ -707,6 +737,9 @@ export function buildDirectorScorecardByMonthKey(input: {
     ...(input.taxSettings ?? {}),
   };
   const taxSources = taxLedgerSources(input.dashboardPageData);
+  const dividendDeclarations =
+    input.dashboardPageData.initialDividendDeclarations ?? [];
+  const scorecardBusinessUnitId = input.scorecardBusinessUnitId ?? null;
   const years = [
     ...new Set(input.viewModel.monthOptions.map((option) => option.year)),
   ];
@@ -760,6 +793,8 @@ export function buildDirectorScorecardByMonthKey(input: {
       option.year,
       option.month,
       input.planning,
+      dividendDeclarations,
+      scorecardBusinessUnitId,
     );
 
     const budgetStatus = buildDashboardBudgetStatusSnapshot(

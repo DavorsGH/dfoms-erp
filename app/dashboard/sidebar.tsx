@@ -88,6 +88,10 @@ function isActive(pathname: string, href: string) {
     return isHrManagementPath(pathname);
   }
 
+  if (href === "/dashboard/directors") {
+    return pathname.startsWith("/dashboard/directors");
+  }
+
   if (href === "/dashboard/administration") {
     return isAdministrationPath(pathname);
   }

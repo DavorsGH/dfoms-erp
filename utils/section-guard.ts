@@ -59,6 +59,10 @@ export async function guardCrmFullFeatureAccess(): Promise<AppRole> {
   return guardSectionAccess(CRM_FULL_FEATURE_ROLES);
 }
 
+export async function guardDirectorsBoardAccess(): Promise<AppRole> {
+  return guardSectionAccess(["director", "super_admin"]);
+}
+
 export async function guardFinanceSectionAccess(): Promise<AppRole> {
   const pathname = await getRequestPathname();
 

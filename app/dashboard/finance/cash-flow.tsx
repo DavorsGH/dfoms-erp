@@ -64,6 +64,8 @@ type CashFlowProps = {
   initialMonthEndCloseNetPay?: MonthEndCloseNetPayEntry[];
   initialCreditNoteApplications?: CustomerCreditsApplicationRow[];
   initialBusinessUnitTransfers?: BusinessUnitTransferRecord[];
+  initialDividendDeclarations?: import("./dividends-types").DividendBalanceSheetDeclaration[];
+  initialDividendLines?: import("./dividends-types").DividendBalanceSheetLine[];
   viewAllBusinessUnits?: boolean;
   activeBusinessUnitId?: string | null;
   availableYears: number[];
@@ -124,6 +126,8 @@ export default function CashFlow({
   initialMonthEndCloseNetPay = [],
   initialCreditNoteApplications = [],
   initialBusinessUnitTransfers = [],
+  initialDividendDeclarations = [],
+  initialDividendLines = [],
   viewAllBusinessUnits = false,
   activeBusinessUnitId = null,
   availableYears,
@@ -177,6 +181,11 @@ export default function CashFlow({
           creditNoteApplications: initialCreditNoteApplications,
           businessUnitTransfers: initialBusinessUnitTransfers,
           interUnitTransferScope,
+          dividendDeclarations: initialDividendDeclarations,
+          dividendLines: initialDividendLines,
+          balanceSheetBusinessUnitId: viewAllBusinessUnits
+            ? null
+            : activeBusinessUnitId,
         },
       ),
     [

@@ -139,6 +139,7 @@ const SOURCE_LABELS: Record<TaxLedgerSourceType, string> = {
   settlement: "Settlement",
   payroll_period: "Payroll Period",
   fixed_asset: "Fixed Asset",
+  dividend_declaration: "Dividend WHT",
 };
 
 export function normalizeTaxLedgerEntry(
@@ -195,6 +196,10 @@ export function getSourceHref(
       return "/dashboard/hr-payroll/payroll-processing";
     case "fixed_asset":
       return "/dashboard/finance/fixed-assets";
+    case "dividend_declaration":
+      return sourceId
+        ? `/dashboard/directors?tab=dividends&declaration=${sourceId}`
+        : "/dashboard/directors?tab=dividends";
     default:
       return null;
   }

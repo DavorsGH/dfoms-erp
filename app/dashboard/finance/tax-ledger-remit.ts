@@ -133,6 +133,7 @@ export function filterOpenEntriesForRemit(
   kind: RemitTaxKind,
   periodMonth: string,
   tenantId: string,
+  restrictToEntryIds?: readonly string[],
 ): RemitCandidateEntry[] {
   const period = periodMonth.slice(0, 10);
   const allowed = new Set(componentsForRemitKind(kind));
@@ -151,6 +152,13 @@ export function filterOpenEntriesForRemit(
       return false;
     }
     if (kind === "wht" && entry.direction !== "wht_payable") {
+      return false;
+    }
+    if (
+      restrictToEntryIds &&
+      restrictToEntryIds.length > 0 &&
+      !restrictToEntryIds.includes(entry.id)
+    ) {
       return false;
     }
     return true;
@@ -271,6 +279,10 @@ export async function remitTaxForPeriod(
     readScope?: BusinessUnitReadScope;
     /** When true, refuse immediately (All Businesses selected). */
     viewAllBusinessUnits?: boolean;
+    /** Remit only these tax ledger rows (must still match kind + period). */
+    taxLedgerEntryIds?: readonly string[];
+    /** Cash Position outflow date (defaults to today). */
+    remittanceDate?: string;
   },
 ): Promise<RemitTaxForPeriodResult> {
   const { tenantId, kind, settings } = params;
@@ -321,6 +333,7 @@ export async function remitTaxForPeriod(
       kind,
       periodMonth,
       tenantId,
+      params.taxLedgerEntryIds,
     );
   } else {
     const components = [...componentsForRemitKind(kind)];
@@ -346,6 +359,10 @@ export async function remitTaxForPeriod(
       return empty(`Tax Ledger lookup failed: ${error.message}`);
     }
     candidates = (data as RemitCandidateEntry[] | null) ?? [];
+    if (params.taxLedgerEntryIds?.length) {
+      const allowed = new Set(params.taxLedgerEntryIds);
+      candidates = candidates.filter((entry) => allowed.has(entry.id));
+    }
   }
 
   if (candidates.length === 0) {
@@ -474,7 +491,11 @@ export async function remitTaxForPeriod(
     );
   }
 
-  const receiptNo = buildRemitExpenseReceiptNo(kind, periodMonth);
+  const remittedOn = (params.remittanceDate ?? todayIsoDate()).slice(0, 10);
+  const receiptNo =
+    params.taxLedgerEntryIds?.length === 1
+      ? `${buildRemitExpenseReceiptNo(kind, periodMonth)}-LEG-${params.taxLedgerEntryIds[0]!.slice(0, 8)}`
+      : buildRemitExpenseReceiptNo(kind, periodMonth);
 
   const { data: existingExpense, error: existingError } = await supabase
     .from("expense_register")
@@ -500,7 +521,7 @@ export async function remitTaxForPeriod(
     const { error: updateExpenseError } = await supabase
       .from("expense_register")
       .update({
-        date: periodEndDate(periodMonth),
+        date: remittedOn,
         expense_category: STATUTORY_REMITTANCE_EXPENSE_CATEGORY,
         sub_category: STATUTORY_REMITTANCE_SUB_CATEGORY,
         description: `${label} remittance for ${periodLabel}`,
@@ -512,6 +533,7 @@ export async function remitTaxForPeriod(
         payment_status: PAYROLL_EXPENSE_PAYMENT_STATUS_PAID,
         approved_by: "System",
         notes: `Tax Ledger remit-for-period (${kind})`,
+        business_unit_id: params.businessUnitId ?? null,
       })
       .eq("id", existingExpense.id)
       .eq("tenant_id", tenantId);
@@ -524,7 +546,7 @@ export async function remitTaxForPeriod(
   } else {
     const { error: insertError } = await supabase.from("expense_register").insert({
       tenant_id: tenantId,
-      date: periodEndDate(periodMonth),
+      date: remittedOn,
       expense_category: STATUTORY_REMITTANCE_EXPENSE_CATEGORY,
       sub_category: STATUTORY_REMITTANCE_SUB_CATEGORY,
       description: `${label} remittance for ${periodLabel}`,
@@ -570,7 +592,6 @@ export async function remitTaxForPeriod(
     }
   }
 
-  const remittedOn = todayIsoDate();
   const nowIso = new Date().toISOString();
   const results = await Promise.all(
     candidates.map((entry) =>

@@ -21,6 +21,7 @@ const PROMPTS_SUPER: Array<{ id: string; message: string }> = [
   { id: "b", message: "How do I copy last month's budget?" },
   { id: "c", message: "What does tax to set aside mean on the scorecard?" },
   { id: "d", message: "Can we pay a dividend this quarter?" },
+  { id: "d2", message: "How do I pay a dividend?" },
   { id: "e", message: "What's our profit after tax for September?" },
   {
     id: "f",

@@ -158,11 +158,12 @@ export default function FinanceNav({ suppliersOnly = false }: FinanceNavProps) {
       return [[suppliersNavItem]];
     }
     return financeNavGroups.map((group) =>
-      group.filter(
-        (item) =>
-          item.href !== interUnitTransfersNavItem.href ||
-          showInterUnitTransfersTab,
-      ),
+      group.filter((item) => {
+        if (item.href === interUnitTransfersNavItem.href && !showInterUnitTransfersTab) {
+          return false;
+        }
+        return true;
+      }),
     );
   }, [suppliersOnly, showInterUnitTransfersTab]);
 

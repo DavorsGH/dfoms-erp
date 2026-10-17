@@ -51,7 +51,7 @@ Only monthly lines are copied. Annual lines are not copied.
 - Click **View budget vs actual** on the Budget page, or open **Reports → Budget vs Actual**.
 - Each line shows Budget, Actual, Variance, Variance %, Remaining and a status (for example **Over budget** on the report; on the Director's Scorecard the same bands show as **On track**, **Near limit** or **Over budget**).
 - Actual spending comes from the Expense Register (and purchases for inventory categories). For company-wide Staff Salaries, actuals come from posted payroll expenses; for a single project, they come from payroll matched to that project.
-- Directors also see the budget comparison on the Dashboard in the **Director's Scorecard**, where each line links to the matching expenses.
+- Directors also see the budget comparison on **Directors → Scorecard**, where each line links to the matching expenses.
 
 ## A simple monthly routine
 

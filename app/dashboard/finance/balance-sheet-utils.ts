@@ -94,8 +94,27 @@ import {
   type BusinessUnitTransferRecord,
   type InterUnitTransferCashScope,
 } from "./business-unit-transfers-utils";
+import {
+  calculateDeclaredDividendGrossReductionByMonth,
+  calculateDividendsPayableByMonth,
+} from "./dividends-balance-sheet-utils";
+import type {
+  DividendBalanceSheetDeclaration,
+  DividendBalanceSheetLine,
+} from "./dividends-types";
+import {
+  buildTaxLedgerBsClearanceContext,
+  isTaxLedgerAmountOpenAsOfMonthEndWithClearance,
+  type TaxLedgerBsClearanceContext,
+} from "@/lib/finance/tax-ledger-bs-clearance";
 
 export type { BalanceSheetWelfareFundEntry } from "./staff-welfare-fund-utils";
+export {
+  buildTaxLedgerBsClearanceContext,
+  collectTaxLedgerRemittedAtFallbackRows,
+  type TaxLedgerBsClearanceContext,
+  type TaxLedgerRemittedAtFallbackRow,
+} from "@/lib/finance/tax-ledger-bs-clearance";
 export { calculateStaffWelfarePayableByMonth } from "./staff-welfare-fund-utils";
 
 export type BalanceSheetReportOptions = {
@@ -112,6 +131,10 @@ export type BalanceSheetReportOptions = {
   staffSalaryAdvanceEntries?: StaffAdvanceBalanceSheetEntry[];
   businessUnitTransfers?: BusinessUnitTransferRecord[];
   interUnitTransferScope?: InterUnitTransferCashScope;
+  dividendDeclarations?: DividendBalanceSheetDeclaration[];
+  dividendLines?: DividendBalanceSheetLine[];
+  /** When set, dividend RE/payable/cash use this BU; omit for all-units aggregate. */
+  balanceSheetBusinessUnitId?: string | null;
 };
 
 export type {
@@ -171,12 +194,61 @@ export type BalanceSheetIncomeEntry = {
  * Payable is the matching liability — standard VAT invoice accounting.
  */
 export type BalanceSheetTaxLedgerEntry = {
+  id?: string;
   entry_date: string;
+  period_month?: string;
   direction: TaxLedgerDirection;
   tax_component: TaxLedgerComponent;
   tax_amount: number;
   status: TaxLedgerStatus;
+  remitted_at?: string | null;
+  source_type?: string | null;
+  source_id?: string | null;
 };
+
+/** Tax leg counts toward BS liability/asset as-of month-end (point-in-time). */
+export function isTaxLedgerAmountOpenAsOfMonthEnd(
+  entry: BalanceSheetTaxLedgerEntry,
+  monthEnd: string,
+  clearanceContext?: TaxLedgerBsClearanceContext,
+): boolean {
+  if (clearanceContext && entry.id) {
+    return isTaxLedgerAmountOpenAsOfMonthEndWithClearance(
+      {
+        id: entry.id,
+        entry_date: entry.entry_date,
+        period_month: entry.period_month ?? entry.entry_date,
+        direction: entry.direction,
+        tax_component: entry.tax_component,
+        tax_amount: entry.tax_amount,
+        status: entry.status,
+        remitted_at: entry.remitted_at,
+        source_type: entry.source_type,
+        source_id: entry.source_id,
+      },
+      monthEnd,
+      clearanceContext,
+    );
+  }
+
+  const entryDate = normalizeDate(entry.entry_date);
+  if (!entryDate || entryDate > monthEnd) {
+    return false;
+  }
+  if (entry.status === "open") {
+    return true;
+  }
+  if (entry.status === "paid") {
+    const remitted = entry.remitted_at
+      ? normalizeDate(entry.remitted_at)
+      : null;
+    if (!remitted) {
+      return false;
+    }
+    return remitted > monthEnd;
+  }
+  return false;
+}
 
 export type BalanceSheetRow = {
   key: string;
@@ -402,6 +474,7 @@ type OpenTaxBalancesByMonth = {
 function calculateOpenTaxBalancesByMonth(
   taxLedgerEntries: BalanceSheetTaxLedgerEntry[],
   financialYear: number,
+  clearanceContext: TaxLedgerBsClearanceContext,
 ): OpenTaxBalancesByMonth {
   const whtReceivable = createEmptyMonthlyTotals();
   const whtPayable = createEmptyMonthlyTotals();
@@ -420,12 +493,7 @@ function calculateOpenTaxBalancesByMonth(
     let ssnit = 0;
 
     for (const entry of taxLedgerEntries) {
-      if (entry.status !== "open") {
-        continue;
-      }
-
-      const entryDate = normalizeDate(entry.entry_date);
-      if (!entryDate || entryDate > monthEnd) {
+      if (!isTaxLedgerAmountOpenAsOfMonthEnd(entry, monthEnd, clearanceContext)) {
         continue;
       }
 
@@ -560,6 +628,9 @@ function calculateCashAndCashEquivalentsByMonth(
       staffSalaryAdvanceEntries: options.staffSalaryAdvanceEntries,
       businessUnitTransfers: options.businessUnitTransfers,
       interUnitTransferScope: options.interUnitTransferScope,
+      dividendDeclarations: options.dividendDeclarations,
+      dividendLines: options.dividendLines,
+      balanceSheetBusinessUnitId: options.balanceSheetBusinessUnitId,
     },
     financialYear,
   );
@@ -655,6 +726,10 @@ export function buildBalanceSheetReport(
   welfareFundEntries: BalanceSheetWelfareFundEntry[] = [],
   options: BalanceSheetReportOptions = { tenantId: "" },
 ): BalanceSheetReport {
+  const dividendDeclarations = options.dividendDeclarations ?? [];
+  const dividendLines = options.dividendLines ?? [];
+  const dividendBuId = options.balanceSheetBusinessUnitId ?? null;
+
   const staffSalaryNetByPayrollMonth = buildNetPayByPayrollMonth(
     payrollHistory,
     monthEndCloseNetPay,
@@ -671,14 +746,23 @@ export function buildBalanceSheetReport(
     payableEntries,
     financialYear,
     staffSalaryNetByPayrollMonth,
-    options,
+    {
+      ...options,
+      dividendDeclarations,
+      dividendLines,
+      balanceSheetBusinessUnitId: dividendBuId,
+    },
   );
   const accountsReceivable = roundMonthlyTotals(
     calculateAccountsReceivableByMonth(incomeEntries, financialYear),
   );
+  const taxClearanceContext = buildTaxLedgerBsClearanceContext(
+    cashFlowExpenseEntries,
+  );
   const openTax = calculateOpenTaxBalancesByMonth(
     taxLedgerEntries,
     financialYear,
+    taxClearanceContext,
   );
   const staffWelfarePayable = roundMonthlyTotals(
     calculateStaffWelfarePayableByMonth(welfareFundEntries, financialYear),
@@ -849,6 +933,36 @@ export function buildBalanceSheetReport(
       financialYear,
     ),
   );
+
+  const shareCapital = roundMonthlyTotals(
+    calculateShareCapitalByMonth(capitalContributions, financialYear),
+  );
+  const retainedEarningsBase = calculateRetainedEarningsByMonth(
+    incomeEntries,
+    expenseEntries,
+    fixedAssets,
+    financialYear,
+    inventoryAdjustmentPlNet,
+  );
+  const declaredGrossReduction = calculateDeclaredDividendGrossReductionByMonth(
+    dividendDeclarations,
+    financialYear,
+    dividendBuId,
+  );
+  const retainedEarnings = roundMonthlyTotals(
+    retainedEarningsBase.map((value, index) =>
+      roundCurrency(value - (declaredGrossReduction[index] ?? 0)),
+    ) as MonthlyTotals,
+  );
+  const dividendsPayable = roundMonthlyTotals(
+    calculateDividendsPayableByMonth(
+      dividendDeclarations,
+      dividendLines,
+      financialYear,
+      dividendBuId,
+    ),
+  );
+
   const totalLiabilities = roundMonthlyTotals(
     sumMonthlyTotals([
       accountsPayable,
@@ -863,20 +977,8 @@ export function buildBalanceSheetReport(
       otherLongTermLiabilities,
       directorsLoan,
       dueToOtherBusinessUnits,
+      dividendsPayable,
     ]),
-  );
-
-  const shareCapital = roundMonthlyTotals(
-    calculateShareCapitalByMonth(capitalContributions, financialYear),
-  );
-  const retainedEarnings = roundMonthlyTotals(
-    calculateRetainedEarningsByMonth(
-      incomeEntries,
-      expenseEntries,
-      fixedAssets,
-      financialYear,
-      inventoryAdjustmentPlNet,
-    ),
   );
   const inventoryOpeningEquity = roundMonthlyTotals(
     calculateInventoryOpeningEquityByMonth(inventoryInput.config, financialYear),
@@ -903,6 +1005,7 @@ export function buildBalanceSheetReport(
       otherLongTermLiabilities,
       directorsLoan,
       dueToOtherBusinessUnits,
+      dividendsPayable,
       shareCapital,
       retainedEarnings,
       inventoryOpeningEquity,
@@ -1087,6 +1190,13 @@ export function buildBalanceSheetReport(
           },
         ]
       : []),
+    {
+      key: "dividends-payable",
+      label: "Dividends Payable",
+      amounts: dividendsPayable,
+      kind: "data",
+      side: "liabilities",
+    },
     {
       key: "total-liabilities",
       label: "TOTAL LIABILITIES",

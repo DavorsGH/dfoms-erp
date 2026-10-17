@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DashboardPageData } from "@/app/dashboard/dashboard-page-data";
-import { buildStandardBalanceSheetReportOptions } from "@/lib/finance/balance-sheet-standard-report";
+import {
+  buildStandardBalanceSheetReportOptions,
+  dividendOptionsFromPageData,
+} from "@/lib/finance/balance-sheet-standard-report";
 import {
   toSpendingAnalysisExpenseRows,
   toSpendingAnalysisIncomeRows,
@@ -86,6 +89,7 @@ export async function buildOwnerDashboardViewModel(
         options.buScope.mode === "unit"
           ? { mode: "unit", businessUnitId: options.buScope.id }
           : { mode: "exclude" },
+      ...dividendOptionsFromPageData(dashboardPageData, options.buScope),
     },
   );
 

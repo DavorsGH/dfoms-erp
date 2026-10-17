@@ -142,16 +142,26 @@ async function main() {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  console.log("RBAC: finance must not see scorecard flag");
+  const { canAccessDirectorsBoard } = await import("../utils/rbac-access");
+
+  console.log("RBAC: finance must not see scorecard flag or Directors board");
   const financeVisibility = modules.getDashboardVisibility("finance");
   assert(
     financeVisibility.showDirectorScorecard === false,
     "finance role incorrectly has showDirectorScorecard",
   );
+  assert(
+    canAccessDirectorsBoard("finance") === false,
+    "finance role incorrectly has Directors board access",
+  );
   const directorVisibility = modules.getDashboardVisibility("director");
   assert(
     directorVisibility.showDirectorScorecard === true,
     "director role missing showDirectorScorecard",
+  );
+  assert(
+    canAccessDirectorsBoard("director") === true,
+    "director role missing Directors board access",
   );
 
   const allScope = await buildScorecardForScope(modules, {
@@ -232,6 +242,23 @@ async function main() {
         caantaScorecard.revenue === allScope.scorecards[monthKey].revenue,
       "Caanta scoped revenue isolation check failed",
     );
+  }
+
+  const septKey = "2026-09";
+  const septScorecard = allScope.scorecards[septKey];
+  const septSnapshot = allScope.viewModel.monthSnapshots[septKey];
+  if (septScorecard && septSnapshot) {
+    console.log(`Sept 2026 (${septKey}) figures (All Businesses):`);
+    console.log(
+      `  PBT ${septScorecard.profitBeforeTax.toFixed(2)} | tax to set aside ${septScorecard.taxToSetAside.toFixed(2)} | PAT ${septScorecard.profitAfterTax.toFixed(2)} | revenue ${septScorecard.revenue.toFixed(2)}`,
+    );
+    assert(
+      Math.abs(septScorecard.profitBeforeTax - septSnapshot.summary.netProfit) <
+        0.02,
+      "Sept 2026 PBT !== dashboard net profit",
+    );
+  } else {
+    console.log(`Note: no scorecard snapshot for ${septKey} on staging.`);
   }
 
   console.log("OK: Director scorecard staging checks passed.");
