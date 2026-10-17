@@ -142,7 +142,7 @@ export function dividendGrossExceedsRetainedEarningsMessage(
   return `Gross dividend ${formatGHS(grossAmount)} exceeds retained earnings to date ${formatGHS(retainedEarnings)} for this business unit.`;
 }
 
-/** Postgres RPC errors are already plain English — pass through to the UI modal. */
+/** Postgres RPC errors are plain English; system/constraint errors are sanitized in routes. */
 export function dividendRpcErrorMessage(error: { message?: string } | null): string {
   return error?.message?.trim() || "Dividend action failed.";
 }

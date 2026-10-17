@@ -11,6 +11,10 @@ import {
   enrichShareholdersWithCanDelete,
   fetchTenantShareholders,
 } from "@/lib/finance/dividends-load";
+import {
+  clientMessageForDirectorsLoadError,
+  responseForShareholderWriteError,
+} from "@/lib/finance/directors-board-api-errors";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 import type { ShareholderPaymentMethod } from "@/app/dashboard/finance/dividends-types";
@@ -38,12 +42,23 @@ export async function GET() {
   const supabase = createClient(cookieStore);
   const { rows, error } = await fetchTenantShareholders(supabase, auth.tenantId);
   if (error) {
-    return NextResponse.json({ error }, { status: 500 });
+    return NextResponse.json(
+      { error: clientMessageForDirectorsLoadError(error, "shareholders-list") },
+      { status: 500 },
+    );
   }
   const admin = createAdminClient();
   const enriched = await enrichShareholdersWithCanDelete(admin, auth.tenantId, rows);
   if (enriched.error) {
-    return NextResponse.json({ error: enriched.error }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: clientMessageForDirectorsLoadError(
+          enriched.error,
+          "shareholders-can-delete",
+        ),
+      },
+      { status: 500 },
+    );
   }
   return NextResponse.json({ shareholders: enriched.rows });
 }
@@ -114,7 +129,7 @@ export async function POST(request: Request) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return responseForShareholderWriteError(error, fullName, "shareholders-create");
   }
 
   return NextResponse.json({ shareholder: data });

@@ -11,6 +11,7 @@ import {
   dividendGrossExceedsRetainedEarningsMessage,
   roundCurrency,
 } from "@/lib/finance/dividends-server";
+import { responseForDirectorsPostgrestError } from "@/lib/finance/directors-board-api-errors";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 
@@ -41,7 +42,7 @@ export async function GET(
     .maybeSingle();
 
   if (loadError) {
-    return NextResponse.json({ error: loadError.message }, { status: 500 });
+    return responseForDirectorsPostgrestError(loadError, "dividend-declare-readiness-load");
   }
   if (!declaration) {
     return NextResponse.json({ error: "Declaration not found." }, { status: 404 });

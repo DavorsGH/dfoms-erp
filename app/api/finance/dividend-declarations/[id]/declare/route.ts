@@ -7,8 +7,11 @@ import {
 } from "@/lib/finance/dividends-auth";
 import { getRetainedEarningsAsOfDate } from "@/lib/finance/dividends-retained-check";
 import {
+  dividendRpcClientErrorMessage,
+  responseForDirectorsPostgrestError,
+} from "@/lib/finance/directors-board-api-errors";
+import {
   dividendGrossExceedsRetainedEarningsMessage,
-  dividendRpcErrorMessage,
   roundCurrency,
   sumActiveSharePct,
 } from "@/lib/finance/dividends-server";
@@ -55,7 +58,7 @@ export async function POST(
     .maybeSingle();
 
   if (loadError) {
-    return NextResponse.json({ error: loadError.message }, { status: 500 });
+    return responseForDirectorsPostgrestError(loadError, "dividend-declare-load");
   }
   if (!declaration) {
     return NextResponse.json({ error: "Declaration not found." }, { status: 404 });
@@ -165,7 +168,7 @@ export async function POST(
 
   if (rpcError) {
     return NextResponse.json(
-      { error: dividendRpcErrorMessage(rpcError) },
+      { error: dividendRpcClientErrorMessage(rpcError) },
       { status: 400 },
     );
   }

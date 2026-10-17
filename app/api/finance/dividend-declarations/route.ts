@@ -17,6 +17,10 @@ import {
   fetchDividendDeclarations,
   fetchTenantShareholders,
 } from "@/lib/finance/dividends-load";
+import {
+  clientMessageForDirectorsLoadError,
+  responseForDirectorsPostgrestError,
+} from "@/lib/finance/directors-board-api-errors";
 import { getViewAllBusinessUnits } from "@/utils/dashboard-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
@@ -68,7 +72,15 @@ export async function GET() {
     { businessUnitId: scoped.businessUnitId },
   );
   if (declarationsResult.error) {
-    return NextResponse.json({ error: declarationsResult.error }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: clientMessageForDirectorsLoadError(
+          declarationsResult.error,
+          "dividend-declarations-list",
+        ),
+      },
+      { status: 500 },
+    );
   }
 
   const declarationIds = declarationsResult.rows.map((row) => row.id);
@@ -78,7 +90,15 @@ export async function GET() {
     declarationIds,
   );
   if (linesResult.error) {
-    return NextResponse.json({ error: linesResult.error }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: clientMessageForDirectorsLoadError(
+          linesResult.error,
+          "dividend-declaration-lines-list",
+        ),
+      },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({
@@ -151,7 +171,14 @@ export async function POST(request: Request) {
   const { number: declarationNumber, error: numberError } =
     await allocateDividendNumber(admin, auth.tenantId);
   if (numberError || !declarationNumber) {
-    return NextResponse.json({ error: numberError ?? "Numbering failed." }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: numberError
+          ? clientMessageForDirectorsLoadError(numberError, "dividend-number-allocate")
+          : "Numbering failed.",
+      },
+      { status: 500 },
+    );
   }
 
   const now = new Date().toISOString();
@@ -178,10 +205,10 @@ export async function POST(request: Request) {
     .single();
 
   if (declError || !declaration) {
-    return NextResponse.json(
-      { error: declError?.message ?? "Could not save draft." },
-      { status: 500 },
-    );
+    if (declError) {
+      return responseForDirectorsPostgrestError(declError, "dividend-declaration-create");
+    }
+    return NextResponse.json({ error: "Could not save draft." }, { status: 500 });
   }
 
   const lineRows = lines.map((line) => ({
@@ -205,7 +232,10 @@ export async function POST(request: Request) {
 
   if (linesError) {
     await admin.from("dividend_declarations").delete().eq("id", declaration.id);
-    return NextResponse.json({ error: linesError.message }, { status: 500 });
+    return responseForDirectorsPostgrestError(
+      linesError,
+      "dividend-declaration-lines-create",
+    );
   }
 
   const { rows: allLines } = await fetchDividendDeclarationLines(

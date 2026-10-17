@@ -5,6 +5,10 @@ import {
   metaFromPercentages,
   validateScorecardSettingsBody,
 } from "@/lib/finance/director-scorecard-settings";
+import {
+  clientMessageForDirectorsLoadError,
+  responseForDirectorsPostgrestError,
+} from "@/lib/finance/directors-board-api-errors";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
@@ -26,9 +30,14 @@ export async function GET() {
     });
     return NextResponse.json({ settings: meta });
   } catch (error) {
-    const message =
+    const raw =
       error instanceof Error ? error.message : "Unable to load scorecard settings.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: clientMessageForDirectorsLoadError(raw, "scorecard-settings-get"),
+      },
+      { status: 500 },
+    );
   }
 }
 
@@ -77,7 +86,7 @@ export async function PUT(request: Request) {
   );
 
   if (upsertError) {
-    return NextResponse.json({ error: upsertError.message }, { status: 500 });
+    return responseForDirectorsPostgrestError(upsertError, "scorecard-settings-put");
   }
 
   const { data: account } = await admin

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireDividendsWrite } from "@/lib/finance/dividends-auth";
-import { dividendRpcErrorMessage } from "@/lib/finance/dividends-server";
+import { dividendRpcClientErrorMessage } from "@/lib/finance/directors-board-api-errors";
 import { createAdminClient } from "@/utils/supabase/admin";
 import type { ShareholderPaymentMethod } from "@/app/dashboard/finance/dividends-types";
 
@@ -53,7 +53,7 @@ export async function POST(
 
   if (rpcError) {
     return NextResponse.json(
-      { error: dividendRpcErrorMessage(rpcError) },
+      { error: dividendRpcClientErrorMessage(rpcError) },
       { status: 400 },
     );
   }

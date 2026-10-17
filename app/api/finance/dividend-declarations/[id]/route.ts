@@ -12,6 +12,7 @@ import {
   sumActiveSharePct,
 } from "@/lib/finance/dividends-server";
 import { fetchTenantShareholders } from "@/lib/finance/dividends-load";
+import { responseForDirectorsPostgrestError } from "@/lib/finance/directors-board-api-errors";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 
@@ -56,7 +57,7 @@ export async function PATCH(
     .maybeSingle();
 
   if (loadError) {
-    return NextResponse.json({ error: loadError.message }, { status: 500 });
+    return responseForDirectorsPostgrestError(loadError, "dividend-declaration-patch-load");
   }
   if (!declaration) {
     return NextResponse.json({ error: "Declaration not found." }, { status: 404 });
@@ -141,10 +142,10 @@ export async function PATCH(
     .single();
 
   if (updateError || !updated) {
-    return NextResponse.json(
-      { error: updateError?.message ?? "Could not update draft." },
-      { status: 500 },
-    );
+    if (updateError) {
+      return responseForDirectorsPostgrestError(updateError, "dividend-declaration-patch");
+    }
+    return NextResponse.json({ error: "Could not update draft." }, { status: 500 });
   }
 
   await admin
@@ -173,7 +174,10 @@ export async function PATCH(
     .insert(lineRows);
 
   if (linesError) {
-    return NextResponse.json({ error: linesError.message }, { status: 500 });
+    return responseForDirectorsPostgrestError(
+      linesError,
+      "dividend-declaration-lines-patch",
+    );
   }
 
   return NextResponse.json({ declaration: updated });
@@ -204,7 +208,7 @@ export async function DELETE(
     .maybeSingle();
 
   if (loadError) {
-    return NextResponse.json({ error: loadError.message }, { status: 500 });
+    return responseForDirectorsPostgrestError(loadError, "dividend-declaration-delete-load");
   }
   if (!declaration) {
     return NextResponse.json({ error: "Declaration not found." }, { status: 404 });
@@ -237,7 +241,7 @@ export async function DELETE(
     .eq("id", id);
 
   if (deleteError) {
-    return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    return responseForDirectorsPostgrestError(deleteError, "dividend-declaration-delete");
   }
 
   return NextResponse.json({ ok: true });

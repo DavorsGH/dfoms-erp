@@ -131,6 +131,28 @@ export default function Dividends({
     };
   });
 
+  const pendingRef = useRef(new Set<string>());
+  const [, setPendingTick] = useState(0);
+
+  function isPending(key: string): boolean {
+    return pendingRef.current.has(key);
+  }
+
+  function beginPending(key: string): boolean {
+    if (pendingRef.current.has(key)) {
+      return false;
+    }
+    pendingRef.current.add(key);
+    setPendingTick((n) => n + 1);
+    return true;
+  }
+
+  function endPending(key: string): void {
+    if (pendingRef.current.delete(key)) {
+      setPendingTick((n) => n + 1);
+    }
+  }
+
   useEffect(() => {
     if (fetchError) {
       void alertError(fetchError, { title: DIRECTORS_ALERT_TITLE });
@@ -208,38 +230,46 @@ export default function Dividends({
       return;
     }
 
-    const payload = {
-      full_name: shareholderForm.full_name.trim(),
-      share_pct: pct,
-      tin: shareholderForm.tin.trim() || null,
-      staff_id: shareholderForm.staff_id.trim() || null,
-      payment_method: shareholderForm.payment_method,
-      momo_number: shareholderForm.momo_number.trim() || null,
-      bank_name: shareholderForm.bank_name.trim() || null,
-      bank_account_number: shareholderForm.bank_account_number.trim() || null,
-      is_active: true,
-    };
-
-    const url = editingShareholderId
-      ? `/api/finance/shareholders/${editingShareholderId}`
-      : "/api/finance/shareholders";
-    const response = await fetch(url, {
-      method: editingShareholderId ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      void alertError(data.error ?? "Could not save shareholder.", {
-        title: DIRECTORS_ALERT_TITLE,
-      });
+    if (!beginPending("shareholder-save")) {
       return;
     }
 
-    toast(editingShareholderId ? "Shareholder updated." : "Shareholder added.");
-    setShareholderFormOpen(false);
-    resetShareholderForm();
-    await reloadAll();
+    try {
+      const payload = {
+        full_name: shareholderForm.full_name.trim(),
+        share_pct: pct,
+        tin: shareholderForm.tin.trim() || null,
+        staff_id: shareholderForm.staff_id.trim() || null,
+        payment_method: shareholderForm.payment_method,
+        momo_number: shareholderForm.momo_number.trim() || null,
+        bank_name: shareholderForm.bank_name.trim() || null,
+        bank_account_number: shareholderForm.bank_account_number.trim() || null,
+        is_active: true,
+      };
+
+      const url = editingShareholderId
+        ? `/api/finance/shareholders/${editingShareholderId}`
+        : "/api/finance/shareholders";
+      const response = await fetch(url, {
+        method: editingShareholderId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        void alertError(data.error ?? "Could not save shareholder.", {
+          title: DIRECTORS_ALERT_TITLE,
+        });
+        return;
+      }
+
+      toast(editingShareholderId ? "Shareholder updated." : "Shareholder added.");
+      setShareholderFormOpen(false);
+      resetShareholderForm();
+      await reloadAll();
+    } finally {
+      endPending("shareholder-save");
+    }
   }
 
   async function deactivateShareholder(id: string) {
@@ -250,37 +280,53 @@ export default function Dividends({
     });
     if (!ok) return;
 
-    const response = await fetch(`/api/finance/shareholders/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_active: false }),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      void alertError(data.error ?? "Could not deactivate.", {
-        title: DIRECTORS_ALERT_TITLE,
-      });
+    const pendingKey = `shareholder-deactivate:${id}`;
+    if (!beginPending(pendingKey)) {
       return;
     }
-    toast("Shareholder deactivated.");
-    await reloadAll();
+    try {
+      const response = await fetch(`/api/finance/shareholders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: false }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        void alertError(data.error ?? "Could not deactivate.", {
+          title: DIRECTORS_ALERT_TITLE,
+        });
+        return;
+      }
+      toast("Shareholder deactivated.");
+      await reloadAll();
+    } finally {
+      endPending(pendingKey);
+    }
   }
 
   async function reactivateShareholder(id: string) {
-    const response = await fetch(`/api/finance/shareholders/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_active: true }),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      void alertError(data.error ?? "Could not reactivate.", {
-        title: DIRECTORS_ALERT_TITLE,
-      });
+    const pendingKey = `shareholder-reactivate:${id}`;
+    if (!beginPending(pendingKey)) {
       return;
     }
-    toast("Shareholder reactivated.");
-    await reloadAll();
+    try {
+      const response = await fetch(`/api/finance/shareholders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: true }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        void alertError(data.error ?? "Could not reactivate.", {
+          title: DIRECTORS_ALERT_TITLE,
+        });
+        return;
+      }
+      toast("Shareholder reactivated.");
+      await reloadAll();
+    } finally {
+      endPending(pendingKey);
+    }
   }
 
   async function deleteShareholder(id: string, fullName: string) {
@@ -292,18 +338,26 @@ export default function Dividends({
     });
     if (!ok) return;
 
-    const response = await fetch(`/api/finance/shareholders/${id}`, {
-      method: "DELETE",
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      void alertError(data.error ?? "Could not delete shareholder.", {
-        title: DIRECTORS_ALERT_TITLE,
-      });
+    const pendingKey = `shareholder-delete:${id}`;
+    if (!beginPending(pendingKey)) {
       return;
     }
-    toast("Shareholder deleted.");
-    await reloadAll();
+    try {
+      const response = await fetch(`/api/finance/shareholders/${id}`, {
+        method: "DELETE",
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        void alertError(data.error ?? "Could not delete shareholder.", {
+          title: DIRECTORS_ALERT_TITLE,
+        });
+        return;
+      }
+      toast("Shareholder deleted.");
+      await reloadAll();
+    } finally {
+      endPending(pendingKey);
+    }
   }
 
   function validateDeclarationForm(requireResolution: boolean): boolean {
@@ -401,39 +455,47 @@ export default function Dividends({
       return;
     }
 
-    const payload = {
-      declaration_date: declareForm.declaration_date,
-      period_start: declareForm.period_start,
-      period_end: declareForm.period_end,
-      resolution_reference: declareForm.resolution_reference.trim() || null,
-      resolution_notes: declareForm.resolution_notes.trim() || null,
-      gross_amount: gross,
-    };
-
-    const response = await fetch(
-      editingDraftId
-        ? `/api/finance/dividend-declarations/${editingDraftId}`
-        : "/api/finance/dividend-declarations",
-      {
-        method: editingDraftId ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      },
-    );
-    const data = await response.json();
-    if (!response.ok) {
-      void alertError(data.error ?? "Could not save draft.", {
-        title: DIRECTORS_ALERT_TITLE,
-      });
+    if (!beginPending("draft-save")) {
       return;
     }
 
-    toast(editingDraftId ? "Draft updated." : "Draft saved.");
-    setDeclareFormOpen(false);
-    setEditingDraftId(null);
-    await reloadAll();
-    if (data.declaration?.id) {
-      setSelectedDeclarationId(data.declaration.id);
+    try {
+      const payload = {
+        declaration_date: declareForm.declaration_date,
+        period_start: declareForm.period_start,
+        period_end: declareForm.period_end,
+        resolution_reference: declareForm.resolution_reference.trim() || null,
+        resolution_notes: declareForm.resolution_notes.trim() || null,
+        gross_amount: gross,
+      };
+
+      const response = await fetch(
+        editingDraftId
+          ? `/api/finance/dividend-declarations/${editingDraftId}`
+          : "/api/finance/dividend-declarations",
+        {
+          method: editingDraftId ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        void alertError(data.error ?? "Could not save draft.", {
+          title: DIRECTORS_ALERT_TITLE,
+        });
+        return;
+      }
+
+      toast(editingDraftId ? "Draft updated." : "Draft saved.");
+      setDeclareFormOpen(false);
+      setEditingDraftId(null);
+      await reloadAll();
+      if (data.declaration?.id) {
+        setSelectedDeclarationId(data.declaration.id);
+      }
+    } finally {
+      endPending("draft-save");
     }
   }
 
@@ -457,52 +519,61 @@ export default function Dividends({
       return;
     }
 
-    const readinessResponse = await fetch(
-      `/api/finance/dividend-declarations/${id}/declare-readiness`,
-    );
-    const readiness = await readinessResponse.json();
-    if (!readinessResponse.ok) {
-      void alertError(readiness.error ?? "Could not check declare readiness.", {
-        title: DIRECTORS_ALERT_TITLE,
-      });
+    const pendingKey = `declare:${id}`;
+    if (!beginPending(pendingKey)) {
       return;
     }
 
-    const warningDetails: DialogDetailRow[] = (readiness.warnings ?? []).map(
-      (w: { message: string }) => ({ label: "Warning", value: w.message }),
-    );
+    try {
+      const readinessResponse = await fetch(
+        `/api/finance/dividend-declarations/${id}/declare-readiness`,
+      );
+      const readiness = await readinessResponse.json();
+      if (!readinessResponse.ok) {
+        void alertError(readiness.error ?? "Could not check declare readiness.", {
+          title: DIRECTORS_ALERT_TITLE,
+        });
+        return;
+      }
 
-    if (readiness.warnings?.length) {
-      const ok = await confirm({
-        title: "Declare anyway?",
-        message:
-          "The scorecard suggests this dividend is not fully ready. Review the items below before you continue.",
-        details: warningDetails,
-        confirmLabel: "Declare anyway",
-      });
-      if (!ok) return;
-    } else {
-      const ok = await confirm({
-        title: "Declare dividend?",
-        message:
-          "This will post dividend WHT to the Statutory Ledger and reduce retained earnings.",
-        confirmLabel: "Declare",
-      });
-      if (!ok) return;
-    }
+      const warningDetails: DialogDetailRow[] = (readiness.warnings ?? []).map(
+        (w: { message: string }) => ({ label: "Warning", value: w.message }),
+      );
 
-    const response = await fetch(`/api/finance/dividend-declarations/${id}/declare`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ confirm_spec_warnings: true }),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      void alertError(data.error ?? "Declare failed.", { title: DIRECTORS_ALERT_TITLE });
-      return;
+      if (readiness.warnings?.length) {
+        const ok = await confirm({
+          title: "Declare anyway?",
+          message:
+            "The scorecard suggests this dividend is not fully ready. Review the items below before you continue.",
+          details: warningDetails,
+          confirmLabel: "Declare anyway",
+        });
+        if (!ok) return;
+      } else {
+        const ok = await confirm({
+          title: "Declare dividend?",
+          message:
+            "This will post dividend WHT to the Statutory Ledger and reduce retained earnings.",
+          confirmLabel: "Declare",
+        });
+        if (!ok) return;
+      }
+
+      const response = await fetch(`/api/finance/dividend-declarations/${id}/declare`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm_spec_warnings: true }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        void alertError(data.error ?? "Declare failed.", { title: DIRECTORS_ALERT_TITLE });
+        return;
+      }
+      toast("Dividend declared.");
+      await reloadAll();
+    } finally {
+      endPending(pendingKey);
     }
-    toast("Dividend declared.");
-    await reloadAll();
   }
 
   async function cancelDeclared(id: string) {
@@ -515,21 +586,29 @@ export default function Dividends({
     });
     if (!reason?.trim()) return;
 
-    const response = await fetch(
-      `/api/finance/dividend-declarations/${id}/cancel`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cancel_reason: reason.trim() }),
-      },
-    );
-    const data = await response.json();
-    if (!response.ok) {
-      void alertError(data.error ?? "Cancel failed.", { title: DIRECTORS_ALERT_TITLE });
+    const pendingKey = `cancel-declaration:${id}`;
+    if (!beginPending(pendingKey)) {
       return;
     }
-    toast("Declaration cancelled.");
-    await reloadAll();
+    try {
+      const response = await fetch(
+        `/api/finance/dividend-declarations/${id}/cancel`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cancel_reason: reason.trim() }),
+        },
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        void alertError(data.error ?? "Cancel failed.", { title: DIRECTORS_ALERT_TITLE });
+        return;
+      }
+      toast("Declaration cancelled.");
+      await reloadAll();
+    } finally {
+      endPending(pendingKey);
+    }
   }
 
   useEffect(() => {
@@ -576,17 +655,25 @@ export default function Dividends({
     });
     if (!ok) return;
 
-    const response = await fetch(`/api/finance/dividend-declarations/${id}`, {
-      method: "DELETE",
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      void alertError(data.error ?? "Delete failed.", { title: DIRECTORS_ALERT_TITLE });
+    const pendingKey = `draft-delete:${id}`;
+    if (!beginPending(pendingKey)) {
       return;
     }
-    toast("Draft deleted.");
-    setSelectedDeclarationId(null);
-    await reloadAll();
+    try {
+      const response = await fetch(`/api/finance/dividend-declarations/${id}`, {
+        method: "DELETE",
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        void alertError(data.error ?? "Delete failed.", { title: DIRECTORS_ALERT_TITLE });
+        return;
+      }
+      toast("Draft deleted.");
+      setSelectedDeclarationId(null);
+      await reloadAll();
+    } finally {
+      endPending(pendingKey);
+    }
   }
 
   function openPaymentModal(line: DividendDeclarationLineRow) {
@@ -605,26 +692,33 @@ export default function Dividends({
       return;
     }
 
-    const response = await fetch(
-      `/api/finance/dividend-declaration-lines/${paymentLine.id}/pay`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          payment_date: paymentForm.payment_date.trim(),
-          payment_method: paymentForm.payment_method,
-          payment_reference: paymentForm.payment_reference.trim() || null,
-        }),
-      },
-    );
-    const data = await response.json();
-    if (!response.ok) {
-      void alertError(data.error ?? "Payment failed.", { title: DIRECTORS_ALERT_TITLE });
+    if (!beginPending("record-payment")) {
       return;
     }
-    toast("Payment recorded.");
-    setPaymentLine(null);
-    await reloadAll();
+    try {
+      const response = await fetch(
+        `/api/finance/dividend-declaration-lines/${paymentLine.id}/pay`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            payment_date: paymentForm.payment_date.trim(),
+            payment_method: paymentForm.payment_method,
+            payment_reference: paymentForm.payment_reference.trim() || null,
+          }),
+        },
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        void alertError(data.error ?? "Payment failed.", { title: DIRECTORS_ALERT_TITLE });
+        return;
+      }
+      toast("Payment recorded.");
+      setPaymentLine(null);
+      await reloadAll();
+    } finally {
+      endPending("record-payment");
+    }
   }
 
   return (
@@ -710,27 +804,34 @@ export default function Dividends({
                       <button
                         type="button"
                         className={secondaryButtonClassName}
+                        disabled={isPending(`shareholder-deactivate:${row.id}`)}
                         onClick={() => void deactivateShareholder(row.id)}
                       >
-                        Deactivate
+                        {isPending(`shareholder-deactivate:${row.id}`)
+                          ? "Deactivating…"
+                          : "Deactivate"}
                       </button>
                     </>
                   ) : (
                     <button
                       type="button"
                       className={secondaryButtonClassName}
+                      disabled={isPending(`shareholder-reactivate:${row.id}`)}
                       onClick={() => void reactivateShareholder(row.id)}
                     >
-                      Reactivate
+                      {isPending(`shareholder-reactivate:${row.id}`)
+                        ? "Reactivating…"
+                        : "Reactivate"}
                     </button>
                   )}
                   {row.can_delete ? (
                     <button
                       type="button"
                       className={secondaryButtonClassName}
+                      disabled={isPending(`shareholder-delete:${row.id}`)}
                       onClick={() => void deleteShareholder(row.id, row.full_name)}
                     >
-                      Delete
+                      {isPending(`shareholder-delete:${row.id}`) ? "Deleting…" : "Delete"}
                     </button>
                   ) : null}
                 </div>
@@ -843,12 +944,18 @@ export default function Dividends({
               </>
             ) : null}
             <div className="md:col-span-2 flex gap-2">
-              <button type="button" className={primaryButtonClassName} onClick={() => void saveShareholder()}>
-                Save
+              <button
+                type="button"
+                className={primaryButtonClassName}
+                disabled={isPending("shareholder-save")}
+                onClick={() => void saveShareholder()}
+              >
+                {isPending("shareholder-save") ? "Saving…" : "Save"}
               </button>
               <button
                 type="button"
                 className={secondaryButtonClassName}
+                disabled={isPending("shareholder-save")}
                 onClick={() => {
                   setShareholderFormOpen(false);
                   resetShareholderForm();
@@ -982,9 +1089,10 @@ export default function Dividends({
                         <button
                           type="button"
                           className={secondaryButtonClassName}
+                          disabled={isPending("record-payment")}
                           onClick={() => openPaymentModal(line)}
                         >
-                          Record payment
+                          {isPending("record-payment") ? "Saving…" : "Record payment"}
                         </button>
                       ) : null}
                     </li>
@@ -995,9 +1103,12 @@ export default function Dividends({
                     <button
                       type="button"
                       className={secondaryButtonClassName}
+                      disabled={isPending(`cancel-declaration:${selectedDeclaration.id}`)}
                       onClick={() => void cancelDeclared(selectedDeclaration.id)}
                     >
-                      Cancel declaration
+                      {isPending(`cancel-declaration:${selectedDeclaration.id}`)
+                        ? "Cancelling…"
+                        : "Cancel declaration"}
                     </button>
                   </div>
                 ) : null}
@@ -1013,16 +1124,22 @@ export default function Dividends({
                     <button
                       type="button"
                       className={primaryButtonClassName}
+                      disabled={isPending(`declare:${selectedDeclaration.id}`)}
                       onClick={() => void declareDraft(selectedDeclaration.id)}
                     >
-                      Declare
+                      {isPending(`declare:${selectedDeclaration.id}`)
+                        ? "Declaring…"
+                        : "Declare"}
                     </button>
                     <button
                       type="button"
                       className={secondaryButtonClassName}
+                      disabled={isPending(`draft-delete:${selectedDeclaration.id}`)}
                       onClick={() => void deleteDraft(selectedDeclaration.id)}
                     >
-                      Delete draft
+                      {isPending(`draft-delete:${selectedDeclaration.id}`)
+                        ? "Deleting…"
+                        : "Delete draft"}
                     </button>
                   </div>
                 ) : null}
@@ -1173,13 +1290,15 @@ export default function Dividends({
               <button
                 type="button"
                 className={primaryButtonClassName}
+                disabled={isPending("draft-save")}
                 onClick={() => void saveDraftDeclaration()}
               >
-                Save draft
+                {isPending("draft-save") ? "Saving…" : "Save draft"}
               </button>
               <button
                 type="button"
                 className={secondaryButtonClassName}
+                disabled={isPending("draft-save")}
                 onClick={() => {
                   setDeclareFormOpen(false);
                   setEditingDraftId(null);
@@ -1264,6 +1383,7 @@ export default function Dividends({
               <button
                 type="button"
                 className={secondaryButtonClassName}
+                disabled={isPending("record-payment")}
                 onClick={() => setPaymentLine(null)}
               >
                 Close
@@ -1271,9 +1391,10 @@ export default function Dividends({
               <button
                 type="button"
                 className={primaryButtonClassName}
+                disabled={isPending("record-payment")}
                 onClick={() => void submitPayment()}
               >
-                Save payment
+                {isPending("record-payment") ? "Saving…" : "Save payment"}
               </button>
             </div>
           </div>

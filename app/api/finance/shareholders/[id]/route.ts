@@ -4,6 +4,10 @@ import { SHAREHOLDER_DELETE_BLOCKED_MESSAGE } from "@/lib/finance/dividends-load
 import {
   validateShareholderPaymentFields,
 } from "@/lib/finance/dividends-server";
+import {
+  responseForDirectorsPostgrestError,
+  responseForShareholderWriteError,
+} from "@/lib/finance/directors-board-api-errors";
 import { createAdminClient } from "@/utils/supabase/admin";
 import type { ShareholderPaymentMethod } from "@/app/dashboard/finance/dividends-types";
 
@@ -69,7 +73,7 @@ export async function PATCH(
     .maybeSingle();
 
   if (loadError) {
-    return NextResponse.json({ error: loadError.message }, { status: 500 });
+    return responseForDirectorsPostgrestError(loadError, "shareholders-patch-load");
   }
   if (!existing) {
     return NextResponse.json({ error: "Shareholder not found." }, { status: 404 });
@@ -97,7 +101,7 @@ export async function PATCH(
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return responseForDirectorsPostgrestError(error, "shareholders-patch-active");
     }
 
     return NextResponse.json({ shareholder: data });
@@ -159,7 +163,15 @@ export async function PATCH(
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const nameForDuplicate =
+      (patch.full_name as string | undefined) ??
+      body.full_name?.trim() ??
+      existing.full_name;
+    return responseForShareholderWriteError(
+      error,
+      nameForDuplicate,
+      "shareholders-patch",
+    );
   }
 
   return NextResponse.json({ shareholder: data });
@@ -185,7 +197,7 @@ export async function DELETE(
     .maybeSingle();
 
   if (loadError) {
-    return NextResponse.json({ error: loadError.message }, { status: 500 });
+    return responseForDirectorsPostgrestError(loadError, "shareholders-delete-load");
   }
   if (!existing) {
     return NextResponse.json({ error: "Shareholder not found." }, { status: 404 });
@@ -198,7 +210,7 @@ export async function DELETE(
     .eq("shareholder_id", id);
 
   if (lineError) {
-    return NextResponse.json({ error: lineError.message }, { status: 500 });
+    return responseForDirectorsPostgrestError(lineError, "shareholders-delete-lines");
   }
   if ((count ?? 0) > 0) {
     return NextResponse.json(
@@ -214,7 +226,7 @@ export async function DELETE(
     .eq("id", id);
 
   if (deleteError) {
-    return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    return responseForDirectorsPostgrestError(deleteError, "shareholders-delete");
   }
 
   return NextResponse.json({ ok: true });
