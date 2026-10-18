@@ -25,10 +25,8 @@ import {
   type PayrollHistoryWagesEntry,
 } from "./accrued-wages-utils";
 import type { CustomerCreditsApplicationRow } from "./customer-credits-liability-utils";
-import {
-  resolveInterUnitTransferCashScope,
-  type BusinessUnitTransferRecord,
-} from "./business-unit-transfers-utils";
+import type { BusinessUnitTransferRecord } from "./business-unit-transfers-utils";
+import { standardBalanceSheetReportExtrasForView } from "@/lib/finance/balance-sheet-standard-report";
 import {
   FULL_YEAR_INDEX,
   MONTH_LABELS,
@@ -152,9 +150,9 @@ export default function CashFlow({
     [initialPayrollHistory, initialMonthEndCloseNetPay],
   );
 
-  const interUnitTransferScope = useMemo(
+  const cashFlowScopeExtras = useMemo(
     () =>
-      resolveInterUnitTransferCashScope({
+      standardBalanceSheetReportExtrasForView({
         viewAllBusinessUnits,
         activeBusinessUnitId,
       }),
@@ -180,12 +178,11 @@ export default function CashFlow({
           directorsLoanLedgerEntries: initialDirectorsLoanLedgerEntries,
           creditNoteApplications: initialCreditNoteApplications,
           businessUnitTransfers: initialBusinessUnitTransfers,
-          interUnitTransferScope,
+          interUnitTransferScope: cashFlowScopeExtras.interUnitTransferScope,
           dividendDeclarations: initialDividendDeclarations,
           dividendLines: initialDividendLines,
-          balanceSheetBusinessUnitId: viewAllBusinessUnits
-            ? null
-            : activeBusinessUnitId,
+          balanceSheetBusinessUnitId: cashFlowScopeExtras.balanceSheetBusinessUnitId,
+          dividendBalanceSheetFilter: cashFlowScopeExtras.dividendBalanceSheetFilter,
         },
       ),
     [
@@ -202,7 +199,7 @@ export default function CashFlow({
       initialCreditNoteApplications,
       staffSalaryNetByPayrollMonth,
       initialBusinessUnitTransfers,
-      interUnitTransferScope,
+      cashFlowScopeExtras,
       manualEntriesForYear,
       selectedYear,
     ],

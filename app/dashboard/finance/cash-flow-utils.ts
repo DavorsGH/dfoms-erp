@@ -53,6 +53,7 @@ export type CashFlowReportOptions = {
   dividendDeclarations?: import("./dividends-types").DividendBalanceSheetDeclaration[];
   dividendLines?: import("./dividends-types").DividendBalanceSheetLine[];
   balanceSheetBusinessUnitId?: string | null;
+  dividendBalanceSheetFilter?: import("./dividends-balance-sheet-utils").DividendBalanceSheetFilter;
 };
 
 export { MONTH_LABELS, FULL_YEAR_INDEX } from "./profit-loss-utils";
@@ -265,6 +266,7 @@ export function buildCashFlowReport(
       dividendDeclarations: options.dividendDeclarations,
       dividendLines: options.dividendLines,
       balanceSheetBusinessUnitId: options.balanceSheetBusinessUnitId,
+      dividendBalanceSheetFilter: options.dividendBalanceSheetFilter,
     },
     financialYear,
   );

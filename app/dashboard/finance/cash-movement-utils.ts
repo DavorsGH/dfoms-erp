@@ -60,7 +60,11 @@ import {
   type BusinessUnitTransferRecord,
   type InterUnitTransferCashScope,
 } from "./business-unit-transfers-utils";
-import { calculateDividendCashOutflowsByMonth } from "./dividends-balance-sheet-utils";
+import {
+  calculateDividendCashOutflowsByMonth,
+  resolveDividendBalanceSheetFilter,
+  type DividendBalanceSheetFilter,
+} from "./dividends-balance-sheet-utils";
 import type {
   DividendBalanceSheetDeclaration,
   DividendBalanceSheetLine,
@@ -136,6 +140,7 @@ export type CashMovementInputs = {
   dividendDeclarations?: DividendBalanceSheetDeclaration[];
   dividendLines?: DividendBalanceSheetLine[];
   balanceSheetBusinessUnitId?: string | null;
+  dividendBalanceSheetFilter?: DividendBalanceSheetFilter;
 };
 
 export type MonthlyCashComponents = {
@@ -481,12 +486,16 @@ export function buildMonthlyCashComponents(
           financialYear,
         )
       : createEmptyMonthlyTotals();
+  const dividendFilter = resolveDividendBalanceSheetFilter({
+    dividendBalanceSheetFilter: inputs.dividendBalanceSheetFilter,
+    balanceSheetBusinessUnitId: inputs.balanceSheetBusinessUnitId,
+  });
   const dividendPayments = roundMonthlyTotals(
     calculateDividendCashOutflowsByMonth(
       inputs.dividendLines ?? [],
       inputs.dividendDeclarations ?? [],
       financialYear,
-      inputs.balanceSheetBusinessUnitId ?? null,
+      dividendFilter,
     ),
   );
 

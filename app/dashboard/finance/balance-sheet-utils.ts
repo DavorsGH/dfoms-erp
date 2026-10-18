@@ -97,6 +97,8 @@ import {
 import {
   calculateDeclaredDividendGrossReductionByMonth,
   calculateDividendsPayableByMonth,
+  resolveDividendBalanceSheetFilter,
+  type DividendBalanceSheetFilter,
 } from "./dividends-balance-sheet-utils";
 import type {
   DividendBalanceSheetDeclaration,
@@ -135,6 +137,8 @@ export type BalanceSheetReportOptions = {
   dividendLines?: DividendBalanceSheetLine[];
   /** When set, dividend RE/payable/cash use this BU; omit for all-units aggregate. */
   balanceSheetBusinessUnitId?: string | null;
+  /** Preferred: all | unit | none (Untagged — no dividends). */
+  dividendBalanceSheetFilter?: DividendBalanceSheetFilter;
 };
 
 export type {
@@ -631,6 +635,7 @@ function calculateCashAndCashEquivalentsByMonth(
       dividendDeclarations: options.dividendDeclarations,
       dividendLines: options.dividendLines,
       balanceSheetBusinessUnitId: options.balanceSheetBusinessUnitId,
+      dividendBalanceSheetFilter: options.dividendBalanceSheetFilter,
     },
     financialYear,
   );
@@ -728,7 +733,12 @@ export function buildBalanceSheetReport(
 ): BalanceSheetReport {
   const dividendDeclarations = options.dividendDeclarations ?? [];
   const dividendLines = options.dividendLines ?? [];
-  const dividendBuId = options.balanceSheetBusinessUnitId ?? null;
+  const dividendFilter = resolveDividendBalanceSheetFilter({
+    dividendBalanceSheetFilter: options.dividendBalanceSheetFilter,
+    balanceSheetBusinessUnitId: options.balanceSheetBusinessUnitId,
+  });
+  const dividendBuId =
+    dividendFilter.mode === "unit" ? dividendFilter.businessUnitId : null;
 
   const staffSalaryNetByPayrollMonth = buildNetPayByPayrollMonth(
     payrollHistory,
@@ -947,7 +957,7 @@ export function buildBalanceSheetReport(
   const declaredGrossReduction = calculateDeclaredDividendGrossReductionByMonth(
     dividendDeclarations,
     financialYear,
-    dividendBuId,
+    dividendFilter,
   );
   const retainedEarnings = roundMonthlyTotals(
     retainedEarningsBase.map((value, index) =>
@@ -959,7 +969,7 @@ export function buildBalanceSheetReport(
       dividendDeclarations,
       dividendLines,
       financialYear,
-      dividendBuId,
+      dividendFilter,
     ),
   );
 

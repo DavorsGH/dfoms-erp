@@ -8,6 +8,7 @@ import { fetchBalanceSheetPageData } from "@/app/dashboard/finance/balance-sheet
 import {
   buildStandardBalanceSheetReport,
   getBalanceSheetMonthCheck,
+  standardBalanceSheetReportExtrasForView,
   type StandardBalanceSheetReportExtras,
 } from "@/lib/finance/balance-sheet-standard-report";
 import { getBalanceSheetAmountForMonth } from "@/app/dashboard/finance/balance-sheet-utils";
@@ -203,13 +204,13 @@ async function loadTenantBusinessUnits(
 function standardReportExtrasForPageData(
   data: BalanceSheetPageData,
   viewAllBusinessUnits: boolean,
+  activeBusinessUnitId: string | null = null,
 ): StandardBalanceSheetReportExtras {
-  return viewAllBusinessUnits
-    ? {
-        allBusinessUnitsDirectorsLoan: true,
-        rawManualFinancialEntries: data.initialRawManualEntries,
-      }
-    : {};
+  return standardBalanceSheetReportExtrasForView({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+    rawManualFinancialEntries: data.initialRawManualEntries,
+  });
 }
 
 function auditReportForScope(
@@ -262,6 +263,12 @@ function auditReportForScope(
 const AGGREGATION_PARITY_SCOPE_NAME =
   "Aggregation (All ≠ BUs + Untagged)" as const;
 
+/** Inter-unit due lines exist only on unit scopes; All nets transfers out of these rows. */
+const AGGREGATION_PARITY_OMIT_LINE_KEYS = new Set([
+  "due-from-other-business-units",
+  "due-to-other-business-units",
+]);
+
 /**
  * Assert All businesses line amounts equal the sum of each named BU plus Untagged
  * (NULL business_unit_id bucket) for every balance sheet row and checked month.
@@ -278,20 +285,27 @@ export function auditBalanceSheetScopeAggregationParity(
     allData,
     tenantId,
     fiscalYear,
-    standardReportExtrasForPageData(allData, true),
+    standardReportExtrasForPageData(allData, true, null),
   );
   const untaggedReport = buildStandardBalanceSheetReport(
     untaggedData,
     tenantId,
     fiscalYear,
+    standardReportExtrasForPageData(untaggedData, false, null),
   );
   const unitReports = unitDataList.map((row) => ({
     ...row,
-    report: buildStandardBalanceSheetReport(row.data, tenantId, fiscalYear),
+    report: buildStandardBalanceSheetReport(
+      row.data,
+      tenantId,
+      fiscalYear,
+      standardReportExtrasForPageData(row.data, false, row.businessUnitId),
+    ),
   }));
 
+  /** Only leaf lines: subtotals/totals on unit scopes still embed inter-unit due rows. */
   const lineKeys = allReport.rows
-    .filter((row) => row.kind !== "section")
+    .filter((row) => row.kind === "data")
     .map((row) => row.key);
 
   const imbalances: BalanceSheetMonthImbalance[] = [];
@@ -299,6 +313,9 @@ export function auditBalanceSheetScopeAggregationParity(
   for (const monthIndex of monthsChecked) {
     let worstLineDiff = 0;
     for (const key of lineKeys) {
+      if (AGGREGATION_PARITY_OMIT_LINE_KEYS.has(key)) {
+        continue;
+      }
       const allRow = allReport.rows.find((row) => row.key === key);
       if (!allRow || allRow.kind === "section") {
         continue;
@@ -404,7 +421,7 @@ export async function auditTenantBalanceSheetIntegrity(
       null,
       "All businesses",
       "tenant",
-      standardReportExtrasForPageData(tenantWideData, true),
+      standardReportExtrasForPageData(tenantWideData, true, null),
     ),
   );
 
@@ -476,6 +493,7 @@ export async function auditTenantBalanceSheetIntegrity(
         unit.id,
         unit.name,
         "business_unit",
+        standardReportExtrasForPageData(unitData, false, unit.id),
       ),
     );
   }

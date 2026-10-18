@@ -2,15 +2,17 @@ import type { BalanceSheetPageData } from "@/app/dashboard/finance/balance-sheet
 import { buildCustomerCreditsBalanceSheetOptions } from "@/app/dashboard/finance/balance-sheet-page-data";
 import type { CashMovementManualEntry } from "@/app/dashboard/finance/cash-movement-utils";
 import type { StaffAdvanceBalanceSheetEntry } from "@/app/dashboard/finance/staff-advances-balance-sheet-utils";
-import type {
-  BusinessUnitTransferRecord,
-  InterUnitTransferCashScope,
+import {
+  resolveInterUnitTransferCashScope,
+  type BusinessUnitTransferRecord,
+  type InterUnitTransferCashScope,
 } from "@/app/dashboard/finance/business-unit-transfers-utils";
 import type {
   DividendBalanceSheetDeclaration,
   DividendBalanceSheetLine,
 } from "@/app/dashboard/finance/dividends-types";
 import { resolveBalanceSheetDividendBusinessUnitId } from "@/lib/finance/dividends-load";
+import type { DividendBalanceSheetFilter } from "@/app/dashboard/finance/dividends-balance-sheet-utils";
 import type { BusinessUnitReadScope } from "@/utils/business-unit-view";
 
 export type StandardBalanceSheetDataSlice = Pick<
@@ -58,7 +60,40 @@ export type StandardBalanceSheetReportExtras = {
   dividendDeclarations?: DividendBalanceSheetDeclaration[];
   dividendLines?: DividendBalanceSheetLine[];
   balanceSheetBusinessUnitId?: string | null;
+  dividendBalanceSheetFilter?: DividendBalanceSheetFilter;
 };
+
+/**
+ * Report extras aligned with balance-sheet.tsx / cash-flow.tsx view scoping
+ * (directors loan aggregation, inter-unit cash, dividend/cash BU filter).
+ */
+export function standardBalanceSheetReportExtrasForView(args: {
+  viewAllBusinessUnits: boolean;
+  activeBusinessUnitId: string | null;
+  rawManualFinancialEntries?: CashMovementManualEntry[];
+}): StandardBalanceSheetReportExtras {
+  const dividendBalanceSheetFilter: DividendBalanceSheetFilter =
+    args.viewAllBusinessUnits
+      ? { mode: "all" }
+      : args.activeBusinessUnitId
+        ? { mode: "unit", businessUnitId: args.activeBusinessUnitId }
+        : { mode: "none" };
+
+  return {
+    allBusinessUnitsDirectorsLoan: args.viewAllBusinessUnits,
+    rawManualFinancialEntries: args.viewAllBusinessUnits
+      ? args.rawManualFinancialEntries
+      : undefined,
+    interUnitTransferScope: resolveInterUnitTransferCashScope({
+      viewAllBusinessUnits: args.viewAllBusinessUnits,
+      activeBusinessUnitId: args.activeBusinessUnitId,
+    }),
+    balanceSheetBusinessUnitId: args.viewAllBusinessUnits
+      ? null
+      : args.activeBusinessUnitId,
+    dividendBalanceSheetFilter,
+  };
+}
 
 export function dividendOptionsFromPageData(
   data: Pick<
@@ -104,6 +139,7 @@ export function buildStandardBalanceSheetReportOptions(
       extras.dividendDeclarations ?? data.initialDividendDeclarations ?? [],
     dividendLines: extras.dividendLines ?? data.initialDividendLines ?? [],
     balanceSheetBusinessUnitId: extras.balanceSheetBusinessUnitId ?? null,
+    dividendBalanceSheetFilter: extras.dividendBalanceSheetFilter,
   };
 }
 

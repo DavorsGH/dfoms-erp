@@ -37,16 +37,14 @@ import type {
 } from "./customer-credits-liability-utils";
 import {
   buildStandardBalanceSheetReport,
+  standardBalanceSheetReportExtrasForView,
   getBalanceSheetMonthCheck,
 } from "@/lib/finance/balance-sheet-standard-report";
 import type {
   DividendBalanceSheetDeclaration,
   DividendBalanceSheetLine,
 } from "./dividends-types";
-import {
-  resolveInterUnitTransferCashScope,
-  type BusinessUnitTransferRecord,
-} from "./business-unit-transfers-utils";
+import type { BusinessUnitTransferRecord } from "./business-unit-transfers-utils";
 import { getBalanceCheckRoundingNote } from "./balance-sheet-utils";
 import {
   FinancialStatementScrollableTable,
@@ -243,15 +241,6 @@ export default function BalanceSheet({
     setBalanceCheckPeriodIndex(defaultCheckMonthIndex);
   }, [defaultCheckMonthIndex, selectedYear]);
 
-  const interUnitTransferScope = useMemo(
-    () =>
-      resolveInterUnitTransferCashScope({
-        viewAllBusinessUnits,
-        activeBusinessUnitId,
-      }),
-    [viewAllBusinessUnits, activeBusinessUnitId],
-  );
-
   const report = useMemo(
     () =>
       buildStandardBalanceSheetReport(
@@ -281,16 +270,11 @@ export default function BalanceSheet({
         },
         tenantId,
         selectedYear,
-        {
-          allBusinessUnitsDirectorsLoan: viewAllBusinessUnits,
-          rawManualFinancialEntries: viewAllBusinessUnits
-            ? initialRawManualEntries
-            : undefined,
-          interUnitTransferScope,
-          balanceSheetBusinessUnitId: viewAllBusinessUnits
-            ? null
-            : activeBusinessUnitId,
-        },
+        standardBalanceSheetReportExtrasForView({
+          viewAllBusinessUnits,
+          activeBusinessUnitId,
+          rawManualFinancialEntries: initialRawManualEntries,
+        }),
       ),
     [
       tenantId,
@@ -311,7 +295,9 @@ export default function BalanceSheet({
       initialWelfareFundEntries,
       initialStaffSalaryAdvanceEntries,
       initialBusinessUnitTransfers,
-      interUnitTransferScope,
+      initialRawManualEntries,
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
       selectedYear,
     ],
   );

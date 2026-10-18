@@ -23,17 +23,50 @@ const ACTIVE_DECLARATION_STATUSES: DividendDeclarationStatus[] = [
   "paid",
 ];
 
+/** All businesses | single BU | Untagged (no dividend rows — declarations always have a BU). */
+export type DividendBalanceSheetFilter =
+  | { mode: "all" }
+  | { mode: "none" }
+  | { mode: "unit"; businessUnitId: string };
+
+export function resolveDividendBalanceSheetFilter(input: {
+  dividendBalanceSheetFilter?: DividendBalanceSheetFilter;
+  balanceSheetBusinessUnitId?: string | null;
+}): DividendBalanceSheetFilter {
+  if (input.dividendBalanceSheetFilter) {
+    return input.dividendBalanceSheetFilter;
+  }
+  const legacyId = input.balanceSheetBusinessUnitId;
+  if (legacyId) {
+    return { mode: "unit", businessUnitId: legacyId };
+  }
+  return { mode: "all" };
+}
+
+function declarationMatchesFilter(
+  declarationBusinessUnitId: string | null | undefined,
+  filter: DividendBalanceSheetFilter,
+): boolean {
+  if (filter.mode === "none") {
+    return false;
+  }
+  if (filter.mode === "all") {
+    return true;
+  }
+  return declarationBusinessUnitId === filter.businessUnitId;
+}
+
 function declarationsDeclaredInMonth(
   declarations: DividendBalanceSheetDeclaration[],
   financialYear: number,
   month: number,
-  businessUnitId: string | null,
+  filter: DividendBalanceSheetFilter,
 ): DividendBalanceSheetDeclaration[] {
   return declarations.filter((row) => {
     if (!ACTIVE_DECLARATION_STATUSES.includes(row.status)) {
       return false;
     }
-    if (businessUnitId && row.business_unit_id !== businessUnitId) {
+    if (!declarationMatchesFilter(row.business_unit_id, filter)) {
       return false;
     }
     const declDate = normalizeDate(row.declaration_date);
@@ -47,14 +80,14 @@ function declarationsThroughMonthEnd(
   declarations: DividendBalanceSheetDeclaration[],
   financialYear: number,
   month: number,
-  businessUnitId: string | null,
+  filter: DividendBalanceSheetFilter,
 ): DividendBalanceSheetDeclaration[] {
   const monthEnd = getMonthEndDate(financialYear, month);
   return declarations.filter((row) => {
     if (!ACTIVE_DECLARATION_STATUSES.includes(row.status)) {
       return false;
     }
-    if (businessUnitId && row.business_unit_id !== businessUnitId) {
+    if (!declarationMatchesFilter(row.business_unit_id, filter)) {
       return false;
     }
     const declDate = normalizeDate(row.declaration_date);
@@ -66,7 +99,7 @@ function declarationsThroughMonthEnd(
 export function calculateDeclaredDividendGrossReductionByMonth(
   declarations: DividendBalanceSheetDeclaration[],
   financialYear: number,
-  businessUnitId: string | null = null,
+  filter: DividendBalanceSheetFilter = { mode: "all" },
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
   let cumulative = 0;
@@ -76,7 +109,7 @@ export function calculateDeclaredDividendGrossReductionByMonth(
       declarations,
       financialYear,
       month,
-      businessUnitId,
+      filter,
     ).reduce((sum, row) => sum + (Number(row.gross_amount) || 0), 0);
 
     cumulative = roundCurrency(cumulative + monthGross);
@@ -92,7 +125,7 @@ export function calculateDividendsPayableByMonth(
   declarations: DividendBalanceSheetDeclaration[],
   lines: DividendBalanceSheetLine[],
   financialYear: number,
-  businessUnitId: string | null = null,
+  filter: DividendBalanceSheetFilter = { mode: "all" },
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
 
@@ -104,7 +137,7 @@ export function calculateDividendsPayableByMonth(
       declarations,
       financialYear,
       month,
-      businessUnitId,
+      filter,
     )) {
       liability += Number(decl.net_amount) || 0;
       const declLines = lines.filter((line) => line.declaration_id === decl.id);
@@ -129,7 +162,7 @@ export function calculateDividendCashOutflowsByMonth(
   lines: DividendBalanceSheetLine[],
   declarations: DividendBalanceSheetDeclaration[],
   financialYear: number,
-  businessUnitId: string | null,
+  filter: DividendBalanceSheetFilter = { mode: "all" },
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
   const declById = new Map(declarations.map((row) => [row.id, row]));
@@ -142,7 +175,7 @@ export function calculateDividendCashOutflowsByMonth(
     if (!decl || decl.status === "cancelled" || decl.status === "draft") {
       continue;
     }
-    if (businessUnitId && decl.business_unit_id !== businessUnitId) {
+    if (!declarationMatchesFilter(decl.business_unit_id, filter)) {
       continue;
     }
     const monthIndex = (() => {

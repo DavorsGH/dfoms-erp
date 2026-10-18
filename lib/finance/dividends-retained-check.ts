@@ -1,12 +1,10 @@
 import { fetchBalanceSheetPageData } from "@/app/dashboard/finance/balance-sheet-page-data";
 import {
   buildStandardBalanceSheetReport,
-  dividendOptionsFromPageData,
   getBalanceSheetMonthCheck,
+  standardBalanceSheetReportExtrasForView,
 } from "@/lib/finance/balance-sheet-standard-report";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { BusinessUnitReadScope } from "@/utils/business-unit-view";
-
 export async function getRetainedEarningsAsOfDate(input: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -19,11 +17,6 @@ export async function getRetainedEarningsAsOfDate(input: {
   if (!year || month < 1 || month > 12) {
     return { retainedEarnings: null, error: "Invalid as-of date." };
   }
-
-  const buScope: BusinessUnitReadScope = {
-    mode: "unit",
-    id: input.businessUnitId,
-  };
 
   const pageData = await fetchBalanceSheetPageData(input.supabase, input.tenantId, {
     activeBusinessUnitId: input.businessUnitId,
@@ -38,14 +31,10 @@ export async function getRetainedEarningsAsOfDate(input: {
     pageData,
     input.tenantId,
     year,
-    {
-      interUnitTransferScope: {
-        mode: "unit",
-        businessUnitId: input.businessUnitId,
-      },
-      balanceSheetBusinessUnitId: input.businessUnitId,
-      ...dividendOptionsFromPageData(pageData, buScope),
-    },
+    standardBalanceSheetReportExtrasForView({
+      viewAllBusinessUnits: false,
+      activeBusinessUnitId: input.businessUnitId,
+    }),
   );
 
   const reRow = report.rows.find((row) => row.key === "retained-earnings");
@@ -74,27 +63,15 @@ export async function isBalanceSheetBalancedAsOf(input: {
     return false;
   }
 
-  const buScope: BusinessUnitReadScope = input.viewAllBusinessUnits
-    ? { mode: "all" }
-    : input.businessUnitId
-      ? { mode: "unit", id: input.businessUnitId }
-      : { mode: "default" };
-
   const report = buildStandardBalanceSheetReport(
     pageData,
     input.tenantId,
     input.year,
-    {
-      allBusinessUnitsDirectorsLoan: input.viewAllBusinessUnits,
-      rawManualFinancialEntries: input.viewAllBusinessUnits
-        ? pageData.initialRawManualEntries
-        : undefined,
-      interUnitTransferScope:
-        buScope.mode === "unit"
-          ? { mode: "unit", businessUnitId: buScope.id }
-          : { mode: "exclude" },
-      ...dividendOptionsFromPageData(pageData, buScope),
-    },
+    standardBalanceSheetReportExtrasForView({
+      viewAllBusinessUnits: input.viewAllBusinessUnits,
+      activeBusinessUnitId: input.businessUnitId,
+      rawManualFinancialEntries: pageData.initialRawManualEntries,
+    }),
   );
 
   return getBalanceSheetMonthCheck(report, input.monthIndex).isBalanced;
