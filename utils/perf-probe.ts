@@ -78,3 +78,16 @@ export function createPerfProbe(): PerfProbe {
 export function isPerfProbeEnabled(): boolean {
   return process.env.DFOMS_PERF_PROBE === "true";
 }
+
+/** Regression snapshot JSON APIs — never on Vercel production. */
+export function isPerfSnapshotApisEnabled(): boolean {
+  return (
+    process.env.DFOMS_PERF_SNAPSHOT_APIS === "true" &&
+    process.env.VERCEL_ENV !== "production"
+  );
+}
+
+/** Optional auth/v1/health RTT probes for middleware and badge polls. */
+export function isPerfRttEnabled(): boolean {
+  return process.env.DFOMS_PERF_RTT === "true";
+}

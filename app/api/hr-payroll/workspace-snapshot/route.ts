@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import type { AppRole } from "@/app/dashboard/user-account-types";
 import {
   buildPayrollWorkspaceSnapshot,
   sortPayrollSnapshotKeysDeep,
@@ -10,13 +9,14 @@ import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   getActiveBusinessUnitId,
   getCurrentAuthUid,
-  getCurrentUserRole,
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
 import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
-import { canAccessHrPayrollSection } from "@/utils/rbac-access";
-import { isPerfProbeEnabled } from "@/utils/perf-probe";
+import {
+  perfSnapshotApiDisabledResponse,
+  perfSnapshotSuperAdminForbiddenResponse,
+} from "@/utils/perf-snapshot-api-gate";
 import { createClient } from "@/utils/supabase/server";
 
 export const runtime = "nodejs";
@@ -36,8 +36,14 @@ function parsePeriodParam(raw: string | null): string | null {
 }
 
 export async function GET(request: Request) {
-  if (!isPerfProbeEnabled()) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const disabled = perfSnapshotApiDisabledResponse();
+  if (disabled) {
+    return disabled;
+  }
+
+  const forbidden = await perfSnapshotSuperAdminForbiddenResponse();
+  if (forbidden) {
+    return forbidden;
   }
 
   const periodKey = parsePeriodParam(
@@ -56,11 +62,6 @@ export async function GET(request: Request) {
       { error: "Query param period=YYYY-MM is invalid." },
       { status: 400 },
     );
-  }
-
-  const role = (await getCurrentUserRole(ROUTE_HANDLER_AUTH_OPTS)) as AppRole | null;
-  if (!canAccessHrPayrollSection(role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const [tenantId, authUid, activeBusinessUnitId, viewAllBusinessUnits] =

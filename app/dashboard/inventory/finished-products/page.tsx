@@ -42,8 +42,14 @@ import {
   normalizeInternalConsumption,
   type InternalConsumptionRecord,
 } from "../internal-consumption-utils";
+import {
+  DashboardPagePerfMeta,
+  readSupabasePerfCallIndex,
+} from "@/lib/dashboard-page-perf-probe";
 
 export default async function FinishedProductsPage() {
+  const renderStartedAt = Date.now();
+  const supabaseCallsBefore = readSupabasePerfCallIndex();
   const tenantId = await getCurrentUserTenantId();
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
@@ -148,6 +154,10 @@ export default async function FinishedProductsPage() {
 
   return (
     <InventoryShell sectionTitle="Finished Products">
+      <DashboardPagePerfMeta
+        renderStartedAt={renderStartedAt}
+        supabaseCallsBefore={supabaseCallsBefore}
+      />
       <FinishedProducts
         tenantId={tenantId}
         initialProducts={displayProducts}

@@ -2,15 +2,24 @@ import { NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
 import { verifyAuthContext, isMiddlewareContextSigningConfigured } from "@/lib/middleware-auth-context";
 import { createClient } from "@/utils/supabase/server";
-import { isPerfProbeEnabled } from "@/utils/perf-probe";
+import {
+  perfSnapshotApiDisabledResponse,
+  perfSnapshotSuperAdminForbiddenResponse,
+} from "@/utils/perf-snapshot-api-gate";
 
 /**
  * Staging/local regression helper — compares signed middleware context vs live DB.
- * Only available when DFOMS_PERF_PROBE=true.
+ * Requires DFOMS_PERF_SNAPSHOT_APIS=true and session super_admin (own tenant only).
  */
 export async function GET() {
-  if (!isPerfProbeEnabled()) {
-    return NextResponse.json({ error: "Disabled" }, { status: 404 });
+  const disabled = perfSnapshotApiDisabledResponse();
+  if (disabled) {
+    return disabled;
+  }
+
+  const forbidden = await perfSnapshotSuperAdminForbiddenResponse();
+  if (forbidden) {
+    return forbidden;
   }
 
   const headerStore = await headers();

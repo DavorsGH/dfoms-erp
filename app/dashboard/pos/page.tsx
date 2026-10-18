@@ -45,6 +45,10 @@ import {
 } from "../hr-payroll/employee-utils";
 import { buildCustomerBalancesPayload } from "@/lib/client-cache/pos-cache-mappers";
 import { LOYALTY_ACCOUNT_SELECT } from "@/utils/loyalty-types";
+import {
+  DashboardPagePerfMeta,
+  readSupabasePerfCallIndex,
+} from "@/lib/dashboard-page-perf-probe";
 
 type PosPageProps = {
   searchParams: Promise<{
@@ -67,6 +71,8 @@ function firstSearchParam(
 }
 
 export default async function PosPage({ searchParams }: PosPageProps) {
+  const renderStartedAt = Date.now();
+  const supabaseCallsBefore = readSupabasePerfCallIndex();
   const params = await searchParams;
   const quoteId = firstSearchParam(params.quoteId);
   const creditNoteId = firstSearchParam(params.creditNoteId);
@@ -247,6 +253,13 @@ export default async function PosPage({ searchParams }: PosPageProps) {
       "Quote has no product lines that can be loaded into the POS cart.";
   }
 
+  const perfMeta = (
+    <DashboardPagePerfMeta
+      renderStartedAt={renderStartedAt}
+      supabaseCallsBefore={supabaseCallsBefore}
+    />
+  );
+
   const checkout = (
     <PosCacheShell
       session={{ tenantId, authUid }}
@@ -278,8 +291,18 @@ export default async function PosPage({ searchParams }: PosPageProps) {
   );
 
   if (!showCrmNav) {
-    return checkout;
+    return (
+      <>
+        {perfMeta}
+        {checkout}
+      </>
+    );
   }
 
-  return <CrmShell sectionTitle="POS">{checkout}</CrmShell>;
+  return (
+    <CrmShell sectionTitle="POS">
+      {perfMeta}
+      {checkout}
+    </CrmShell>
+  );
 }

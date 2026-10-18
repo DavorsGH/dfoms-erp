@@ -165,10 +165,6 @@ export async function loadDashboardShellData(): Promise<DashboardShellData> {
       "[perf] dashboard-shell",
       JSON.stringify({
         ms: perf.elapsedMs(),
-        authCalls: perf.authCalls,
-        dbCalls: perf.dbCalls,
-        skippedAuthCalls: perf.skippedAuthCalls,
-        skippedDbCalls: perf.skippedDbCalls,
       }),
     );
   }

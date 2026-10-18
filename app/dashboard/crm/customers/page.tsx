@@ -12,8 +12,14 @@ import {
 import CrmShell from "../crm-shell";
 import Customers from "./customers";
 import type { CustomerEntry } from "./customers-utils";
+import {
+  DashboardPagePerfMeta,
+  readSupabasePerfCallIndex,
+} from "@/lib/dashboard-page-perf-probe";
 
 export default async function CustomersPage() {
+  const renderStartedAt = Date.now();
+  const supabaseCallsBefore = readSupabasePerfCallIndex();
   const role = (await getCurrentUserRole()) as AppRole | null;
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
@@ -32,6 +38,10 @@ export default async function CustomersPage() {
 
   return (
     <CrmShell sectionTitle="Customer List" customerListOnly={customerListOnly}>
+      <DashboardPagePerfMeta
+        renderStartedAt={renderStartedAt}
+        supabaseCallsBefore={supabaseCallsBefore}
+      />
       <Customers
         initialCustomers={(data as CustomerEntry[] | null) ?? []}
         initialEmployees={filterActiveEmployees(

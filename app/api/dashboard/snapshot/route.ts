@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import type { AppRole } from "@/app/dashboard/user-account-types";
 import { buildOwnerDashboardViewModel } from "@/app/dashboard/owner-dashboard-view-model";
 import { fetchDashboardPageData } from "@/app/dashboard/dashboard-page-data";
 import type { DashboardViewModel } from "@/app/dashboard/dashboard-utils";
@@ -9,29 +8,19 @@ import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   getActiveBusinessUnitId,
   getCurrentAuthUid,
-  getCurrentUserRole,
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
 import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import { createClient } from "@/utils/supabase/server";
 import { fetchTenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status";
-import { isPerfProbeEnabled } from "@/utils/perf-probe";
+import {
+  perfSnapshotApiDisabledResponse,
+  perfSnapshotSuperAdminForbiddenResponse,
+} from "@/utils/perf-snapshot-api-gate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const NON_OWNER_DASHBOARD_ROLES = new Set<AppRole>([
-  "client",
-  "employee",
-  "supervisor",
-  "operations_manager",
-  "sales_rep",
-]);
-
-function isOwnerDashboardRole(role: AppRole | null): boolean {
-  return role != null && !NON_OWNER_DASHBOARD_ROLES.has(role);
-}
 
 const MONTH_PARAM_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
@@ -162,8 +151,14 @@ function buildDisplayedSnapshotPayload(
 }
 
 export async function GET(request: Request) {
-  if (!isPerfProbeEnabled()) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const disabled = perfSnapshotApiDisabledResponse();
+  if (disabled) {
+    return disabled;
+  }
+
+  const forbidden = await perfSnapshotSuperAdminForbiddenResponse();
+  if (forbidden) {
+    return forbidden;
   }
 
   const monthKey = parseMonthParam(
@@ -174,11 +169,6 @@ export async function GET(request: Request) {
       { error: "Query param month=YYYY-MM is required." },
       { status: 400 },
     );
-  }
-
-  const role = (await getCurrentUserRole(ROUTE_HANDLER_AUTH_OPTS)) as AppRole | null;
-  if (!isOwnerDashboardRole(role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const [tenantId, authUid, activeBusinessUnitId, viewAllBusinessUnits] =

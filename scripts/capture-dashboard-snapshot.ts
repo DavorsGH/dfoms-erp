@@ -1,5 +1,6 @@
 /**
- * Save dashboard snapshot JSON for diff-dashboard-snapshots.mjs (requires DFOMS_PERF_PROBE on server).
+ * Save dashboard snapshot JSON for diff-dashboard-snapshots.mjs (requires
+ * DFOMS_PERF_SNAPSHOT_APIS=true on server; not available on Vercel production).
  *
  * Usage:
  *   npx tsx scripts/capture-dashboard-snapshot.ts --month 2026-08 --out before.json

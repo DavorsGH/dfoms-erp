@@ -41,8 +41,14 @@ import {
   applyEmployeeIdScopeToColumn,
   fetchScopedEmployeeIds,
 } from "../payroll-bu-scope-utils";
+import {
+  DashboardPagePerfMeta,
+  readSupabasePerfCallIndex,
+} from "@/lib/dashboard-page-perf-probe";
 
 export default async function PayrollProcessingPage() {
+  const renderStartedAt = Date.now();
+  const supabaseCallsBefore = readSupabasePerfCallIndex();
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const admin = createAdminClient();
@@ -249,6 +255,10 @@ export default async function PayrollProcessingPage() {
 
   return (
     <HrPayrollShell sectionTitle="Payroll Processing">
+      <DashboardPagePerfMeta
+        renderStartedAt={renderStartedAt}
+        supabaseCallsBefore={supabaseCallsBefore}
+      />
       <PayrollProcessing
         tenantId={tenantId}
         initialPayrollMonths={[

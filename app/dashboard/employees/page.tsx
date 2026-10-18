@@ -32,8 +32,14 @@ import {
   type HrPayrollSettingsRow,
 } from "@/utils/hr-payroll-settings-types";
 import { scopeToBusinessUnitId } from "@/utils/phase5e-key-structure";
+import {
+  DashboardPagePerfMeta,
+  readSupabasePerfCallIndex,
+} from "@/lib/dashboard-page-perf-probe";
 
 export default async function EmployeesPage() {
+  const renderStartedAt = Date.now();
+  const supabaseCallsBefore = readSupabasePerfCallIndex();
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
@@ -88,6 +94,10 @@ export default async function EmployeesPage() {
 
   return (
     <HrPayrollShell sectionTitle="Employee Directory">
+      <DashboardPagePerfMeta
+        renderStartedAt={renderStartedAt}
+        supabaseCallsBefore={supabaseCallsBefore}
+      />
       <EmployeesDirectory
         initialEmployees={employees}
         initialLookups={lookups}

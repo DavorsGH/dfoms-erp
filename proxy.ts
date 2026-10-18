@@ -49,7 +49,11 @@ import {
   DFOMS_PERF_LAYOUT_PROBE_HEADER,
   measureSupabaseHealthRttTwice,
 } from "@/lib/supabase-http-perf";
-import { createPerfProbe, isPerfProbeEnabled } from "@/utils/perf-probe";
+import {
+  createPerfProbe,
+  isPerfProbeEnabled,
+  isPerfRttEnabled,
+} from "@/utils/perf-probe";
 import { PRODUCTION_PORTAL_SITE_URL } from "@/utils/public-site-url";
 
 const LEGACY_PORTAL_HOST = "portal.davorsfacilities.com";
@@ -804,9 +808,11 @@ export async function proxy(request: NextRequest) {
     }
     if (isPerfProbeEnabled()) {
       nextResponse.headers.set(DFOMS_MW_REGION_HEADER, getVercelRegion());
-      const { rtt1Ms, rtt2Ms } = await measureSupabaseHealthRttTwice();
-      nextResponse.headers.set(DFOMS_MW_RTT1_HEADER, String(rtt1Ms));
-      nextResponse.headers.set(DFOMS_MW_RTT2_HEADER, String(rtt2Ms));
+      if (isPerfRttEnabled()) {
+        const { rtt1Ms, rtt2Ms } = await measureSupabaseHealthRttTwice();
+        nextResponse.headers.set(DFOMS_MW_RTT1_HEADER, String(rtt1Ms));
+        nextResponse.headers.set(DFOMS_MW_RTT2_HEADER, String(rtt2Ms));
+      }
     }
   }
 

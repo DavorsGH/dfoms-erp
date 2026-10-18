@@ -158,7 +158,15 @@ export function labelSupabaseHttpRequest(input: RequestInfo | URL): string {
       return `auth:${tail}`;
     }
     if (parts[0] === "storage") {
-      return `storage:${parts.slice(2, 5).join("/") || "object"}`;
+      if (
+        parts[2] === "object" &&
+        (parts[3] === "public" ||
+          parts[3] === "sign" ||
+          parts[3] === "authenticated")
+      ) {
+        return `storage:${parts[4] ?? "unknown"}`;
+      }
+      return `storage:${parts[2] ?? "unknown"}`;
     }
     const compact = u.pathname.replace(/^\/+/, "").slice(0, 48);
     return compact || "http";

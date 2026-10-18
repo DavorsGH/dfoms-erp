@@ -4,6 +4,7 @@
  * Prerequisites:
  *   - Dev server on APP_URL (default http://localhost:3000) with Fix 2 code
  *   - DFOMS_PERF_PROBE=true in dev server env
+ *   - DFOMS_PERF_SNAPSHOT_APIS=true for /api/perf-probe/trusted-context checks
  *   - .env.staging.local with staging Supabase keys + CRON_SECRET
  *
  * Usage:
