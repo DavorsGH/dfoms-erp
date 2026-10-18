@@ -3,6 +3,7 @@ import type { AppRole } from "./user-account-types";
 const ROLE_LABELS: Record<AppRole, string> = {
   super_admin: "Admin",
   finance: "Finance",
+  finance_admin: "Finance & Admin Officer",
   hr: "HR",
   director: "Director",
   operations_manager: "Operations",

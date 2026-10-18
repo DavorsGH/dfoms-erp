@@ -6,7 +6,7 @@ import {
   getUserAllowedBusinessUnits,
 } from "@/utils/business-unit-access";
 import { uploadFinishedProductPhoto } from "@/utils/finished-product-photo";
-import { INVENTORY_EDIT_ROLES } from "@/utils/rbac-access";
+import { INVENTORY_OPERATOR_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 
@@ -16,7 +16,7 @@ async function getTenantSupabase() {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireTenantRoleIn(INVENTORY_EDIT_ROLES);
+  const auth = await requireTenantRoleIn(INVENTORY_OPERATOR_ROLES);
   if (!auth.ok) {
     return auth.response;
   }

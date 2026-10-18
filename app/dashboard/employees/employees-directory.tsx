@@ -127,6 +127,11 @@ type EmployeesDirectoryProps = {
   projectNameMap: Map<string, string>;
   fetchError: string | null;
   canEditEmployees: boolean;
+  canEditEmployeePayFields: boolean;
+  canDeleteEmployees: boolean;
+  canProvisionLeaveBalancesOnCreate: boolean;
+  canRecordEmploymentHistory: boolean;
+  canUseEmployeeBulkImport: boolean;
   canViewSalary: boolean;
   /** Tenant default from HR Settings → Salary Settings; pre-fills new employee form only. */
   defaultWelfareDeductionRate?: number | null;
@@ -444,10 +449,16 @@ export default function EmployeesDirectory({
   projectNameMap: initialProjectNameMap,
   fetchError,
   canEditEmployees,
+  canEditEmployeePayFields,
+  canDeleteEmployees,
+  canProvisionLeaveBalancesOnCreate,
+  canRecordEmploymentHistory,
+  canUseEmployeeBulkImport,
   canViewSalary,
   defaultWelfareDeductionRate = null,
   activeBusinessUnitId = null,
 }: EmployeesDirectoryProps) {
+  const payFieldsReadOnly = canEditEmployees && !canEditEmployeePayFields;
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
@@ -1111,9 +1122,25 @@ export default function EmployeesDirectory({
         setError(formatBusinessUnitAccessError(accessError));
         return;
       }
-      const payload = buildPayload(form, resolvedCompensation);
+      let payload = buildPayload(form, resolvedCompensation);
+      if (!canEditEmployeePayFields && prior) {
+        payload = {
+          ...payload,
+          basic_salary: prior.basic_salary ?? 0,
+          housing_allowance: prior.housing_allowance ?? 0,
+          transport_allowance: prior.transport_allowance ?? 0,
+          other_allowances: prior.other_allowances ?? 0,
+          welfare_deduction_rate: prior.welfare_deduction_rate ?? 0,
+          payment_method: prior.payment_method,
+          bank_name: prior.bank_name,
+          account_number: prior.account_number,
+          momo_number: prior.momo_number,
+          momo_name: prior.momo_name,
+        };
+      }
       const afterSnapshot = snapshotFromPayload(payload);
       const shouldWriteHistory =
+        canRecordEmploymentHistory &&
         prior !== null &&
         hasTrackedEmploymentChange(snapshotFromEmployee(prior), afterSnapshot);
 
@@ -1154,7 +1181,7 @@ export default function EmployeesDirectory({
         return;
       }
 
-      const payload = buildPayload(
+      let payload = buildPayload(
         {
           ...form,
           employee_id: allocated.employeeId,
@@ -1162,6 +1189,17 @@ export default function EmployeesDirectory({
         },
         resolvedCompensation,
       );
+
+      if (payFieldsReadOnly) {
+        payload = {
+          ...payload,
+          payment_method: null,
+          bank_name: null,
+          account_number: null,
+          momo_number: null,
+          momo_name: null,
+        };
+      }
 
       const { error: saveError } = await supabase.from("employees").insert({
         employee_id: allocated.employeeId,
@@ -1182,39 +1220,43 @@ export default function EmployeesDirectory({
 
       // Forward-only: create current-year leave balances from entitlement policy
       // (Annual=15 / Sick=0 / Unpaid=0 fallback when no policy row).
-      const { error: leaveBalanceError } = await supabase.rpc(
-        "create_employee_leave_balances_for_year",
-        {
-          p_employee_id: allocated.employeeId,
-          p_year: new Date().getFullYear(),
-        },
-      );
-
-      if (leaveBalanceError) {
-        setError(
-          `Employee saved, but leave balances were not created: ${leaveBalanceError.message}`,
+      if (canProvisionLeaveBalancesOnCreate) {
+        const { error: leaveBalanceError } = await supabase.rpc(
+          "create_employee_leave_balances_for_year",
+          {
+            p_employee_id: allocated.employeeId,
+            p_year: new Date().getFullYear(),
+          },
         );
-        await refreshEmployees();
-        return;
+
+        if (leaveBalanceError) {
+          setError(
+            `Employee saved, but leave balances were not created: ${leaveBalanceError.message}`,
+          );
+          await refreshEmployees();
+          return;
+        }
       }
 
-      const { error: historyError } = await supabase
-        .from("employee_employment_history")
-        .insert(
-          buildEmploymentHistoryInsert({
-            employeeId: allocated.employeeId,
-            snapshot: snapshotFromPayload(payload),
-            changeReason: reasonText ?? "Employee created",
-            changedBy,
-          }),
-        );
+      if (canRecordEmploymentHistory) {
+        const { error: historyError } = await supabase
+          .from("employee_employment_history")
+          .insert(
+            buildEmploymentHistoryInsert({
+              employeeId: allocated.employeeId,
+              snapshot: snapshotFromPayload(payload),
+              changeReason: reasonText ?? "Employee created",
+              changedBy,
+            }),
+          );
 
-      if (historyError) {
-        setError(
-          `Employee saved, but employment history was not recorded: ${historyError.message}`,
-        );
-        await refreshEmployees();
-        return;
+        if (historyError) {
+          setError(
+            `Employee saved, but employment history was not recorded: ${historyError.message}`,
+          );
+          await refreshEmployees();
+          return;
+        }
       }
     }
 
@@ -1247,12 +1289,14 @@ export default function EmployeesDirectory({
               {selectedCount} selected
             </span>
           ) : null}
-          <Link
-            href="/dashboard/bulk-import?type=employee"
-            className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
-          >
-            Bulk Import
-          </Link>
+          {canUseEmployeeBulkImport ? (
+            <Link
+              href="/dashboard/bulk-import?type=employee"
+              className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
+            >
+              Bulk Import
+            </Link>
+          ) : null}
           {canEditEmployees ? (
           <button
             type="button"
@@ -1553,72 +1597,85 @@ export default function EmployeesDirectory({
                     className={inputClassName}
                   />
                 </Field>
-                <Field label="Payment Method">
-                  <select
-                    value={form.payment_method}
-                    onChange={(e) =>
-                      updateField("payment_method", e.target.value)
-                    }
-                    className={inputClassName}
-                  >
-                    <option value="">Select payment method</option>
-                    {PAYMENT_METHOD_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                {form.payment_method === "bank" ||
-                form.payment_method === "" ? (
+                {payFieldsReadOnly && !editingEmployeeId ? (
+                  <p className="md:col-span-2 xl:col-span-3 text-sm text-slate-600">
+                    Payment details are added by HR or a director.
+                  </p>
+                ) : (
                   <>
-                    <Field label="Bank Name">
-                      <input
-                        type="text"
-                        value={form.bank_name}
+                    <Field label="Payment Method">
+                      <select
+                        value={form.payment_method}
                         onChange={(e) =>
-                          updateField("bank_name", e.target.value)
+                          updateField("payment_method", e.target.value)
                         }
+                        disabled={payFieldsReadOnly}
                         className={inputClassName}
-                      />
+                      >
+                        <option value="">Select payment method</option>
+                        {PAYMENT_METHOD_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
                     </Field>
-                    <Field label="Account Number">
-                      <input
-                        type="text"
-                        value={form.account_number}
-                        onChange={(e) =>
-                          updateField("account_number", e.target.value)
-                        }
-                        className={inputClassName}
-                      />
-                    </Field>
+                    {form.payment_method === "bank" ||
+                    form.payment_method === "" ? (
+                      <>
+                        <Field label="Bank Name">
+                          <input
+                            type="text"
+                            value={form.bank_name}
+                            onChange={(e) =>
+                              updateField("bank_name", e.target.value)
+                            }
+                            readOnly={payFieldsReadOnly}
+                            className={inputClassName}
+                          />
+                        </Field>
+                        <Field label="Account Number">
+                          <input
+                            type="text"
+                            value={form.account_number}
+                            onChange={(e) =>
+                              updateField("account_number", e.target.value)
+                            }
+                            readOnly={payFieldsReadOnly}
+                            className={inputClassName}
+                          />
+                        </Field>
+                      </>
+                    ) : null}
+                    {form.payment_method === "momo" ||
+                    form.payment_method === "" ? (
+                      <Field label="Mobile Money Number">
+                        <input
+                          type="text"
+                          value={form.momo_number}
+                          onChange={(e) =>
+                            updateField("momo_number", e.target.value)
+                          }
+                          readOnly={payFieldsReadOnly}
+                          className={inputClassName}
+                        />
+                      </Field>
+                    ) : null}
+                    {form.payment_method === "momo" ? (
+                      <Field label="MoMo Name">
+                        <input
+                          type="text"
+                          value={form.momo_name}
+                          onChange={(e) =>
+                            updateField("momo_name", e.target.value)
+                          }
+                          readOnly={payFieldsReadOnly}
+                          className={inputClassName}
+                        />
+                      </Field>
+                    ) : null}
                   </>
-                ) : null}
-                {form.payment_method === "momo" ||
-                form.payment_method === "" ? (
-                  <Field label="Mobile Money Number">
-                    <input
-                      type="text"
-                      value={form.momo_number}
-                      onChange={(e) =>
-                        updateField("momo_number", e.target.value)
-                      }
-                      className={inputClassName}
-                    />
-                  </Field>
-                ) : null}
-                {form.payment_method === "momo" ? (
-                  <Field label="MoMo Name">
-                    <input
-                      type="text"
-                      value={form.momo_name}
-                      onChange={(e) =>
-                        updateField("momo_name", e.target.value)
-                      }
-                      className={inputClassName}
-                    />
-                  </Field>
-                ) : null}
+                )}
               </div>
             </div>
 
@@ -1860,6 +1917,7 @@ export default function EmployeesDirectory({
                       updateField("welfare_deduction_rate", e.target.value)
                     }
                     placeholder="e.g. 2.50"
+                    readOnly={payFieldsReadOnly}
                     className={inputClassName}
                   />
                 </Field>
@@ -2295,7 +2353,7 @@ export default function EmployeesDirectory({
                       onDelete={() => handleDelete(employee.employee_id)}
                       deleting={deletingEmployeeId === employee.employee_id}
                       canEdit={canEditEmployees}
-                      canDelete={canEditEmployees}
+                      canDelete={canDeleteEmployees}
                     />
                   </tr>
                 );

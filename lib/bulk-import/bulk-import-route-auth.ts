@@ -2,9 +2,15 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
-import { FINANCE_SECTION_ROLES, CRM_FULL_FEATURE_ROLES, EMPLOYEES_SECTION_ROLES } from "@/utils/rbac-access";
+import {
+  FINANCE_SECTION_ROLES,
+  CRM_FULL_FEATURE_ROLES,
+  EMPLOYEES_SECTION_ROLES,
+  INVENTORY_OPERATOR_ROLES,
+} from "@/utils/rbac-access";
 import { assertTenantHasFeature } from "@/utils/tier-access";
 import type { BulkImportType } from "@/lib/bulk-import/types";
+import { rejectFinanceAdminEmployeeBulkImportResponse } from "@/lib/bulk-import/finance-admin-employee-import-block";
 
 export const BULK_IMPORT_GATE_ROLES = [
   ...CRM_FULL_FEATURE_ROLES,
@@ -34,14 +40,30 @@ async function requireCrmCoreBulkImportAccess() {
 
 export async function requireBulkImportAccess(importType: BulkImportType) {
   if (importType === "employee") {
-    return requireTenantRoleIn(EMPLOYEES_SECTION_ROLES);
+    const auth = await requireTenantRoleIn(EMPLOYEES_SECTION_ROLES);
+    if (!auth.ok) {
+      return auth;
+    }
+    const financeAdminBlock = await rejectFinanceAdminEmployeeBulkImportResponse();
+    if (financeAdminBlock) {
+      return { ok: false as const, response: financeAdminBlock };
+    }
+    return auth;
   }
 
   if (importType === "customer") {
     return requireCrmCoreBulkImportAccess();
   }
 
-  if (importType === "product" || importType === "service") {
+  if (importType === "product") {
+    const operatorAuth = await requireTenantRoleIn(INVENTORY_OPERATOR_ROLES);
+    if (!operatorAuth.ok) {
+      return operatorAuth;
+    }
+    return requireCrmCoreBulkImportAccess();
+  }
+
+  if (importType === "service") {
     return requireCrmCoreBulkImportAccess();
   }
 

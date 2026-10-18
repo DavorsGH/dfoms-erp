@@ -11,7 +11,7 @@ import {
   resolveBusinessUnitReadScope,
 } from "@/utils/business-unit-view";
 import {
-  INVENTORY_EDIT_ROLES,
+  INVENTORY_PROCUREMENT_MUTATION_ROLES,
   INVENTORY_SECTION_ROLES,
 } from "@/utils/rbac-access";
 import {
@@ -79,7 +79,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireTenantRoleIn(INVENTORY_EDIT_ROLES);
+  const auth = await requireTenantRoleIn(INVENTORY_PROCUREMENT_MUTATION_ROLES);
   if (!auth.ok) {
     return auth.response;
   }

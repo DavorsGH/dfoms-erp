@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
-import { INVENTORY_EDIT_ROLES } from "@/utils/rbac-access";
+import { INVENTORY_PROCUREMENT_MUTATION_ROLES } from "@/utils/rbac-access";
 import { createClient } from "@/utils/supabase/server";
 import {
   resolveServerWriteBusinessUnitId,
@@ -22,7 +22,7 @@ type PostBody = {
 };
 
 export async function POST(request: Request) {
-  const auth = await requireTenantRoleIn(INVENTORY_EDIT_ROLES);
+  const auth = await requireTenantRoleIn(INVENTORY_PROCUREMENT_MUTATION_ROLES);
   if (!auth.ok) {
     return auth.response;
   }

@@ -45,6 +45,7 @@ import {
   resolveRotationStartAudit,
   type RosterRotationMetadataRecord,
 } from "./roster-rotation-metadata-utils";
+import { useOperationsReadOnly } from "./operations-read-only-context";
 import {
   AUTHORIZED_BY_OTHER,
   formatAuthorizedSignerLabel,
@@ -206,6 +207,7 @@ export default function DutyRoster({
   preparedByDefault,
   canStartRotation,
 }: DutyRosterProps) {
+  const operationsReadOnly = useOperationsReadOnly();
   const router = useRouter();
   const branding = useTenantBranding();
   const { units } = useBusinessUnitView();
@@ -943,7 +945,7 @@ export default function DutyRoster({
                     type="text"
                     value={preparedBy}
                     onChange={(event) => setPreparedBy(event.target.value)}
-                    readOnly={isSignatureLocked}
+                    readOnly={isSignatureLocked || operationsReadOnly}
                     className={inputClassName}
                   />
                 </div>
@@ -951,7 +953,7 @@ export default function DutyRoster({
                   <label className="mb-1 block text-sm font-medium text-slate-700">
                     Approved By
                   </label>
-                  {isSignatureLocked ? (
+                  {isSignatureLocked || operationsReadOnly ? (
                     <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
                       <p className="font-medium">
                         {approvedDisplay?.name || "—"}
@@ -1023,7 +1025,7 @@ export default function DutyRoster({
                     type="text"
                     value={rosterDate}
                     onChange={(event) => setRosterDate(event.target.value)}
-                    readOnly={isSignatureLocked}
+                    readOnly={isSignatureLocked || operationsReadOnly}
                     className={inputClassName}
                   />
                 </div>

@@ -11,7 +11,7 @@ import {
 } from "@/utils/business-unit-view";
 import { createClient } from "@/utils/supabase/server";
 import type { AppRole } from "@/app/dashboard/user-account-types";
-import { canEditInventory } from "@/utils/rbac-access";
+import { canEditInventoryOrProcurement } from "@/utils/rbac-access";
 import {
   normalizeProductPurchaseRow,
   normalizePurchasedProduct,
@@ -117,7 +117,7 @@ export default async function ProductPurchasesPage() {
           projectsError?.message ??
           null
         }
-        readOnly={!canEditInventory(role)}
+        readOnly={!canEditInventoryOrProcurement(role)}
       />
     </InventoryShell>
   );

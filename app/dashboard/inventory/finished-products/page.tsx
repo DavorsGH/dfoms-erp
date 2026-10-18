@@ -11,7 +11,11 @@ import {
   resolveBusinessUnitReadScope,
 } from "@/utils/business-unit-view";
 import type { AppRole } from "@/app/dashboard/user-account-types";
-import { canEditInventory } from "@/utils/rbac-access";
+import {
+  canAdjustInventoryStock,
+  canEditInventory,
+  canEditInventoryOrProcurement,
+} from "@/utils/rbac-access";
 import { SUPPLIER_SELECT, type SupplierRow } from "@/utils/suppliers-types";
 import FinishedProducts from "../finished-products";
 import {
@@ -181,6 +185,8 @@ export default async function FinishedProductsPage() {
           null
         }
         readOnly={!canEditInventory(role)}
+        showStockAdjustments={canAdjustInventoryStock(role)}
+        internalConsumptionReadOnly={!canEditInventoryOrProcurement(role)}
         initialInternalConsumptionEntries={
           (
             (internalConsumptionResult.data as InternalConsumptionRecord[] | null) ??

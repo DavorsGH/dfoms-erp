@@ -6,6 +6,7 @@ import {
   SpreadsheetValidationError,
   SPREADSHEET_TOO_MANY_DATA_ROWS_MESSAGE,
 } from "@/lib/spreadsheet/spreadsheet-validation-error";
+import { FINANCE_ADMIN_EMPLOYEE_BULK_IMPORT_MESSAGE } from "@/lib/bulk-import/finance-admin-employee-import-messages";
 
 export type SpreadsheetImportAlert = {
   title: string;
@@ -228,6 +229,13 @@ export async function spreadsheetImportAlertFromUploadResponse(
 
   if (response.status === 413) {
     return spreadsheetImportTooLargeAlert(SPREADSHEET_UPLOAD_MAX_BYTES + 1);
+  }
+
+  if (payload?.error === FINANCE_ADMIN_EMPLOYEE_BULK_IMPORT_MESSAGE) {
+    return {
+      title: "Could not complete action",
+      message: FINANCE_ADMIN_EMPLOYEE_BULK_IMPORT_MESSAGE,
+    };
   }
 
   if (payload?.error) {

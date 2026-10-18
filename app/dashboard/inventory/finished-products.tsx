@@ -98,6 +98,8 @@ type FinishedProductsProps = {
   initialSuppliers: SupplierRow[];
   fetchError: string | null;
   readOnly?: boolean;
+  showStockAdjustments?: boolean;
+  internalConsumptionReadOnly?: boolean;
   tenantId?: string | null;
   initialInternalConsumptionEntries?: InternalConsumptionRecord[];
   initialInternalConsumptionProducts?: FinishedProductRecord[];
@@ -146,6 +148,8 @@ export default function FinishedProducts({
   initialSuppliers,
   fetchError,
   readOnly = false,
+  showStockAdjustments = true,
+  internalConsumptionReadOnly,
   tenantId = null,
   initialInternalConsumptionEntries = [],
   initialInternalConsumptionProducts = [],
@@ -153,6 +157,7 @@ export default function FinishedProducts({
   initialInternalConsumptionSites = [],
   internalConsumptionRecordedByLabel = "Unknown user",
 }: FinishedProductsProps) {
+  const internalUseReadOnly = internalConsumptionReadOnly ?? readOnly;
   const supabase = createClient();
   const router = useRouter();
   const stampBusinessUnit = useStampBusinessUnitId();
@@ -1243,6 +1248,7 @@ export default function FinishedProducts({
         </table>
       </ScrollableTable>
 
+      {showStockAdjustments ? (
       <section className="space-y-4">
         <div>
           <h3 className="text-lg font-semibold text-[#0f2744]">
@@ -1497,7 +1503,10 @@ export default function FinishedProducts({
             </form>
           </section>
         ) : null}
+      </section>
+      ) : null}
 
+      <section className="space-y-4">
         <InventoryCollapsibleHistorySection
           title="Stock Adjustments"
           count={adjustments.length}
@@ -1612,7 +1621,7 @@ export default function FinishedProducts({
           initialSites={initialInternalConsumptionSites}
           recordedByLabel={internalConsumptionRecordedByLabel}
           fetchError={null}
-          readOnly={readOnly}
+          readOnly={internalUseReadOnly}
         />
       </section>
     </div>

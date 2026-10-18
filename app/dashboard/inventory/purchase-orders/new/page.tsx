@@ -9,7 +9,7 @@ import {
 import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import { createClient } from "@/utils/supabase/server";
 import type { AppRole } from "@/app/dashboard/user-account-types";
-import { canEditInventory } from "@/utils/rbac-access";
+import { canEditInventoryOrProcurement } from "@/utils/rbac-access";
 import {
   PO_FINISHED_PRODUCT_OPTION_SELECT,
   PO_RAW_MATERIAL_OPTION_SELECT,
@@ -36,7 +36,7 @@ export default async function NewPurchaseOrderPage() {
 
   const role = (await getCurrentUserRole()) as AppRole | null;
 
-  if (!canEditInventory(role)) {
+  if (!canEditInventoryOrProcurement(role)) {
     return (
       <InventoryShell sectionTitle="New Purchase Order">
         <p className="text-sm text-red-700">

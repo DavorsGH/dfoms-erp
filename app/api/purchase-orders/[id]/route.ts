@@ -6,7 +6,7 @@ import {
   BusinessUnitAccessDeniedError,
   getUserAllowedBusinessUnits,
 } from "@/utils/business-unit-access";
-import { INVENTORY_EDIT_ROLES } from "@/utils/rbac-access";
+import { INVENTORY_PROCUREMENT_MUTATION_ROLES } from "@/utils/rbac-access";
 import {
   PURCHASE_ORDER_DETAIL_SELECT,
   buildPurchaseOrderDeleteBlockedMessage,
@@ -101,7 +101,7 @@ async function assertPurchaseOrderWriteAccess(
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
-  const auth = await requireTenantRoleIn(INVENTORY_EDIT_ROLES);
+  const auth = await requireTenantRoleIn(INVENTORY_PROCUREMENT_MUTATION_ROLES);
   if (!auth.ok) {
     return auth.response;
   }
@@ -197,7 +197,7 @@ async function readConfirmedFlag(request: Request): Promise<boolean> {
 }
 
 export async function DELETE(request: Request, context: RouteContext) {
-  const auth = await requireTenantRoleIn(INVENTORY_EDIT_ROLES);
+  const auth = await requireTenantRoleIn(INVENTORY_PROCUREMENT_MUTATION_ROLES);
   if (!auth.ok) {
     return auth.response;
   }

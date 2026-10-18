@@ -12,7 +12,7 @@ import {
 } from "@/utils/business-unit-view";
 import { createClient } from "@/utils/supabase/server";
 import type { AppRole } from "@/app/dashboard/user-account-types";
-import { canEditInventory } from "@/utils/rbac-access";
+import { canEditInventoryOrProcurement } from "@/utils/rbac-access";
 import {
   PURCHASE_ORDER_DETAIL_SELECT,
   normalizePurchaseOrderDetail,
@@ -83,7 +83,7 @@ export default async function PurchaseOrderPage({
             data as unknown as PurchaseOrderDetailRow,
           )}
           paymentMethods={(paymentMethods as NamedLookup[] | null) ?? []}
-          readOnly={!canEditInventory(role)}
+          readOnly={!canEditInventoryOrProcurement(role)}
         />
       )}
     </InventoryShell>

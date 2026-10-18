@@ -39,6 +39,7 @@ import {
 } from "./operations-register-utils";
 import { allocateFailedInspectionIssueNo } from "./operations-ids-api";
 import type { SiteEntry } from "./sites-utils";
+import { useOperationsReadOnly } from "./operations-read-only-context";
 
 type FailedInspectionsProps = {
   initialEntries: FailedInspectionEntry[];
@@ -75,6 +76,7 @@ export default function FailedInspections({
   tenantId = null,
 }: FailedInspectionsProps) {
   const supabase = createClient();
+  const operationsReadOnly = useOperationsReadOnly();
   const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeFailedInspectionEntry),
@@ -307,15 +309,17 @@ export default function FailedInspections({
 
   return (
     <div className="min-w-0 space-y-6">
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => (showForm ? closeForm() : openAddForm())}
-          className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
-        >
-          {showForm ? "Cancel" : "Add Failed Inspection"}
-        </button>
-      </div>
+      {!operationsReadOnly ? (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => (showForm ? closeForm() : openAddForm())}
+            className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
+          >
+            {showForm ? "Cancel" : "Add Failed Inspection"}
+          </button>
+        </div>
+      ) : null}
 
       {error ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -323,7 +327,7 @@ export default function FailedInspections({
         </p>
       ) : null}
 
-      {showForm ? (
+      {showForm && !operationsReadOnly ? (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
             {editingId ? "Edit Failed Inspection" : "New Failed Inspection"}
@@ -608,9 +612,19 @@ export default function FailedInspections({
                     </td>
                     <td className="px-4 py-3">{entry.completed ? "Yes" : "No"}</td>
                     <RegisterRowActions
-                      onEdit={() => openEditForm(entry)}
-                      onDelete={() => handleDelete(entry.issue_no)}
+                      onEdit={
+                        operationsReadOnly
+                          ? undefined
+                          : () => openEditForm(entry)
+                      }
+                      onDelete={
+                        operationsReadOnly
+                          ? undefined
+                          : () => handleDelete(entry.issue_no)
+                      }
                       deleting={deletingId === entry.issue_no}
+                      disableEdit={operationsReadOnly}
+                      disableDelete={operationsReadOnly}
                     />
                   </tr>
                 );

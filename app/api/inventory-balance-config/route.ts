@@ -18,8 +18,7 @@ import {
   type InventoryBalanceConfigUpdateBody,
 } from "@/utils/inventory-balance-config-types";
 import { createClient } from "@/utils/supabase/server";
-
-const INVENTORY_GO_LIVE_ROLES = ["super_admin", "finance", "director"] as const;
+import { INVENTORY_GO_LIVE_ROLES } from "@/utils/rbac-access";
 
 async function getTenantSupabase() {
   return createClient(await cookies());

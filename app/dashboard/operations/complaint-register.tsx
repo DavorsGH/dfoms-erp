@@ -39,6 +39,7 @@ import {
 } from "./operations-register-utils";
 import { allocateComplaintNo } from "./operations-ids-api";
 import type { SiteEntry } from "./sites-utils";
+import { useOperationsReadOnly } from "./operations-read-only-context";
 
 type ComplaintRegisterProps = {
   initialEntries: ComplaintRegisterEntry[];
@@ -75,6 +76,7 @@ export default function ComplaintRegister({
   tenantId = null,
 }: ComplaintRegisterProps) {
   const supabase = createClient();
+  const operationsReadOnly = useOperationsReadOnly();
   const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeComplaintRegisterEntry),
@@ -393,13 +395,15 @@ export default function ComplaintRegister({
             </select>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => (showForm ? closeForm() : openAddForm())}
-          className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
-        >
-          {showForm ? "Cancel" : "Add Complaint"}
-        </button>
+        {!operationsReadOnly ? (
+          <button
+            type="button"
+            onClick={() => (showForm ? closeForm() : openAddForm())}
+            className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
+          >
+            {showForm ? "Cancel" : "Add Complaint"}
+          </button>
+        ) : null}
       </div>
 
       {error ? (
@@ -408,7 +412,7 @@ export default function ComplaintRegister({
         </p>
       ) : null}
 
-      {showForm ? (
+      {showForm && !operationsReadOnly ? (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
             {editingId ? "Edit Complaint" : "New Complaint"}
@@ -701,9 +705,19 @@ export default function ComplaintRegister({
                     )}
                   </td>
                   <RegisterRowActions
-                    onEdit={() => openEditForm(entry)}
-                    onDelete={() => handleDelete(entry.complaint_no)}
+                    onEdit={
+                      operationsReadOnly
+                        ? undefined
+                        : () => openEditForm(entry)
+                    }
+                    onDelete={
+                      operationsReadOnly
+                        ? undefined
+                        : () => handleDelete(entry.complaint_no)
+                    }
                     deleting={deletingId === entry.complaint_no}
+                    disableEdit={operationsReadOnly}
+                    disableDelete={operationsReadOnly}
                   />
                 </tr>
               ))

@@ -33,6 +33,7 @@ import {
   SITE_SELECT,
   type SiteEntry,
 } from "./sites-utils";
+import { useOperationsReadOnly } from "./operations-read-only-context";
 
 type SitesProps = {
   initialSites: SiteEntry[];
@@ -65,6 +66,7 @@ export default function Sites({
   tenantId = null,
 }: SitesProps) {
   const supabase = createClient();
+  const operationsReadOnly = useOperationsReadOnly();
   const buReadScope = useBusinessUnitReadScope();
   const [sites, setSites] = useState(initialSites.map(normalizeSiteEntry));
   const [employees, setEmployees] = useState(initialEmployees);
@@ -313,13 +315,15 @@ export default function Sites({
             </select>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => (showForm ? closeForm() : openAddForm())}
-          className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
-        >
-          {showForm ? "Cancel" : "Add Site"}
-        </button>
+        {!operationsReadOnly ? (
+          <button
+            type="button"
+            onClick={() => (showForm ? closeForm() : openAddForm())}
+            className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
+          >
+            {showForm ? "Cancel" : "Add Site"}
+          </button>
+        ) : null}
       </div>
 
       {error ? (
@@ -328,7 +332,7 @@ export default function Sites({
         </p>
       ) : null}
 
-      {showForm ? (
+      {showForm && !operationsReadOnly ? (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
             {editingCode ? "Edit Site" : "New Site"}
@@ -568,9 +572,17 @@ export default function Sites({
                       : "—"}
                   </td>
                   <RegisterRowActions
-                    onEdit={() => openEditForm(site)}
-                    onDelete={() => handleDelete(site.site_code)}
+                    onEdit={
+                      operationsReadOnly ? undefined : () => openEditForm(site)
+                    }
+                    onDelete={
+                      operationsReadOnly
+                        ? undefined
+                        : () => handleDelete(site.site_code)
+                    }
                     deleting={deletingCode === site.site_code}
+                    disableEdit={operationsReadOnly}
+                    disableDelete={operationsReadOnly}
                   />
                 </tr>
               ))

@@ -45,6 +45,7 @@ export type StaffSession = {
 const STAFF_PORTAL_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
+  "finance_admin",
   "hr",
   "director",
   "operations_manager",

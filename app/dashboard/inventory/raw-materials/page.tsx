@@ -8,7 +8,7 @@ import {
 } from "@/utils/dashboard-auth";
 import { resolveBusinessUnitReadScope, applyBusinessUnitScope } from "@/utils/business-unit-view";
 import type { AppRole } from "@/app/dashboard/user-account-types";
-import { canEditInventory } from "@/utils/rbac-access";
+import { canAdjustInventoryStock, canEditInventory } from "@/utils/rbac-access";
 import {
   CONTRACT_PROJECT_SELECT,
   type ContractProjectOption,
@@ -143,6 +143,7 @@ export default async function RawMaterialsPage() {
           null
         }
         readOnly={!canEditInventory(role)}
+        showStockAdjustments={canAdjustInventoryStock(role)}
         activeBusinessUnitId={activeBusinessUnitId}
       />
     </InventoryShell>

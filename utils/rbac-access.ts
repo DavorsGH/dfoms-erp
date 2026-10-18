@@ -3,6 +3,7 @@ import type { AppRole } from "@/app/dashboard/user-account-types";
 export const FINANCE_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
+  "finance_admin",
   "hr",
   "director",
 ];
@@ -10,6 +11,7 @@ export const FINANCE_SECTION_ROLES: readonly AppRole[] = [
 export const HR_PAYROLL_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
+  "finance_admin",
   "hr",
   "director",
 ];
@@ -17,6 +19,7 @@ export const HR_PAYROLL_SECTION_ROLES: readonly AppRole[] = [
 export const EMPLOYEES_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
+  "finance_admin",
   "hr",
   "director",
   "operations_manager",
@@ -26,6 +29,7 @@ export const EMPLOYEES_SECTION_ROLES: readonly AppRole[] = [
 export const EMPLOYEES_EDIT_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
+  "finance_admin",
   "hr",
   "director",
 ];
@@ -33,6 +37,7 @@ export const EMPLOYEES_EDIT_ROLES: readonly AppRole[] = [
 export const EMPLOYEES_SALARY_VIEW_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
+  "finance_admin",
   "hr",
   "director",
 ];
@@ -43,6 +48,22 @@ export const OPERATIONS_SECTION_ROLES: readonly AppRole[] = [
   "director",
   "supervisor",
   "hr",
+];
+
+/** Read-only Operations nav (duty roster, sites, registers, reports). */
+export const OPERATIONS_VIEW_ROLES: readonly AppRole[] = ["finance_admin"];
+
+export const OPERATIONS_LAYOUT_ROLES: readonly AppRole[] = [
+  ...OPERATIONS_SECTION_ROLES,
+  ...OPERATIONS_VIEW_ROLES,
+];
+
+/** Suppliers, POs, product purchases, internal consumption (finance_admin included). */
+export const PROCUREMENT_EDIT_ROLES: readonly AppRole[] = [
+  "super_admin",
+  "operations_manager",
+  "director",
+  "finance_admin",
 ];
 
 export const OPERATIONS_FULL_EDIT_ROLES: readonly AppRole[] = [
@@ -56,6 +77,7 @@ export const INVENTORY_SECTION_ROLES: readonly AppRole[] = [
   "operations_manager",
   "director",
   "finance",
+  "finance_admin",
   "sales_rep",
 ];
 
@@ -63,9 +85,22 @@ export const INVENTORY_SECTION_ROLES: readonly AppRole[] = [
 export const FINANCE_SUPPLIERS_PAGE_ROLES: readonly AppRole[] =
   INVENTORY_SECTION_ROLES;
 
+/** Stock adjustments, inventory go-live config, and legacy “full inventory ops” guards. */
 export const INVENTORY_EDIT_ROLES: readonly AppRole[] = [
   "super_admin",
   "operations_manager",
+  "director",
+];
+
+/** Catalog, batches, photos, product bulk import — not stock adjustments or go-live. */
+export const INVENTORY_OPERATOR_ROLES: readonly AppRole[] = [
+  ...INVENTORY_EDIT_ROLES,
+  "finance_admin",
+];
+
+export const INVENTORY_GO_LIVE_ROLES: readonly AppRole[] = [
+  "super_admin",
+  "finance",
   "director",
 ];
 
@@ -73,6 +108,7 @@ export const INVENTORY_EDIT_ROLES: readonly AppRole[] = [
 export const CRM_FULL_FEATURE_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
+  "finance_admin",
   "hr",
   "director",
   "operations_manager",
@@ -115,6 +151,7 @@ export const CRM_SALES_REP_ALLOWED_PATH_PREFIXES: readonly string[] = [
 export const POS_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
+  "finance_admin",
   "hr",
   "director",
   "sales_rep",
@@ -153,6 +190,7 @@ export const START_ROTATION_ROLES: readonly AppRole[] = [
 export const SELF_SERVICE_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
+  "finance_admin",
   "hr",
   "director",
   "operations_manager",
@@ -169,10 +207,22 @@ export const LEAVE_BALANCE_MANAGE_ROLES: readonly AppRole[] = [
 ];
 
 export const REPORT_CATEGORY_ROLES: Record<string, readonly AppRole[]> = {
-  finance: ["super_admin", "finance", "hr", "director"],
-  "hr-payroll": ["super_admin", "finance", "hr", "director"],
-  operations: ["super_admin", "operations_manager", "director", "supervisor"],
-  inventory: ["super_admin", "operations_manager", "director", "finance"],
+  finance: ["super_admin", "finance", "finance_admin", "hr", "director"],
+  "hr-payroll": ["super_admin", "finance", "finance_admin", "hr", "director"],
+  operations: [
+    "super_admin",
+    "operations_manager",
+    "director",
+    "supervisor",
+    "finance_admin",
+  ],
+  inventory: [
+    "super_admin",
+    "operations_manager",
+    "director",
+    "finance",
+    "finance_admin",
+  ],
   sales: CRM_FULL_FEATURE_ROLES,
   "client-facing": ["super_admin"],
   incidents: ["super_admin", "operations_manager", "director", "supervisor"],
@@ -257,7 +307,46 @@ export function canViewEmployeeSalary(role: AppRole | null): boolean {
 }
 
 export function canAccessOperationsSection(role: AppRole | null): boolean {
-  return roleIn(role, OPERATIONS_SECTION_ROLES);
+  return roleIn(role, OPERATIONS_LAYOUT_ROLES);
+}
+
+export function isOperationsReadOnlyRole(role: AppRole | null): boolean {
+  return role === "finance_admin";
+}
+
+export function canEditProcurement(role: AppRole | null): boolean {
+  return roleIn(role, PROCUREMENT_EDIT_ROLES);
+}
+
+export function canEditInventoryOrProcurement(role: AppRole | null): boolean {
+  return canEditInventory(role) || canEditProcurement(role);
+}
+
+/** POST/PATCH on suppliers, POs, purchases, internal consumption (not stock adjustments). */
+export const INVENTORY_PROCUREMENT_MUTATION_ROLES: readonly AppRole[] = [
+  ...INVENTORY_OPERATOR_ROLES,
+];
+
+export function canDeleteEmployees(role: AppRole | null): boolean {
+  return canEditEmployees(role) && role !== "finance_admin";
+}
+
+export function canEditEmployeePayFields(role: AppRole | null): boolean {
+  return canEditEmployees(role) && role !== "finance_admin";
+}
+
+export function canProvisionLeaveBalancesOnEmployeeCreate(
+  role: AppRole | null,
+): boolean {
+  return roleIn(role, ["super_admin", "finance", "hr", "director"] as const);
+}
+
+export function canRecordEmploymentHistory(role: AppRole | null): boolean {
+  return role !== null && role !== "finance_admin";
+}
+
+export function canUseEmployeeBulkImport(role: AppRole | null): boolean {
+  return canAccessEmployeesSection(role) && role !== "finance_admin";
 }
 
 export function canStartRotation(role: AppRole | null): boolean {
@@ -349,7 +438,15 @@ export function canRecordCreditNoteRefund(role: AppRole | null): boolean {
 }
 
 export function canEditInventory(role: AppRole | null): boolean {
+  return roleIn(role, INVENTORY_OPERATOR_ROLES);
+}
+
+export function canAdjustInventoryStock(role: AppRole | null): boolean {
   return roleIn(role, INVENTORY_EDIT_ROLES);
+}
+
+export function canConfigureInventoryGoLive(role: AppRole | null): boolean {
+  return roleIn(role, INVENTORY_GO_LIVE_ROLES);
 }
 
 export function canManagePayrollPeriod(role: AppRole | null): boolean {
@@ -398,7 +495,8 @@ export function getDashboardVisibility(role: AppRole | null): DashboardVisibilit
     role === "super_admin" ||
     role === "operations_manager" ||
     role === "director" ||
-    role === "finance";
+    role === "finance" ||
+    role === "finance_admin";
 
   const showDirectorScorecard =
     role === "super_admin" || role === "director";

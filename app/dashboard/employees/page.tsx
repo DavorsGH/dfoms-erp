@@ -12,7 +12,12 @@ import {
 } from "@/utils/business-unit-view";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import {
+  canDeleteEmployees,
+  canEditEmployeePayFields,
   canEditEmployees,
+  canProvisionLeaveBalancesOnEmployeeCreate,
+  canRecordEmploymentHistory,
+  canUseEmployeeBulkImport,
   canViewEmployeeSalary,
 } from "@/utils/rbac-access";
 import HrPayrollShell from "../hr-payroll/hr-payroll-shell";
@@ -108,6 +113,13 @@ export default async function EmployeesPage() {
         projectNameMap={buildProjectNameMap(lookups.projects)}
         fetchError={error?.message ?? hrPayrollSettingsResult.error?.message ?? null}
         canEditEmployees={canEditEmployees(role)}
+        canEditEmployeePayFields={canEditEmployeePayFields(role)}
+        canDeleteEmployees={canDeleteEmployees(role)}
+        canProvisionLeaveBalancesOnCreate={canProvisionLeaveBalancesOnEmployeeCreate(
+          role,
+        )}
+        canRecordEmploymentHistory={canRecordEmploymentHistory(role)}
+        canUseEmployeeBulkImport={canUseEmployeeBulkImport(role)}
         defaultWelfareDeductionRate={defaultWelfareDeductionRate}
         canViewSalary={canViewEmployeeSalary(role)}
         activeBusinessUnitId={activeBusinessUnitId}

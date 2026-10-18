@@ -101,6 +101,7 @@ type RawMaterialsProps = {
   initialSuppliers: SupplierRow[];
   fetchError: string | null;
   readOnly?: boolean;
+  showStockAdjustments?: boolean;
   /** Create-only stamp for standalone purchases; null = All Businesses. */
   activeBusinessUnitId?: string | null;
   tenantId?: string | null;
@@ -150,6 +151,7 @@ export default function RawMaterials({
   initialSuppliers,
   fetchError,
   readOnly = false,
+  showStockAdjustments = true,
   activeBusinessUnitId = null,
   tenantId = null,
 }: RawMaterialsProps) {
@@ -1612,6 +1614,7 @@ export default function RawMaterials({
         </InventoryCollapsibleHistorySection>
       </section>
 
+      {showStockAdjustments ? (
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -1824,7 +1827,10 @@ export default function RawMaterials({
             </form>
           </section>
         ) : null}
+      </section>
+      ) : null}
 
+      <section className="space-y-4">
         <InventoryCollapsibleHistorySection
           title="Stock Adjustments"
           count={adjustments.length}
