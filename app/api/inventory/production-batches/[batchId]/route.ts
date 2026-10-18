@@ -10,6 +10,7 @@ import {
 } from "@/utils/business-unit-access.server";
 import { logInventoryUserActivity } from "@/lib/inventory/inventory-audit-log";
 import { validateProductionBatchMaterialLines } from "@/lib/inventory/production-batch-form-validation";
+import { guardProductionBatchWriteBusinessUnit } from "@/lib/inventory/inventory-item-business-unit-guard.server";
 import { mapProductionBatchSaveErrorMessage } from "@/lib/inventory/production-batch-save-error";
 
 type PatchBody = {
@@ -159,6 +160,23 @@ export async function PATCH(
       materialValidation.formError ??
       "Check the material lines and try again.";
     return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  const batchBusinessUnitId =
+    (batchRow as { business_unit_id?: string | null }).business_unit_id ?? null;
+
+  const batchBuGuard = await guardProductionBatchWriteBusinessUnit({
+    supabase,
+    tenantId: auth.tenantId,
+    finishedProductId: body.finished_product_id.trim(),
+    materialIds,
+    writeBusinessUnitId: batchBusinessUnitId,
+  });
+  if (!batchBuGuard.ok) {
+    return NextResponse.json(
+      { error: batchBuGuard.error },
+      { status: batchBuGuard.status },
+    );
   }
 
   const { error: rpcError } = await supabase.rpc("update_production_batch", {

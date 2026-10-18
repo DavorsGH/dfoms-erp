@@ -1,4 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  buildPosProductLabelById,
+  mapPosCheckoutRpcErrorMessage,
+} from "@/lib/inventory/pos-checkout-error-message";
+import { verifyPosCartLinesMatchWriteBusinessUnit } from "@/lib/inventory/inventory-item-business-unit-guard.client";
 import type { FinishedProductRecord } from "../inventory/finished-products-utils";
 import type { ClientEntry } from "../operations/clients-utils";
 import { formatInventoryQuantity } from "../inventory/inventory-utils";
@@ -319,10 +324,27 @@ export type PosCheckoutWithStoreCreditInput = PosCheckoutInput & {
   cashTendered: number;
 };
 
+async function assertPosCartMatchesWriteBusinessUnit(
+  supabase: SupabaseClient,
+  input: PosCheckoutInput,
+): Promise<void> {
+  const cartBuCheck = await verifyPosCartLinesMatchWriteBusinessUnit({
+    supabase,
+    tenantId: input.tenantId,
+    productIds: input.cartLines.map((line) => line.productId),
+    writeBusinessUnitId: input.businessUnitId ?? null,
+  });
+  if (!cartBuCheck.ok) {
+    throw new Error(cartBuCheck.message);
+  }
+}
+
 export async function runPosCheckoutWithStoreCredit(
   supabase: SupabaseClient,
   input: PosCheckoutWithStoreCreditInput,
 ): Promise<PosCheckoutRunSummary> {
+  await assertPosCartMatchesWriteBusinessUnit(supabase, input);
+
   const { data, error } = await supabase.rpc("pos_checkout_with_store_credit", {
     p_tenant_id: input.tenantId,
     p_business_unit_id: input.businessUnitId ?? null,
@@ -346,7 +368,12 @@ export async function runPosCheckoutWithStoreCredit(
   });
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error(
+      mapPosCheckoutRpcErrorMessage(
+        error,
+        buildPosProductLabelById(input.cartLines),
+      ),
+    );
   }
 
   const result = data as Record<string, unknown> | null;
@@ -367,6 +394,8 @@ export async function runPosCheckout(
   supabase: SupabaseClient,
   input: PosCheckoutInput,
 ): Promise<PosCheckoutRunSummary> {
+  await assertPosCartMatchesWriteBusinessUnit(supabase, input);
+
   const { data, error } = await supabase.rpc("checkout_pos_cart", {
     p_tenant_id: input.tenantId,
     p_business_unit_id: input.businessUnitId ?? null,
@@ -388,7 +417,12 @@ export async function runPosCheckout(
   });
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error(
+      mapPosCheckoutRpcErrorMessage(
+        error,
+        buildPosProductLabelById(input.cartLines),
+      ),
+    );
   }
 
   const result = data as {

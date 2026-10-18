@@ -4,7 +4,12 @@ import Tooltip from "@/components/ui/tooltip";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -181,10 +186,25 @@ export default function ClientQuotationsList({
   emailDeliveryByQuotationId = {},
 }: ClientQuotationsListProps) {
   const router = useRouter();
+  const { alertError } = useAlert();
+
+  function showActionError(message: string) {
+    void alertError(clientFacingSalesCrmError(message), {
+      title: SALES_CRM_ALERT_TITLE,
+    });
+  }
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
+
   const [quotations, setQuotations] = useState(
     initialQuotations.map(normalizeClientQuotationListRow),
   );
-  const [error, setError] = useState<string | null>(fetchError);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingQuotationAction | null>(null);
@@ -201,8 +221,6 @@ export default function ClientQuotationsList({
   async function handleDelete(quotation: ClientQuotationListRow) {
     setConfirmingDeleteId(null);
     setDeletingId(quotation.id);
-    setError(null);
-
     try {
       const response = await fetch(`/api/client-quotations/${quotation.id}`, {
         method: "DELETE",
@@ -213,7 +231,7 @@ export default function ClientQuotationsList({
         | null;
 
       if (!response.ok) {
-        setError(payload?.error ?? "Unable to delete quotation.");
+        showActionError(payload?.error ?? "Unable to delete quotation.");
         return;
       }
 
@@ -222,7 +240,7 @@ export default function ClientQuotationsList({
       );
       router.refresh();
     } catch {
-      setError("Unable to delete quotation. Check your connection and try again.");
+      showActionError("Unable to delete quotation. Check your connection and try again.");
     } finally {
       setDeletingId(null);
     }
@@ -235,8 +253,6 @@ export default function ClientQuotationsList({
 
     const { quotationId, action } = pendingAction;
     setActingId(quotationId);
-    setError(null);
-
     try {
       if (action === "apply-to-contract") {
         const response = await fetch(
@@ -248,7 +264,7 @@ export default function ClientQuotationsList({
           | null;
 
         if (!response.ok || !payload?.service_contract?.id) {
-          setError(payload?.error ?? "Unable to apply quotation to contract.");
+          showActionError(payload?.error ?? "Unable to apply quotation to contract.");
           return;
         }
 
@@ -268,7 +284,7 @@ export default function ClientQuotationsList({
           | null;
 
         if (!response.ok || !payload?.service_contract?.id) {
-          setError(payload?.error ?? "Unable to raise contract.");
+          showActionError(payload?.error ?? "Unable to raise contract.");
           return;
         }
 
@@ -289,7 +305,7 @@ export default function ClientQuotationsList({
           | null;
 
         if (!response.ok || !payload?.client_invoice?.id) {
-          setError(payload?.error ?? "Unable to convert quotation.");
+          showActionError(payload?.error ?? "Unable to convert quotation.");
           return;
         }
 
@@ -316,7 +332,7 @@ export default function ClientQuotationsList({
         | null;
 
       if (!response.ok || !payload?.client_quotation) {
-        setError(payload?.error ?? "Unable to update quotation status.");
+        showActionError(payload?.error ?? "Unable to update quotation status.");
         return;
       }
 
@@ -324,7 +340,7 @@ export default function ClientQuotationsList({
       setPendingAction(null);
       router.refresh();
     } catch {
-      setError("Unable to complete action. Check your connection and try again.");
+      showActionError("Unable to complete action. Check your connection and try again.");
     } finally {
       setActingId(null);
     }
@@ -332,12 +348,6 @@ export default function ClientQuotationsList({
 
   return (
     <div className="space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       <div className="flex justify-end">
         <Link
           href="/dashboard/sales-crm/quotations/new"
@@ -514,7 +524,6 @@ export default function ClientQuotationsList({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setError(null);
                                   setPendingAction(null);
                                   setConfirmingDeleteId(quotation.id);
                                 }}
@@ -556,7 +565,6 @@ export default function ClientQuotationsList({
                               disabled={actingId === quotation.id}
                               buttonClassName={statusMenuButtonClassName}
                               onSelect={(item) => {
-                                setError(null);
                                 setConfirmingDeleteId(null);
                                 setPendingAction({
                                   quotationId: quotation.id,

@@ -11,7 +11,10 @@ import {
   roundCurrency,
   sumActiveSharePct,
 } from "@/lib/finance/dividends-server";
-import { fetchTenantShareholders } from "@/lib/finance/dividends-load";
+import {
+  fetchDividendDeclarationWriteBundle,
+  fetchTenantShareholders,
+} from "@/lib/finance/dividends-load";
 import { responseForDirectorsPostgrestError } from "@/lib/finance/directors-board-api-errors";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
@@ -180,7 +183,11 @@ export async function PATCH(
     );
   }
 
-  return NextResponse.json({ declaration: updated });
+  const bundle = await fetchDividendDeclarationWriteBundle(admin, auth.tenantId, id);
+  return NextResponse.json({
+    declaration: bundle.declaration ?? updated,
+    lines: bundle.lines,
+  });
 }
 
 export async function DELETE(

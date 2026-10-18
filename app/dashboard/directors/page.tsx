@@ -18,8 +18,14 @@ import {
 } from "@/lib/finance/dividends-load";
 import { createAdminClient } from "@/utils/supabase/admin";
 import DirectorsBoard from "./directors-board";
+import {
+  DashboardPagePerfMeta,
+  readSupabasePerfCallIndex,
+} from "@/lib/dashboard-page-perf-probe";
 
 export default async function DirectorsPage() {
+  const renderStartedAt = Date.now();
+  const supabaseCallsBefore = readSupabasePerfCallIndex();
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
@@ -98,7 +104,12 @@ export default async function DirectorsPage() {
     null;
 
   return (
-    <DirectorsBoard
+    <>
+      <DashboardPagePerfMeta
+        renderStartedAt={renderStartedAt}
+        supabaseCallsBefore={supabaseCallsBefore}
+      />
+      <DirectorsBoard
       data={viewModel}
       fetchError={dashboardPageData.fetchError}
       dividends={{
@@ -109,5 +120,6 @@ export default async function DirectorsPage() {
         fetchError: dividendsFetchError,
       }}
     />
+    </>
   );
 }

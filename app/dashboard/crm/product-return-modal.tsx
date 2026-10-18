@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { createClient } from "@/utils/supabase/client";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import { buildPosStoreCreditCheckoutUrl } from "@/app/dashboard/pos/pos-store-credit-utils";
 import { formatGHS } from "@/app/dashboard/finance/income-register-utils";
 import { formatInventoryQuantity } from "@/app/dashboard/inventory/inventory-utils";
@@ -22,6 +27,7 @@ import {
   type ProductReturnReceiptLine,
   type ProductReturnRpcResult,
 } from "./product-return-utils";
+import { verifyFinishedProductMatchesWriteBusinessUnit } from "@/lib/inventory/inventory-item-business-unit-guard.client";
 
 type ProductReturnModalProps = {
   invoiceNo: string;
@@ -47,8 +53,18 @@ export default function ProductReturnModal({
   onSuccess,
 }: ProductReturnModalProps) {
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const returnFormRef = useRef<HTMLFormElement>(null);
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
+  const refundMethodRef = useRef<HTMLSelectElement>(null);
   const { viewAllBusinessUnits, activeBusinessUnitId, units } =
     useBusinessUnitView();
+
+  function showActionError(message: string) {
+    void alertError(clientFacingSalesCrmError(message), {
+      title: SALES_CRM_ALERT_TITLE,
+    });
+  }
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -62,7 +78,6 @@ export default function ProductReturnModal({
   const [outcome, setOutcome] = useState<ProductReturnOutcome>("store_credit");
   const [refundMethod, setRefundMethod] = useState(paymentMethods[0] ?? "Cash");
   const [refundNotes, setRefundNotes] = useState("");
-  const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<{
     creditNoteId: string | null;
@@ -70,6 +85,14 @@ export default function ProductReturnModal({
     outcome: ProductReturnOutcome;
     refundMethod?: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (loadError) {
+      void alertError(clientFacingSalesCrmError(loadError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [loadError, alertError]);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,27 +165,33 @@ export default function ProductReturnModal({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    setSubmitError(null);
+    reasonRef.current?.setCustomValidity("");
+    refundMethodRef.current?.setCustomValidity("");
 
     if (!buGate.ok) {
-      setSubmitError(buGate.message);
       return;
     }
 
     const trimmedReason = reason.trim();
     if (!trimmedReason) {
-      setSubmitError("Return reason is required.");
+      reasonRef.current?.setCustomValidity("Return reason is required.");
+      reasonRef.current?.reportValidity();
       return;
     }
 
     const payloadLines = buildProductReturnLinesPayload(lines);
     if (payloadLines.length === 0) {
-      setSubmitError("Enter a return quantity on at least one line.");
+      showActionError("Enter a return quantity on at least one line.");
       return;
     }
 
     if (outcome === "refund_now" && !refundMethod.trim()) {
-      setSubmitError("Choose a refund payment method.");
+      refundMethodRef.current?.setCustomValidity("Choose a refund payment method.");
+      refundMethodRef.current?.reportValidity();
+      return;
+    }
+
+    if (!returnFormRef.current?.reportValidity()) {
       return;
     }
 
@@ -170,13 +199,13 @@ export default function ProductReturnModal({
 
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setSubmitError(buContext.error);
+      showActionError(buContext.error);
       setSubmitting(false);
       return;
     }
 
     if (buContext.tenantId !== tenantId) {
-      setSubmitError("Workspace session does not match this sale.");
+      showActionError("Workspace session does not match this sale.");
       setSubmitting(false);
       return;
     }
@@ -186,6 +215,24 @@ export default function ProductReturnModal({
       activeBusinessUnitId,
       units,
     });
+
+    const returnProductIds = [
+      ...new Set(lines.map((line) => line.productId).filter(Boolean)),
+    ];
+    for (const productId of returnProductIds) {
+      const productBuCheck = await verifyFinishedProductMatchesWriteBusinessUnit({
+        supabase,
+        tenantId,
+        productId,
+        writeBusinessUnitId: pBusinessUnitId,
+        action: "return",
+      });
+      if (!productBuCheck.ok) {
+        showActionError(productBuCheck.message);
+        setSubmitting(false);
+        return;
+      }
+    }
 
     let rpcError: { message: string } | null = null;
     let data: ProductReturnRpcResult | null = null;
@@ -228,7 +275,7 @@ export default function ProductReturnModal({
     }
 
     if (rpcError) {
-      setSubmitError(formatProductReturnRpcError(rpcError.message));
+      showActionError(formatProductReturnRpcError(rpcError.message));
       setSubmitting(false);
       return;
     }
@@ -269,9 +316,7 @@ export default function ProductReturnModal({
           <p className="px-6 py-8 text-sm text-slate-600">Loading receipt lines…</p>
         ) : loadError ? (
           <div className="space-y-4 px-6 py-6">
-            <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {loadError}
-            </p>
+            <p className="text-sm text-slate-600">Could not load this receipt.</p>
             <button
               type="button"
               onClick={onClose}
@@ -287,7 +332,11 @@ export default function ProductReturnModal({
             onClose={onClose}
           />
         ) : (
-          <form onSubmit={(e) => void handleSubmit(e)} className="space-y-5 px-6 py-5">
+          <form
+            ref={returnFormRef}
+            onSubmit={(e) => void handleSubmit(e)}
+            className="space-y-5 px-6 py-5"
+          >
             {!buGate.ok ? (
               <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
                 {buGate.message}
@@ -302,6 +351,7 @@ export default function ProductReturnModal({
                   Reason <span className="text-red-600">*</span>
                 </label>
                 <textarea
+                  ref={reasonRef}
                   required
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
@@ -380,6 +430,7 @@ export default function ProductReturnModal({
                     Refund payment method
                   </label>
                   <select
+                    ref={refundMethodRef}
                     value={refundMethod}
                     onChange={(e) => setRefundMethod(e.target.value)}
                     className={inputClassName}
@@ -430,12 +481,6 @@ export default function ProductReturnModal({
                   : "No cash movement (credit only)"}
               </p>
             </div>
-
-            {submitError ? (
-              <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {submitError}
-              </p>
-            ) : null}
 
             <div className="flex flex-wrap gap-3 border-t border-slate-200 pt-4">
               <button

@@ -1,8 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { createClient } from "@/utils/supabase/client";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -44,6 +49,23 @@ export default function ServiceCatalogList({
   fetchError,
 }: ServiceCatalogListProps) {
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const serviceFormRef = useRef<HTMLFormElement>(null);
+
+  function showActionError(message: string) {
+    void alertError(clientFacingSalesCrmError(message), {
+      title: SALES_CRM_ALERT_TITLE,
+    });
+  }
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
+
   const [services, setServices] = useState(initialServices);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -52,7 +74,6 @@ export default function ServiceCatalogList({
     EMPTY_SERVICE_CATALOG_FORM,
   );
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(fetchError);
 
   useEffect(() => {
     setServices(initialServices.map(normalizeServiceCatalogEntry));
@@ -65,7 +86,7 @@ export default function ServiceCatalogList({
       .order("service_name", { ascending: true });
 
     if (refreshError) {
-      setError(refreshError.message);
+      showActionError(refreshError.message);
       return;
     }
 
@@ -74,7 +95,6 @@ export default function ServiceCatalogList({
         normalizeServiceCatalogEntry,
       ),
     );
-    setError(null);
   }
 
   function closeForm() {
@@ -97,15 +117,13 @@ export default function ServiceCatalogList({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    const payload = buildServiceCatalogSavePayload(form);
-    if (!payload.service_name) {
-      setError("Service name is required.");
-      setLoading(false);
+    if (!serviceFormRef.current?.reportValidity()) {
       return;
     }
+
+    setLoading(true);
+
+    const payload = buildServiceCatalogSavePayload(form);
 
     if (editingId) {
       const { error: saveError } = await supabase
@@ -114,7 +132,7 @@ export default function ServiceCatalogList({
         .eq("id", editingId);
 
       if (saveError) {
-        setError(saveError.message);
+        showActionError(saveError.message);
         setLoading(false);
         return;
       }
@@ -123,7 +141,9 @@ export default function ServiceCatalogList({
         await resolveSessionTenantId(supabase);
 
       if (tenantError || !tenantId) {
-        setError(tenantError ?? "Unable to resolve workspace for this session.");
+        showActionError(
+          tenantError ?? "Unable to resolve workspace for this session.",
+        );
         setLoading(false);
         return;
       }
@@ -134,7 +154,7 @@ export default function ServiceCatalogList({
       });
 
       if (saveError) {
-        setError(saveError.message);
+        showActionError(saveError.message);
         setLoading(false);
         return;
       }
@@ -151,7 +171,6 @@ export default function ServiceCatalogList({
     }
 
     setDeletingId(serviceId);
-    setError(null);
 
     const { error: deleteError } = await supabase
       .from("service_catalog")
@@ -159,7 +178,7 @@ export default function ServiceCatalogList({
       .eq("id", serviceId);
 
     if (deleteError) {
-      setError(deleteError.message);
+      showActionError(deleteError.message);
       setDeletingId(null);
       return;
     }
@@ -195,18 +214,16 @@ export default function ServiceCatalogList({
         </div>
       </div>
 
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       {showForm ? (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
             {editingId ? "Edit Service" : "Add Service"}
           </h3>
-          <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
+          <form
+            ref={serviceFormRef}
+            onSubmit={handleSubmit}
+            className="grid gap-4 sm:grid-cols-2"
+          >
             <div className="sm:col-span-2">
               <label className="mb-1 block text-sm font-medium text-slate-700">
                 Service name

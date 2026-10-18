@@ -31,6 +31,8 @@ import {
   nullableText,
 } from "./inventory-utils";
 import { formatProductionBatchEditBlockReason } from "@/lib/inventory/production-batch-edit-message";
+import { verifyProductionBatchMatchesWriteBusinessUnit } from "@/lib/inventory/inventory-item-business-unit-guard.client";
+import { INVENTORY_ACTION_ALERT_TITLE } from "@/lib/inventory/inventory-item-business-unit-guard";
 import { allocateBatchNumber } from "./inventory-ids-api";
 import {
   calculateBatchPreview,
@@ -580,7 +582,7 @@ export default function ProductionBatches({
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) {
         void alertDialog({
-          title: "Couldn't save batch",
+          title: INVENTORY_ACTION_ALERT_TITLE,
           message:
             payload.error ??
             "Couldn't save the production batch. Please try again.",
@@ -608,6 +610,27 @@ export default function ProductionBatches({
     if (allocated.error || !allocated.batchNumber) {
       setMaterialFormError(allocated.error ?? "Unable to allocate batch number.");
       return;
+    }
+
+    if (tenantId) {
+      const selectedProduct = products.find(
+        (row) => row.id === batchForm.finished_product_id,
+      );
+      const batchBuCheck = await verifyProductionBatchMatchesWriteBusinessUnit({
+        supabase,
+        tenantId,
+        finishedProductId: batchForm.finished_product_id,
+        materialIds: materialPayload.map((line) => line.material_id),
+        writeBusinessUnitId: stampResult.businessUnitId,
+        knownFinishedProductBusinessUnitId: selectedProduct?.business_unit_id ?? null,
+      });
+      if (!batchBuCheck.ok) {
+        void alertDialog({
+          title: INVENTORY_ACTION_ALERT_TITLE,
+          message: batchBuCheck.message,
+        });
+        return;
+      }
     }
 
     const { error: rpcError } = await supabase.rpc("create_production_batch", {

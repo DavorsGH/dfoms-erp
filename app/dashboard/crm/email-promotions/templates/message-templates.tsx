@@ -1,7 +1,12 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import RegisterRowActions, {
   getStripedRowClassName,
 } from "../../../finance/register-row-actions";
@@ -88,6 +93,21 @@ export default function MessageTemplates({
   fetchError,
 }: MessageTemplatesProps) {
   void tenantId;
+  const { alertError } = useAlert();
+
+  function showActionError(message: string) {
+    void alertError(clientFacingSalesCrmError(message), {
+      title: SALES_CRM_ALERT_TITLE,
+    });
+  }
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
 
   const [templates, setTemplates] = useState(initialTemplates);
   const [showForm, setShowForm] = useState(false);
@@ -95,7 +115,6 @@ export default function MessageTemplates({
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(fetchError);
   const [typeFilter, setTypeFilter] = useState("");
   const [channelFilter, setChannelFilter] = useState("");
   const emailBodyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -126,19 +145,17 @@ export default function MessageTemplates({
     };
 
     if (!response.ok) {
-      setError(payload.error ?? "Failed to refresh templates.");
+      showActionError(payload.error ?? "Failed to refresh templates.");
       return;
     }
 
     setTemplates(payload.templates ?? []);
-    setError(null);
   }
 
   function openAddForm() {
     setEditingId(null);
     setForm(emptyForm);
     setShowForm(true);
-    setError(null);
   }
 
   function openEditForm(row: MessageTemplateRow) {
@@ -153,7 +170,6 @@ export default function MessageTemplates({
       variablesText: row.variables.join(", "),
     });
     setShowForm(true);
-    setError(null);
   }
 
   function closeForm() {
@@ -164,8 +180,6 @@ export default function MessageTemplates({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    setError(null);
-
     const payload = {
       name: form.name,
       template_type: form.template_type,
@@ -178,7 +192,7 @@ export default function MessageTemplates({
 
     const clientValidation = validateMessageTemplateInput(payload);
     if (clientValidation) {
-      setError(clientValidation);
+      showActionError(clientValidation);
       return;
     }
 
@@ -197,7 +211,7 @@ export default function MessageTemplates({
 
     const result = (await response.json()) as { error?: string };
     if (!response.ok) {
-      setError(result.error ?? "Failed to save template.");
+      showActionError(result.error ?? "Failed to save template.");
       setLoading(false);
       return;
     }
@@ -217,15 +231,13 @@ export default function MessageTemplates({
     }
 
     setDeactivatingId(row.id);
-    setError(null);
-
     const response = await fetch(`/api/message-templates/${row.id}`, {
       method: "DELETE",
     });
     const result = (await response.json()) as { error?: string };
 
     if (!response.ok) {
-      setError(result.error ?? "Failed to deactivate template.");
+      showActionError(result.error ?? "Failed to deactivate template.");
       setDeactivatingId(null);
       return;
     }
@@ -240,12 +252,6 @@ export default function MessageTemplates({
 
   return (
     <div className="min-w-0 space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap gap-3">
           <div>

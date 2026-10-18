@@ -22,6 +22,8 @@ import {
   type ProductPurchaseWriteBody,
 } from "@/utils/product-purchases-types";
 import { allocatePlotNumber } from "@/app/dashboard/inventory/inventory-ids-api";
+import { guardFinishedProductWriteBusinessUnit } from "@/lib/inventory/inventory-item-business-unit-guard.server";
+import { mapInventoryMutationErrorMessage } from "@/lib/inventory/inventory-mutation-error";
 import { createClient } from "@/utils/supabase/server";
 
 async function getTenantSupabase() {
@@ -103,7 +105,7 @@ export async function POST(request: Request) {
 
   const { data: product, error: productError } = await supabase
     .from("finished_products")
-    .select("id, sourcing_type, is_archived")
+    .select("id, sourcing_type, is_archived, business_unit_id")
     .eq("id", trimmed.product_id)
     .eq("tenant_id", auth.tenantId)
     .maybeSingle();
@@ -238,6 +240,20 @@ export async function POST(request: Request) {
     businessUnitId = writeBu.businessUnitId;
   }
 
+  const productBuGuard = await guardFinishedProductWriteBusinessUnit({
+    supabase,
+    tenantId: auth.tenantId,
+    productId: trimmed.product_id,
+    writeBusinessUnitId: businessUnitId,
+    action: "purchase",
+  });
+  if (!productBuGuard.ok) {
+    return NextResponse.json(
+      { error: productBuGuard.error },
+      { status: productBuGuard.status },
+    );
+  }
+
   const { plotNumber, error: plotError } = await allocatePlotNumber(supabase);
   if (plotError || !plotNumber) {
     return NextResponse.json(
@@ -266,7 +282,14 @@ export async function POST(request: Request) {
   );
 
   if (rpcError) {
-    return NextResponse.json({ error: rpcError.message }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: mapInventoryMutationErrorMessage(rpcError, {
+          fallbackMessage: "Couldn't record this purchase. Please try again.",
+        }),
+      },
+      { status: 400 },
+    );
   }
 
   const resolvedPurchaseId =

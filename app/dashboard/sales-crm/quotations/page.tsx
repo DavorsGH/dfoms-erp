@@ -23,6 +23,7 @@ import {
 import { loadActiveServiceContractsByClientId } from "@/utils/service-contracts-api";
 import { loadQuotationEmailDeliverySummaries } from "@/utils/email-delivery-status";
 import CrmShell from "@/app/dashboard/crm/crm-shell";
+import SalesCrmMountErrorAlert from "@/lib/crm/sales-crm-mount-error-alert";
 import ClientQuotationsList from "./client-quotations-list";
 
 export default async function ClientQuotationsPage() {
@@ -31,9 +32,7 @@ export default async function ClientQuotationsPage() {
   if (!tenantId) {
     return (
       <CrmShell sectionTitle="Quotations">
-        <p className="text-sm text-red-700">
-          Unable to resolve your workspace. Contact support if this persists.
-        </p>
+        <SalesCrmMountErrorAlert message="Unable to resolve your workspace. Contact support if this persists." />
       </CrmShell>
     );
   }

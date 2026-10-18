@@ -201,6 +201,58 @@ export default function Dividends({
     if (decl.lines) setLines(decl.lines);
   }
 
+  function mergeShareholderFromWrite(
+    shareholder: TenantShareholderRow,
+    isNew: boolean,
+  ) {
+    setShareholders((prev) => {
+      const existing = prev.find((row) => row.id === shareholder.id);
+      const merged: TenantShareholderRow = {
+        ...shareholder,
+        can_delete: isNew ? true : existing?.can_delete,
+      };
+      const without = prev.filter((row) => row.id !== merged.id);
+      return [...without, merged].sort((a, b) =>
+        a.full_name.localeCompare(b.full_name),
+      );
+    });
+  }
+
+  function removeShareholderFromState(id: string) {
+    setShareholders((prev) => prev.filter((row) => row.id !== id));
+  }
+
+  function applyDeclarationWritePatch(data: {
+    declaration?: DividendDeclarationRow | null;
+    lines?: DividendDeclarationLineRow[];
+  }): boolean {
+    if (!data.declaration?.id) {
+      return false;
+    }
+    const declarationId = data.declaration.id;
+    setDeclarations((prev) => {
+      const index = prev.findIndex((row) => row.id === declarationId);
+      if (index >= 0) {
+        const next = [...prev];
+        next[index] = data.declaration!;
+        return next;
+      }
+      return [data.declaration!, ...prev];
+    });
+    if (data.lines) {
+      setLines((prev) => [
+        ...prev.filter((row) => row.declaration_id !== declarationId),
+        ...data.lines!,
+      ]);
+    }
+    return true;
+  }
+
+  function removeDeclarationFromState(id: string) {
+    setDeclarations((prev) => prev.filter((row) => row.id !== id));
+    setLines((prev) => prev.filter((row) => row.declaration_id !== id));
+  }
+
   function resetShareholderForm() {
     setShareholderForm({
       full_name: "",
@@ -263,10 +315,14 @@ export default function Dividends({
         return;
       }
 
+      if (!data.shareholder?.id) {
+        await reloadAll();
+        return;
+      }
+      mergeShareholderFromWrite(data.shareholder, !editingShareholderId);
       toast(editingShareholderId ? "Shareholder updated." : "Shareholder added.");
       setShareholderFormOpen(false);
       resetShareholderForm();
-      await reloadAll();
     } finally {
       endPending("shareholder-save");
     }
@@ -297,8 +353,12 @@ export default function Dividends({
         });
         return;
       }
+      if (!data.shareholder?.id) {
+        await reloadAll();
+        return;
+      }
+      mergeShareholderFromWrite(data.shareholder, false);
       toast("Shareholder deactivated.");
-      await reloadAll();
     } finally {
       endPending(pendingKey);
     }
@@ -322,8 +382,12 @@ export default function Dividends({
         });
         return;
       }
+      if (!data.shareholder?.id) {
+        await reloadAll();
+        return;
+      }
+      mergeShareholderFromWrite(data.shareholder, false);
       toast("Shareholder reactivated.");
-      await reloadAll();
     } finally {
       endPending(pendingKey);
     }
@@ -353,8 +417,8 @@ export default function Dividends({
         });
         return;
       }
+      removeShareholderFromState(id);
       toast("Shareholder deleted.");
-      await reloadAll();
     } finally {
       endPending(pendingKey);
     }
@@ -487,10 +551,13 @@ export default function Dividends({
         return;
       }
 
+      if (!applyDeclarationWritePatch(data)) {
+        await reloadAll();
+        return;
+      }
       toast(editingDraftId ? "Draft updated." : "Draft saved.");
       setDeclareFormOpen(false);
       setEditingDraftId(null);
-      await reloadAll();
       if (data.declaration?.id) {
         setSelectedDeclarationId(data.declaration.id);
       }
@@ -569,8 +636,11 @@ export default function Dividends({
         void alertError(data.error ?? "Declare failed.", { title: DIRECTORS_ALERT_TITLE });
         return;
       }
+      if (!applyDeclarationWritePatch(data)) {
+        await reloadAll();
+        return;
+      }
       toast("Dividend declared.");
-      await reloadAll();
     } finally {
       endPending(pendingKey);
     }
@@ -604,8 +674,11 @@ export default function Dividends({
         void alertError(data.error ?? "Cancel failed.", { title: DIRECTORS_ALERT_TITLE });
         return;
       }
+      if (!applyDeclarationWritePatch(data)) {
+        await reloadAll();
+        return;
+      }
       toast("Declaration cancelled.");
-      await reloadAll();
     } finally {
       endPending(pendingKey);
     }
@@ -668,9 +741,9 @@ export default function Dividends({
         void alertError(data.error ?? "Delete failed.", { title: DIRECTORS_ALERT_TITLE });
         return;
       }
+      removeDeclarationFromState(id);
       toast("Draft deleted.");
       setSelectedDeclarationId(null);
-      await reloadAll();
     } finally {
       endPending(pendingKey);
     }
@@ -713,9 +786,12 @@ export default function Dividends({
         void alertError(data.error ?? "Payment failed.", { title: DIRECTORS_ALERT_TITLE });
         return;
       }
+      if (!applyDeclarationWritePatch(data)) {
+        await reloadAll();
+        return;
+      }
       toast("Payment recorded.");
       setPaymentLine(null);
-      await reloadAll();
     } finally {
       endPending("record-payment");
     }

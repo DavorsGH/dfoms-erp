@@ -8,6 +8,7 @@ import {
   getServerAuthUid,
 } from "@/utils/business-unit-access.server";
 import { logInventoryUserActivity } from "@/lib/inventory/inventory-audit-log";
+import { guardFinishedProductWriteBusinessUnit } from "@/lib/inventory/inventory-item-business-unit-guard.server";
 import { mapInternalConsumptionMutationErrorMessage } from "@/lib/inventory/inventory-mutation-error";
 
 type PostBody = {
@@ -62,6 +63,20 @@ export async function POST(request: Request) {
   });
   if (!writeBu.ok) {
     return NextResponse.json({ error: writeBu.error }, { status: writeBu.status });
+  }
+
+  const productBuGuard = await guardFinishedProductWriteBusinessUnit({
+    supabase,
+    tenantId: auth.tenantId,
+    productId: body.product_id.trim(),
+    writeBusinessUnitId: writeBu.businessUnitId,
+    action: "internal_use",
+  });
+  if (!productBuGuard.ok) {
+    return NextResponse.json(
+      { error: productBuGuard.error },
+      { status: productBuGuard.status },
+    );
   }
 
   const { data: inserted, error: insertError } = await supabase

@@ -3,6 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import CrmShell from "../../crm-shell";
 import EmailPromotionsShell from "../email-promotions-shell";
+import SalesCrmMountErrorAlert from "@/lib/crm/sales-crm-mount-error-alert";
 import MessageTemplates from "./message-templates";
 import {
   MESSAGE_TEMPLATE_SELECT,
@@ -19,8 +20,9 @@ export default async function MessageTemplatesPage() {
     return (
       <CrmShell sectionTitle="Email & Promotions">
         <EmailPromotionsShell sectionTitle="Templates">
-          <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            Unable to resolve tenant for message templates.
+          <SalesCrmMountErrorAlert message="Unable to resolve tenant for message templates." />
+          <p className="text-sm text-slate-600">
+            Unable to load message templates for this workspace.
           </p>
         </EmailPromotionsShell>
       </CrmShell>

@@ -15,9 +15,15 @@ import {
   clientMessageForDirectorsLoadError,
   responseForShareholderWriteError,
 } from "@/lib/finance/directors-board-api-errors";
+import {
+  attachPagePerfProbeHeaders,
+  getSupabaseHttpPerfSnapshot,
+  runWithSupabaseHttpPerfScope,
+} from "@/lib/supabase-http-perf";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 import type { ShareholderPaymentMethod } from "@/app/dashboard/finance/dividends-types";
+import { isPerfProbeEnabled } from "@/utils/perf-probe";
 
 type ShareholderBody = {
   tenant_id?: string;
@@ -63,7 +69,8 @@ export async function GET() {
   return NextResponse.json({ shareholders: enriched.rows });
 }
 
-export async function POST(request: Request) {
+async function postShareholder(request: Request) {
+  const renderStartedAt = Date.now();
   const auth = await requireDividendsWrite();
   if (!auth.ok) {
     return auth.response;
@@ -132,5 +139,19 @@ export async function POST(request: Request) {
     return responseForShareholderWriteError(error, fullName, "shareholders-create");
   }
 
-  return NextResponse.json({ shareholder: data });
+  const response = NextResponse.json({ shareholder: data });
+  if (isPerfProbeEnabled()) {
+    attachPagePerfProbeHeaders(response, {
+      renderMs: Date.now() - renderStartedAt,
+      snapshot: getSupabaseHttpPerfSnapshot(),
+    });
+  }
+  return response;
+}
+
+export async function POST(request: Request) {
+  if (isPerfProbeEnabled()) {
+    return runWithSupabaseHttpPerfScope(() => postShareholder(request));
+  }
+  return postShareholder(request);
 }

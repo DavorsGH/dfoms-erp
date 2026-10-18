@@ -2,8 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { createClient } from "@/utils/supabase/client";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -43,11 +48,19 @@ export default function SalesTargetsList({
 }: SalesTargetsListProps) {
   const router = useRouter();
   const supabase = createClient();
+  const { alertError } = useAlert();
   const targets = initialTargets
     .filter((row): row is SalesTargetListRow => Boolean(row?.id))
     .map(normalizeSalesTargetRow);
-  const [error, setError] = useState<string | null>(fetchError);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
 
   async function handleDelete(targetId: string) {
     if (!(await confirmDeleteEntry())) {
@@ -55,7 +68,6 @@ export default function SalesTargetsList({
     }
 
     setDeletingId(targetId);
-    setError(null);
 
     const { error: deleteError } = await supabase
       .from("sales_targets")
@@ -63,7 +75,9 @@ export default function SalesTargetsList({
       .eq("id", targetId);
 
     if (deleteError) {
-      setError(deleteError.message);
+      void alertError(clientFacingSalesCrmError(deleteError.message), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
       setDeletingId(null);
       return;
     }
@@ -74,12 +88,6 @@ export default function SalesTargetsList({
 
   return (
     <div className="space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       <div className="flex justify-end">
         <Link href="/dashboard/crm/sales-targets/new" className={primaryButtonClassName}>
           New Sales Target

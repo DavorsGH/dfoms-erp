@@ -21,6 +21,7 @@ import {
   type RawMaterialAdjustmentType,
   type RawMaterialStockAdjustmentRecord,
 } from "@/app/dashboard/inventory/raw-materials-utils";
+import { guardRawMaterialWriteBusinessUnit } from "@/lib/inventory/inventory-item-business-unit-guard.server";
 import { mapRawMaterialStockAdjustmentErrorMessage } from "@/lib/inventory/inventory-mutation-error";
 
 async function getTenantSupabase() {
@@ -191,6 +192,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: writeBu.error }, { status: writeBu.status });
   }
   const businessUnitId = writeBu.businessUnitId;
+
+  const materialBuGuard = await guardRawMaterialWriteBusinessUnit({
+    supabase,
+    tenantId: auth.tenantId,
+    materialId,
+    writeBusinessUnitId: businessUnitId,
+    action: "stock_adjustment",
+  });
+  if (!materialBuGuard.ok) {
+    return NextResponse.json(
+      { error: materialBuGuard.error },
+      { status: materialBuGuard.status },
+    );
+  }
 
   const { data: adjustmentId, error: rpcError } = await supabase.rpc(
     "record_raw_material_manual_adjustment",

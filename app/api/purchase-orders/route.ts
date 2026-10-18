@@ -22,6 +22,8 @@ import {
   type PurchaseOrderListRow,
   type PurchaseOrderWriteBody,
 } from "@/utils/purchase-orders-types";
+import { guardPurchaseOrderItemsWriteBusinessUnit } from "@/lib/inventory/inventory-item-business-unit-guard.server";
+import { mapInventoryMutationErrorMessage } from "@/lib/inventory/inventory-mutation-error";
 import { createClient } from "@/utils/supabase/server";
 
 async function getTenantSupabase() {
@@ -142,6 +144,19 @@ export async function POST(request: Request) {
   }
   const stampBusinessUnitId = writeBu.businessUnitId;
 
+  const itemsBuGuard = await guardPurchaseOrderItemsWriteBusinessUnit({
+    supabase,
+    tenantId: auth.tenantId,
+    writeBusinessUnitId: stampBusinessUnitId,
+    items: trimmed.items,
+  });
+  if (!itemsBuGuard.ok) {
+    return NextResponse.json(
+      { error: itemsBuGuard.error },
+      { status: itemsBuGuard.status },
+    );
+  }
+
   const { data: poId, error: rpcError } = await supabase.rpc(
     "create_purchase_order",
     {
@@ -155,7 +170,14 @@ export async function POST(request: Request) {
   );
 
   if (rpcError) {
-    return NextResponse.json({ error: rpcError.message }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: mapInventoryMutationErrorMessage(rpcError, {
+          fallbackMessage: "Couldn't save this purchase order. Please try again.",
+        }),
+      },
+      { status: 400 },
+    );
   }
 
   const resolvedPoId = typeof poId === "string" ? poId : String(poId ?? "");

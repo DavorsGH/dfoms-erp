@@ -1,8 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { formatGHS } from "@/app/dashboard/finance/income-register-utils";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import {
   todayIsoDate,
   type RecordProductSalePaymentBody,
@@ -29,17 +34,21 @@ export default function RecordProductSalePaymentDialog({
   onSuccess,
 }: RecordProductSalePaymentDialogProps) {
   const router = useRouter();
+  const { alertError } = useAlert();
+  const formRef = useRef<HTMLFormElement>(null);
 
   const [paymentDate, setPaymentDate] = useState(todayIsoDate());
   const [amount, setAmount] = useState(outstanding > 0 ? outstanding : 0);
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0] ?? "");
   const [notes, setNotes] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    setError(null);
+    if (!formRef.current?.reportValidity()) {
+      return;
+    }
+
     setSubmitting(true);
 
     const body: RecordProductSalePaymentBody = {
@@ -61,7 +70,12 @@ export default function RecordProductSalePaymentDialog({
         | null;
 
       if (!response.ok) {
-        setError(payload?.error ?? "Unable to record payment.");
+        void alertError(
+          clientFacingSalesCrmError(
+            payload?.error ?? "Unable to record payment.",
+          ),
+          { title: SALES_CRM_ALERT_TITLE },
+        );
         setSubmitting(false);
         return;
       }
@@ -70,7 +84,12 @@ export default function RecordProductSalePaymentDialog({
       router.refresh();
       onClose();
     } catch {
-      setError("Unable to record payment. Check your connection and try again.");
+      void alertError(
+        clientFacingSalesCrmError(
+          "Unable to record payment. Check your connection and try again.",
+        ),
+        { title: SALES_CRM_ALERT_TITLE },
+      );
       setSubmitting(false);
     }
   }
@@ -94,13 +113,11 @@ export default function RecordProductSalePaymentDialog({
           <span className="font-medium">{formatGHS(outstanding)}</span>
         </p>
 
-        {error ? (
-          <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </p>
-        ) : null}
-
-        <form onSubmit={(event) => void handleSubmit(event)} className="mt-4 space-y-4">
+        <form
+          ref={formRef}
+          onSubmit={(event) => void handleSubmit(event)}
+          className="mt-4 space-y-4"
+        >
           <div>
             <label
               htmlFor="product_sale_payment_date"

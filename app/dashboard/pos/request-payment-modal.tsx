@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useAlert } from "@/components/feedback/feedback-context";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import { inputClassName } from "../employees/employee-record-utils";
 import { formatGHS } from "../finance/income-register-utils";
 import {
@@ -74,6 +79,15 @@ export default function RequestPaymentModal(props: RequestPaymentModalProps) {
 
   const invoiceNo = isCartMode(props) ? null : props.invoiceNo;
   const cartLockedAmount = isCartMode(props);
+  const { alertError } = useAlert();
+  const formRef = useRef<HTMLFormElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+
+  function showActionError(message: string) {
+    void alertError(clientFacingSalesCrmError(message), {
+      title: SALES_CRM_ALERT_TITLE,
+    });
+  }
 
   const [amount, setAmount] = useState(String(roundGhs(defaultAmountGhs)));
   const [email, setEmail] = useState(defaultEmail);
@@ -81,7 +95,6 @@ export default function RequestPaymentModal(props: RequestPaymentModalProps) {
   const [sendEmail, setSendEmail] = useState(Boolean(defaultEmail.trim()));
   const [sendSms, setSendSms] = useState(Boolean(defaultPhone.trim()));
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   /** True when the backend blocked payment because the tenant has no active
    * settlement account — shows a link to Payment Settings. */
   const [paymentSettingsRequired, setPaymentSettingsRequired] = useState(false);
@@ -97,40 +110,47 @@ export default function RequestPaymentModal(props: RequestPaymentModalProps) {
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    amountRef.current?.setCustomValidity("");
     setLoading(true);
-    setError(null);
     setPaymentSettingsRequired(false);
     setResult(null);
 
     const amountGhs = roundGhs(Number.parseFloat(amount));
     if (!Number.isFinite(amountGhs) || amountGhs <= 0) {
-      setError("Enter a payment amount greater than zero.");
+      amountRef.current?.setCustomValidity("Enter a payment amount greater than zero.");
+      amountRef.current?.reportValidity();
       setLoading(false);
       return;
     }
 
     if (!cartLockedAmount && amountGhs > defaultAmountGhs + 0.001) {
-      setError(
+      amountRef.current?.setCustomValidity(
         `Amount cannot exceed outstanding balance (${formatGHS(defaultAmountGhs)}).`,
       );
+      amountRef.current?.reportValidity();
       setLoading(false);
       return;
     }
 
     if (!sendEmail && !sendSms) {
-      setError("Select at least one delivery channel (email or SMS).");
+      showActionError("Select at least one delivery channel (email or SMS).");
       setLoading(false);
       return;
     }
 
     if (sendEmail && !isValidEmail(email)) {
-      setError("Enter a valid email address for email delivery.");
+      showActionError("Enter a valid email address for email delivery.");
       setLoading(false);
       return;
     }
 
     if (sendSms && !normalizeGhanaPhone(phone)) {
-      setError("Enter a valid Ghana phone number (e.g. 024… or +233…).");
+      showActionError("Enter a valid Ghana phone number (e.g. 024… or +233…).");
+      setLoading(false);
+      return;
+    }
+
+    if (!formRef.current?.reportValidity()) {
       setLoading(false);
       return;
     }
@@ -175,7 +195,7 @@ export default function RequestPaymentModal(props: RequestPaymentModalProps) {
         if (payload?.code === PAYMENT_SETTINGS_REQUIRED_CODE) {
           setPaymentSettingsRequired(true);
         }
-        setError(payload?.error ?? "Failed to create payment link.");
+        showActionError(payload?.error ?? "Failed to create payment link.");
         setLoading(false);
         return;
       }
@@ -184,7 +204,7 @@ export default function RequestPaymentModal(props: RequestPaymentModalProps) {
       onLinkSent?.();
       setLoading(false);
     } catch (submitError) {
-      setError(
+      showActionError(
         submitError instanceof Error
           ? submitError.message
           : "Failed to create payment link.",
@@ -224,23 +244,17 @@ export default function RequestPaymentModal(props: RequestPaymentModalProps) {
           </button>
         </div>
 
-        {error ? (
-          <div className="mt-4 space-y-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            <p>{error}</p>
-            {paymentSettingsRequired ? (
-              <p>
-                <Link
-                  href="/dashboard/administration/billing?tab=payment"
-                  className="inline-block rounded-md bg-[#0f2744] px-3 py-1.5 font-medium text-white transition-colors hover:bg-[#1a3a5c]"
-                >
-                  Set up Payment Settings
-                </Link>{" "}
-                <span className="text-red-600">
-                  (Administration → Billing Settings → Payment Settings)
-                </span>
-              </p>
-            ) : null}
-          </div>
+        {paymentSettingsRequired ? (
+          <p className="mt-4 text-sm text-slate-700">
+            <Link
+              href="/dashboard/administration/billing?tab=payment"
+              className="font-medium text-[#0f2744] underline"
+            >
+              Set up Payment Settings
+            </Link>{" "}
+            (Administration → Billing Settings → Payment Settings) to send payment
+            links.
+          </p>
         ) : null}
 
         {result?.authorization_url ? (
@@ -300,12 +314,17 @@ export default function RequestPaymentModal(props: RequestPaymentModalProps) {
             </div>
           </div>
         ) : (
-          <form onSubmit={(event) => void handleSubmit(event)} className="mt-4 space-y-4">
+          <form
+            ref={formRef}
+            onSubmit={(event) => void handleSubmit(event)}
+            className="mt-4 space-y-4"
+          >
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">
                 Amount (GHS)
               </label>
               <input
+                ref={amountRef}
                 type="number"
                 min={0.01}
                 step="0.01"

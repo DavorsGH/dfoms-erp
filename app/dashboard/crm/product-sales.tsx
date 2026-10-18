@@ -1,7 +1,12 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import DashboardButton from "@/components/dashboard-button";
@@ -73,6 +78,7 @@ import {
   resolveWriteBusinessUnitIdForCreate,
 } from "@/utils/business-unit-access";
 import ProductSalesBulkImport from "./product-sales-bulk-import";
+import { verifyFinishedProductMatchesWriteBusinessUnit } from "@/lib/inventory/inventory-item-business-unit-guard.client";
 import RecordProductSalePaymentDialog from "./record-product-sale-payment-dialog";
 import {
   buildProductSaleReceiptData,
@@ -165,6 +171,22 @@ export default function ProductSales({
   onRegisterMutationComplete,
 }: ProductSalesProps) {
   const supabase = createClient();
+  const { alertError } = useAlert();
+
+  function showActionError(message: string) {
+    void alertError(clientFacingSalesCrmError(message), {
+      title: SALES_CRM_ALERT_TITLE,
+    });
+  }
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
+
   const router = useRouter();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
@@ -208,7 +230,6 @@ export default function ProductSales({
   const [returnedQtyByIncomeId, setReturnedQtyByIncomeId] = useState<
     Map<string, number>
   >(() => new Map());
-  const [error, setError] = useState<string | null>(fetchError);
   const [receipt, setReceipt] = useState<ProductSaleReceiptData | null>(null);
   const [internalRecordPaymentEntry, setInternalRecordPaymentEntry] =
     useState<ProductSaleEntry | null>(null);
@@ -426,7 +447,7 @@ export default function ProductSales({
 
   async function refreshFinishedProducts() {
     if (!tenantId) {
-      setError("Unable to resolve your workspace.");
+      showActionError("Unable to resolve your workspace.");
       return;
     }
 
@@ -439,14 +460,14 @@ export default function ProductSales({
       .order("product_name", { ascending: true });
 
     if (productError) {
-      setError(productError.message);
+      showActionError(productError.message);
       return;
     }
 
     const { stockMap, error: stockScopeError } =
       await fetchScopedFinishedProductStock(supabase, tenantId, buReadScope);
     if (stockScopeError) {
-      setError(stockScopeError);
+      showActionError(stockScopeError);
       return;
     }
 
@@ -490,7 +511,7 @@ export default function ProductSales({
     ).order("date", { ascending: false });
 
     if (refreshError) {
-      setError(refreshError.message);
+      showActionError(refreshError.message);
       return;
     }
 
@@ -499,7 +520,6 @@ export default function ProductSales({
         normalizeProductSaleEntry(entry),
       ),
     );
-    setError(null);
   }
 
   useEffect(() => {
@@ -553,12 +573,10 @@ export default function ProductSales({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setError(null);
-
     try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      showActionError(buContext.error);
       return;
     }
 
@@ -567,7 +585,7 @@ export default function ProductSales({
       stamp: stampBusinessUnit,
     });
     if (!stampResult.ok) {
-      setError(stampResult.error);
+      showActionError(stampResult.error);
       return;
     }
 
@@ -576,7 +594,7 @@ export default function ProductSales({
     const otherPayerName = form.customer_name.trim() || null;
 
     if (!clientId && !otherPayerName) {
-      setError("Select a contract client or enter an other payer name.");
+      showActionError("Select a contract client or enter an other payer name.");
       return;
     }
 
@@ -584,29 +602,29 @@ export default function ProductSales({
     const unitPrice = Number.parseFloat(form.unit_price);
 
     if (!form.product_id) {
-      setError("Select a finished product.");
+      showActionError("Select a finished product.");
       return;
     }
 
     if (Number.isNaN(quantity) || quantity <= 0) {
-      setError("Quantity must be greater than zero.");
+      showActionError("Quantity must be greater than zero.");
       return;
     }
 
     if (Number.isNaN(unitPrice) || unitPrice < 0) {
-      setError("Unit price must be zero or greater.");
+      showActionError("Unit price must be zero or greater.");
       return;
     }
 
     const amount = Math.round(quantity * unitPrice * 100) / 100;
 
     if (Number.isNaN(amountReceived) || amountReceived < 0) {
-      setError("Amount paid now must be zero or greater.");
+      showActionError("Amount paid now must be zero or greater.");
       return;
     }
 
     if (amountReceived > amount) {
-      setError(
+      showActionError(
         `Amount paid now (${formatGHS(amountReceived)}) cannot exceed the sale total (${formatGHS(amount)}).`,
       );
       return;
@@ -614,7 +632,7 @@ export default function ProductSales({
 
     const outstanding = calculateOutstanding(amount, amountReceived);
     if (outstanding > 0 && !form.due_date.trim()) {
-      setError("Enter a due date for the remaining balance.");
+      showActionError("Enter a due date for the remaining balance.");
       return;
     }
 
@@ -622,10 +640,25 @@ export default function ProductSales({
 
     const product = finishedProducts.find((item) => item.id === form.product_id);
     if (product && product.current_stock < quantity) {
-      setError(
+      showActionError(
         `Only ${formatInventoryQuantity(product.current_stock)} ${product.unit_of_measure} of ${product.product_name} in stock, cannot sell ${formatInventoryQuantity(quantity)}.`,
       );
       return;
+    }
+
+    if (tenantId) {
+      const productBuCheck = await verifyFinishedProductMatchesWriteBusinessUnit({
+        supabase,
+        tenantId,
+        productId: form.product_id,
+        writeBusinessUnitId: stampResult.businessUnitId,
+        action: "sale",
+        knownProductBusinessUnitId: product?.business_unit_id ?? null,
+      });
+      if (!productBuCheck.ok) {
+        showActionError(productBuCheck.message);
+        return;
+      }
     }
 
     const { data: createdIncomeId, error: rpcError } = await supabase.rpc(
@@ -650,7 +683,7 @@ export default function ProductSales({
     );
 
     if (rpcError) {
-      setError(rpcError.message);
+      showActionError(rpcError.message);
       return;
     }
 
@@ -673,12 +706,12 @@ export default function ProductSales({
     onRegisterMutationComplete?.();
 
     if (taxError) {
-      setError(
+      showActionError(
         `Sale recorded, but the VFRS tax ledger could not be updated: ${taxError}`,
       );
     }
     } catch (unexpected) {
-      setError(
+      showActionError(
         unexpected instanceof Error
           ? unexpected.message
           : "Unable to save the product sale.",
@@ -719,11 +752,9 @@ export default function ProductSales({
     }
 
     setVoidingId(entry.id);
-    setError(null);
-
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      showActionError(buContext.error);
       setVoidingId(null);
       return;
     }
@@ -734,7 +765,7 @@ export default function ProductSales({
         entry.business_unit_id,
       );
     } catch (accessError) {
-      setError(formatBusinessUnitAccessError(accessError));
+      showActionError(formatBusinessUnitAccessError(accessError));
       setVoidingId(null);
       return;
     }
@@ -744,7 +775,7 @@ export default function ProductSales({
     });
 
     if (voidError) {
-      setError(formatVoidProductSaleRpcError(voidError.message));
+      showActionError(formatVoidProductSaleRpcError(voidError.message));
       setVoidingId(null);
       return;
     }
@@ -759,7 +790,7 @@ export default function ProductSales({
     await refreshEntries();
 
     if (ledgerError) {
-      setError(
+      showActionError(
         `Sale cancelled, but its tax ledger entries could not be removed: ${ledgerError}`,
       );
     }
@@ -793,12 +824,6 @@ export default function ProductSales({
           </div>
         </div>
       ) : null}
-
-      {error && (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       {receipt ? (
         <ProductSaleReceiptPanel

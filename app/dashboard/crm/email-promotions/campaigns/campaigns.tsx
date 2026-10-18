@@ -1,7 +1,12 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import { getStripedRowClassName } from "../../../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -373,6 +378,21 @@ export default function Campaigns({
   fetchError,
 }: CampaignsProps) {
   void tenantId;
+  const { alertError } = useAlert();
+
+  function showActionError(message: string) {
+    void alertError(clientFacingSalesCrmError(message), {
+      title: SALES_CRM_ALERT_TITLE,
+    });
+  }
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
 
   const [campaigns, setCampaigns] = useState(initialCampaigns);
   const [templates] = useState(activeTemplates);
@@ -392,7 +412,6 @@ export default function Campaigns({
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
   const [sendStatusMessage, setSendStatusMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(fetchError);
   const [statusFilter, setStatusFilter] = useState("");
 
   // View Campaign detail: recipients + resolved message.
@@ -472,12 +491,11 @@ export default function Campaigns({
     };
 
     if (!response.ok) {
-      setError(payload.error ?? "Failed to refresh campaigns.");
+      showActionError(payload.error ?? "Failed to refresh campaigns.");
       return;
     }
 
     setCampaigns(payload.campaigns ?? []);
-    setError(null);
   }
 
   function openAddForm() {
@@ -485,7 +503,6 @@ export default function Campaigns({
     setViewOnly(false);
     setForm(emptyForm);
     setShowForm(true);
-    setError(null);
   }
 
   function openEditForm(row: NormalizedCampaignRow) {
@@ -493,7 +510,6 @@ export default function Campaigns({
     setViewOnly(false);
     setForm(formFromCampaign(row));
     setShowForm(true);
-    setError(null);
   }
 
   function openViewForm(row: NormalizedCampaignRow) {
@@ -501,7 +517,6 @@ export default function Campaigns({
     setViewOnly(true);
     setForm(formFromCampaign(row));
     setShowForm(true);
-    setError(null);
   }
 
   function closeForm() {
@@ -515,27 +530,25 @@ export default function Campaigns({
     event.preventDefault();
     if (viewOnly) return;
 
-    setError(null);
-
     if (!form.name.trim()) {
-      setError("Campaign name is required.");
+      showActionError("Campaign name is required.");
       return;
     }
     if (!derivedChannel) {
-      setError("Select at least one channel (Email and/or SMS).");
+      showActionError("Select at least one channel (Email and/or SMS).");
       return;
     }
     if (form.contentMode === "template" && !form.template_id) {
-      setError("Select a message template.");
+      showActionError("Select a message template.");
       return;
     }
     if (form.contentMode === "adhoc") {
       if (derivedChannel !== "sms" && !form.subject.trim()) {
-        setError("Email campaigns require a subject line.");
+        showActionError("Email campaigns require a subject line.");
         return;
       }
       if (!form.body.trim()) {
-        setError("Enter a message body.");
+        showActionError("Enter a message body.");
         return;
       }
     }
@@ -546,7 +559,7 @@ export default function Campaigns({
         draftAudience.type === "filtered" &&
         !filteredCampaignAudienceHasCriteria(draftAudience)
       ) {
-        setError(
+        showActionError(
           "Select at least one customer type or add at least one customer by name.",
         );
         return;
@@ -585,7 +598,7 @@ export default function Campaigns({
 
     const result = (await response.json()) as { error?: string };
     if (!response.ok) {
-      setError(result.error ?? "Failed to save campaign.");
+      showActionError(result.error ?? "Failed to save campaign.");
       setLoading(false);
       return;
     }
@@ -607,15 +620,13 @@ export default function Campaigns({
     }
 
     setDeletingId(row.id);
-    setError(null);
-
     const response = await fetch(`/api/campaigns/${row.id}`, {
       method: "DELETE",
     });
     const result = (await response.json()) as { error?: string };
 
     if (!response.ok) {
-      setError(result.error ?? "Failed to delete campaign.");
+      showActionError(result.error ?? "Failed to delete campaign.");
       setDeletingId(null);
       return;
     }
@@ -630,7 +641,6 @@ export default function Campaigns({
 
   async function executeSend(campaignId: string) {
     setSendingId(campaignId);
-    setError(null);
     setSendStatusMessage(null);
 
     const response = await fetch(`/api/campaigns/${campaignId}/send`, {
@@ -650,7 +660,7 @@ export default function Campaigns({
     };
 
     if (!response.ok) {
-      setError(payload.error ?? "Failed to send campaign.");
+      showActionError(payload.error ?? "Failed to send campaign.");
       setSendingId(null);
       return;
     }
@@ -662,8 +672,6 @@ export default function Campaigns({
 
   async function confirmAndSendDraft(row: NormalizedCampaignRow) {
     setPreviewLoadingId(row.id);
-    setError(null);
-
     const previewResponse = await fetch(
       `/api/campaigns/${row.id}/audience-preview`,
     );
@@ -679,7 +687,7 @@ export default function Campaigns({
     setPreviewLoadingId(null);
 
     if (!previewResponse.ok || !previewPayload.preview) {
-      setError(previewPayload.error ?? "Failed to preview audience.");
+      showActionError(previewPayload.error ?? "Failed to preview audience.");
       return;
     }
 
@@ -747,12 +755,6 @@ export default function Campaigns({
 
   return (
     <div className="min-w-0 space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       {sendStatusMessage ? (
         <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
           {sendStatusMessage}

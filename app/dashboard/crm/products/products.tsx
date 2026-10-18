@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { createClient } from "@/utils/supabase/client";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -58,7 +63,23 @@ export default function Products({
   fetchError,
 }: ProductsProps) {
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const productFormRef = useRef<HTMLFormElement>(null);
   const buReadScope = useBusinessUnitReadScope();
+
+  function showActionError(message: string) {
+    void alertError(clientFacingSalesCrmError(message), {
+      title: SALES_CRM_ALERT_TITLE,
+    });
+  }
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
   const [products, setProducts] = useState(initialProducts);
   const [filterCategory, setFilterCategory] = useState(ERP_SUITE_CATEGORY);
   const [showBulkImport, setShowBulkImport] = useState(false);
@@ -67,7 +88,6 @@ export default function Products({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState<CrmProductFormState>(EMPTY_CRM_PRODUCT_FORM);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(fetchError);
 
   useEffect(() => {
     setProducts(initialProducts);
@@ -104,12 +124,11 @@ export default function Products({
     ).order("name", { ascending: true });
 
     if (refreshError) {
-      setError(refreshError.message);
+      showActionError(refreshError.message);
       return;
     }
 
     setProducts((data as CrmProductEntry[] | null) ?? []);
-    setError(null);
   }
 
   function closeForm() {
@@ -138,19 +157,17 @@ export default function Products({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    const payload = buildCrmProductSavePayload(form);
-    if (!payload.name) {
-      setError("Product name is required.");
-      setLoading(false);
+    if (!productFormRef.current?.reportValidity()) {
       return;
     }
 
+    setLoading(true);
+
+    const payload = buildCrmProductSavePayload(form);
+
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      showActionError(buContext.error);
       setLoading(false);
       return;
     }
@@ -163,7 +180,7 @@ export default function Products({
           existing?.business_unit_id,
         );
       } catch (accessError) {
-        setError(formatBusinessUnitAccessError(accessError));
+        showActionError(formatBusinessUnitAccessError(accessError));
         setLoading(false);
         return;
       }
@@ -174,7 +191,7 @@ export default function Products({
         .eq("id", editingId);
 
       if (saveError) {
-        setError(saveError.message);
+        showActionError(saveError.message);
         setLoading(false);
         return;
       }
@@ -183,7 +200,9 @@ export default function Products({
         await resolveSessionTenantId(supabase);
 
       if (tenantError || !tenantId) {
-        setError(tenantError ?? "Unable to resolve workspace for this session.");
+        showActionError(
+          tenantError ?? "Unable to resolve workspace for this session.",
+        );
         setLoading(false);
         return;
       }
@@ -194,7 +213,7 @@ export default function Products({
           allowedUnits: buContext.allowedUnits,
         });
       } catch (accessError) {
-        setError(formatBusinessUnitAccessError(accessError));
+        showActionError(formatBusinessUnitAccessError(accessError));
         setLoading(false);
         return;
       }
@@ -206,7 +225,7 @@ export default function Products({
       });
 
       if (saveError) {
-        setError(saveError.message);
+        showActionError(saveError.message);
         setLoading(false);
         return;
       }
@@ -227,11 +246,10 @@ export default function Products({
     }
 
     setDeletingId(product.id);
-    setError(null);
 
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      showActionError(buContext.error);
       setDeletingId(null);
       return;
     }
@@ -242,7 +260,7 @@ export default function Products({
         product.business_unit_id,
       );
     } catch (accessError) {
-      setError(formatBusinessUnitAccessError(accessError));
+      showActionError(formatBusinessUnitAccessError(accessError));
       setDeletingId(null);
       return;
     }
@@ -253,7 +271,7 @@ export default function Products({
       .eq("id", product.id);
 
     if (deleteError) {
-      setError(deleteError.message);
+      showActionError(deleteError.message);
       setDeletingId(null);
       return;
     }
@@ -307,12 +325,6 @@ export default function Products({
         </div>
       </div>
 
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       {showBulkImport ? (
         <ProductsBulkImport
           existingProducts={editableProducts}
@@ -326,7 +338,11 @@ export default function Products({
           <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
             {editingId ? "Edit Product" : "Add Product"}
           </h3>
-          <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
+          <form
+            ref={productFormRef}
+            onSubmit={handleSubmit}
+            className="grid gap-4 md:grid-cols-2"
+          >
             <div className="md:col-span-2">
               <label className="mb-1 block text-sm font-medium text-slate-700">
                 Name

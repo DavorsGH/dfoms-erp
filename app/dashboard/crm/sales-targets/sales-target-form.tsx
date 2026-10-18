@@ -2,8 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { createClient } from "@/utils/supabase/client";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import { resolveSessionTenantId } from "@/utils/session-tenant-client";
 import SalesRepSelect from "@/components/sales-rep-select";
 import { inputClassName } from "@/app/dashboard/hr-payroll/hr-register-utils";
@@ -42,6 +47,10 @@ export default function SalesTargetForm({
 }: SalesTargetFormProps) {
   const router = useRouter();
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const formRef = useRef<HTMLFormElement>(null);
+  const periodEndRef = useRef<HTMLInputElement>(null);
+  const unitTargetRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState<SalesTargetFormState>(() => {
     const base = initialForm ?? emptySalesTargetForm();
     return {
@@ -52,20 +61,61 @@ export default function SalesTargetForm({
       ),
     };
   });
-  const [error, setError] = useState<string | null>(fetchError);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
+
+  function applySalesTargetFormValidity(): boolean {
+    periodEndRef.current?.setCustomValidity("");
+    unitTargetRef.current?.setCustomValidity("");
+    const employeeSelect = document.getElementById(
+      "sales-target-employee",
+    ) as HTMLSelectElement | null;
+    employeeSelect?.setCustomValidity("");
+
+    const validationError = validateSalesTargetForm(form);
+    if (!validationError) {
+      return true;
+    }
+
+    if (validationError === "Select an employee.") {
+      employeeSelect?.setCustomValidity(validationError);
+      employeeSelect?.reportValidity();
+      return false;
+    }
+    if (validationError === "Period end must be on or after period start.") {
+      periodEndRef.current?.setCustomValidity(validationError);
+      periodEndRef.current?.reportValidity();
+      return false;
+    }
+    if (validationError === "Unit target must be zero or greater.") {
+      unitTargetRef.current?.setCustomValidity(validationError);
+      unitTargetRef.current?.reportValidity();
+      return false;
+    }
+
+    if (!formRef.current?.reportValidity()) {
+      return false;
+    }
+    return true;
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    setSaving(true);
-    setError(null);
-
-    const validationError = validateSalesTargetForm(form);
-    if (validationError) {
-      setError(validationError);
-      setSaving(false);
+    if (!applySalesTargetFormValidity()) {
       return;
     }
+    if (!formRef.current?.reportValidity()) {
+      return;
+    }
+
+    setSaving(true);
 
     const payload = buildSalesTargetPayload(form);
 
@@ -73,7 +123,10 @@ export default function SalesTargetForm({
       const { tenantId, error: tenantError } =
         await resolveSessionTenantId(supabase);
       if (tenantError || !tenantId) {
-        setError(tenantError ?? "Unable to resolve workspace.");
+        void alertError(
+          clientFacingSalesCrmError(tenantError ?? "Unable to resolve workspace."),
+          { title: SALES_CRM_ALERT_TITLE },
+        );
         setSaving(false);
         return;
       }
@@ -83,7 +136,9 @@ export default function SalesTargetForm({
         .insert({ ...payload, tenant_id: tenantId });
 
       if (insertError) {
-        setError(insertError.message);
+        void alertError(clientFacingSalesCrmError(insertError.message), {
+          title: SALES_CRM_ALERT_TITLE,
+        });
         setSaving(false);
         return;
       }
@@ -94,7 +149,9 @@ export default function SalesTargetForm({
     }
 
     if (!targetId) {
-      setError("Missing sales target id.");
+      void alertError("Missing sales target id.", {
+        title: SALES_CRM_ALERT_TITLE,
+      });
       setSaving(false);
       return;
     }
@@ -105,7 +162,9 @@ export default function SalesTargetForm({
       .eq("id", targetId);
 
     if (updateError) {
-      setError(updateError.message);
+      void alertError(clientFacingSalesCrmError(updateError.message), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
       setSaving(false);
       return;
     }
@@ -115,16 +174,11 @@ export default function SalesTargetForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
+    <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
       <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <div className="grid gap-4 md:grid-cols-2">
           <SalesRepSelect
+            id="sales-target-employee"
             label="Employee"
             employees={initialEmployees}
             value={form.employee_id}
@@ -180,6 +234,7 @@ export default function SalesTargetForm({
               Period End *
             </label>
             <input
+              ref={periodEndRef}
               type="date"
               required
               value={form.period_end}
@@ -216,6 +271,7 @@ export default function SalesTargetForm({
               Unit Target
             </label>
             <input
+              ref={unitTargetRef}
               type="number"
               min={0}
               step="1"

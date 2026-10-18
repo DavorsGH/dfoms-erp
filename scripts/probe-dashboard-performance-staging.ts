@@ -7,6 +7,7 @@
  * Usage:
  *   npx tsx scripts/probe-dashboard-performance-staging.ts
  */
+import "./probe-server-only-stub";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -186,6 +187,7 @@ async function probeBsParity(
     data.initialInventoryBalanceSheet,
     data.initialManualEntries,
     data.initialTaxLedgerEntries,
+    data.initialWelfareFundEntries,
     reportOptions,
   );
 
@@ -218,6 +220,7 @@ async function probeBsParity(
     data.initialInventoryBalanceSheet,
     data.initialManualEntries,
     data.initialTaxLedgerEntries,
+    data.initialWelfareFundEntries,
     reportOptions,
   );
   const wrapperCheck = buildDashboardBalanceSheetCheck(

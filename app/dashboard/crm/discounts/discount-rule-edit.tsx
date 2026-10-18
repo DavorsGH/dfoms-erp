@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { LoadingState } from "@/components/loading-indicator";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import { createClient } from "@/utils/supabase/client";
 import {
   DISCOUNT_RULE_FORM_SELECT,
@@ -17,6 +22,7 @@ type DiscountRuleEditProps = {
 };
 
 export default function DiscountRuleEdit({ ruleId }: DiscountRuleEditProps) {
+  const { alertError } = useAlert();
   const [initialForm, setInitialForm] = useState<DiscountRuleFormState | null>(
     null,
   );
@@ -69,14 +75,22 @@ export default function DiscountRuleEdit({ ruleId }: DiscountRuleEditProps) {
     };
   }, [ruleId]);
 
+  useEffect(() => {
+    if (!loading && error) {
+      void alertError(clientFacingSalesCrmError(error, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [loading, error, alertError]);
+
   if (loading) {
     return <LoadingState label="Loading discount rule…" />;
   }
 
   if (error || !initialForm) {
     return (
-      <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-        {error ?? "Discount rule not found."}
+      <p className="text-sm text-slate-600">
+        {error ? "Could not load this discount rule." : "Discount rule not found."}
       </p>
     );
   }

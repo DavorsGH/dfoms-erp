@@ -26,8 +26,14 @@ import { buildSalesRepDashboardSummary } from "./sales-rep-dashboard-utils";
 import SalesRepDashboard from "./sales-rep-dashboard";
 import { fetchTenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status";
 import { fetchScopedRawMaterialStock } from "@/app/dashboard/inventory/raw-material-bu-stock-utils";
+import {
+  DashboardPagePerfMeta,
+  readSupabasePerfCallIndex,
+} from "@/lib/dashboard-page-perf-probe";
 
 export default async function DashboardPage() {
+  const renderStartedAt = Date.now();
+  const supabaseCallsBefore = readSupabasePerfCallIndex();
   const role = (await getCurrentUserRole()) as AppRole | null;
 
   if (role === "client") {
@@ -334,12 +340,18 @@ export default async function DashboardPage() {
   }
 
   return (
-    <DashboardCacheShell
-      session={{ tenantId, authUid }}
-      initialData={dashboardData}
-      initialFetchError={dashboardPageData.fetchError}
-      initialCachedAt={new Date().toISOString()}
-      visibility={visibility}
-    />
+    <>
+      <DashboardPagePerfMeta
+        renderStartedAt={renderStartedAt}
+        supabaseCallsBefore={supabaseCallsBefore}
+      />
+      <DashboardCacheShell
+        session={{ tenantId, authUid }}
+        initialData={dashboardData}
+        initialFetchError={dashboardPageData.fetchError}
+        initialCachedAt={new Date().toISOString()}
+        visibility={visibility}
+      />
+    </>
   );
 }

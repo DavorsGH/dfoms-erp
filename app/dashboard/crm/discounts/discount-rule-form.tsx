@@ -2,8 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { createClient } from "@/utils/supabase/client";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import { resolveSessionTenantId } from "@/utils/session-tenant-client";
 import { inputClassName } from "@/app/dashboard/hr-payroll/hr-register-utils";
 import {
@@ -39,28 +44,28 @@ export default function DiscountRuleForm({
 }: DiscountRuleFormProps) {
   const router = useRouter();
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const formRef = useRef<HTMLFormElement>(null);
   const [form, setForm] = useState<DiscountRuleFormState>(
     initialForm ?? emptyDiscountRuleForm(),
   );
-  const [error, setError] = useState<string | null>(fetchError);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (!formRef.current?.reportValidity()) {
+      return;
+    }
+
     setSaving(true);
-    setError(null);
-
-    if (!form.code.trim()) {
-      setError("Code is required.");
-      setSaving(false);
-      return;
-    }
-
-    if (!form.name.trim()) {
-      setError("Name is required.");
-      setSaving(false);
-      return;
-    }
 
     const payload = buildDiscountRulePayload(form);
 
@@ -68,7 +73,10 @@ export default function DiscountRuleForm({
       const { tenantId, error: tenantError } =
         await resolveSessionTenantId(supabase);
       if (tenantError || !tenantId) {
-        setError(tenantError ?? "Unable to resolve workspace.");
+        void alertError(
+          clientFacingSalesCrmError(tenantError ?? "Unable to resolve workspace."),
+          { title: SALES_CRM_ALERT_TITLE },
+        );
         setSaving(false);
         return;
       }
@@ -78,7 +86,9 @@ export default function DiscountRuleForm({
         .insert({ ...payload, tenant_id: tenantId });
 
       if (insertError) {
-        setError(insertError.message);
+        void alertError(clientFacingSalesCrmError(insertError.message), {
+          title: SALES_CRM_ALERT_TITLE,
+        });
         setSaving(false);
         return;
       }
@@ -89,7 +99,9 @@ export default function DiscountRuleForm({
     }
 
     if (!ruleId) {
-      setError("Missing discount rule id.");
+      void alertError("Missing discount rule id.", {
+        title: SALES_CRM_ALERT_TITLE,
+      });
       setSaving(false);
       return;
     }
@@ -100,7 +112,9 @@ export default function DiscountRuleForm({
       .eq("id", ruleId);
 
     if (updateError) {
-      setError(updateError.message);
+      void alertError(clientFacingSalesCrmError(updateError.message), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
       setSaving(false);
       return;
     }
@@ -110,13 +124,7 @@ export default function DiscountRuleForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
+    <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
       {mode === "edit" ? (
         <p className="text-sm text-slate-600">
           Times used: {usageCount}

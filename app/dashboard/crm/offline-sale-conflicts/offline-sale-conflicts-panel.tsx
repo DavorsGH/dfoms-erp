@@ -1,7 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { createClient } from "@/utils/supabase/client";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import {
   assertCanModifyBusinessUnitRow,
   formatBusinessUnitAccessError,
@@ -134,8 +139,23 @@ export default function OfflineSaleConflictsPanel({
   fetchError: string | null;
 }) {
   const supabase = createClient();
+  const { alertError } = useAlert();
+
+  function showActionError(message: string) {
+    void alertError(clientFacingSalesCrmError(message), {
+      title: SALES_CRM_ALERT_TITLE,
+    });
+  }
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
+
   const [conflicts, setConflicts] = useState(initialConflicts);
-  const [error, setError] = useState<string | null>(fetchError);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedAction, setSelectedAction] = useState<ResolveAction>(null);
   const [confirmedQtyByProduct, setConfirmedQtyByProduct] = useState<
@@ -176,7 +196,6 @@ export default function OfflineSaleConflictsPanel({
     setExpandedId(conflict.id);
     resetResolutionForm();
     setConfirmedQtyByProduct(defaults);
-    setError(null);
   }
 
   async function refreshConflicts() {
@@ -187,7 +206,7 @@ export default function OfflineSaleConflictsPanel({
       .limit(100);
 
     if (refreshError) {
-      setError(refreshError.message);
+      showActionError(refreshError.message);
       return;
     }
 
@@ -196,17 +215,16 @@ export default function OfflineSaleConflictsPanel({
 
   async function submitResolution(conflict: OfflineSaleConflictRow) {
     if (!selectedAction) {
-      setError("Select resolution A, B, or C.");
+      showActionError("Select resolution A, B, or C.");
       return;
     }
 
     setSubmitting(true);
-    setError(null);
 
     try {
       const buContext = await loadWriteBusinessUnitContext(supabase);
       if (!buContext.ok) {
-        setError(buContext.error);
+        showActionError(buContext.error);
         setSubmitting(false);
         return;
       }
@@ -221,7 +239,7 @@ export default function OfflineSaleConflictsPanel({
           claimBusinessUnitId,
         );
       } catch (accessError) {
-        setError(formatBusinessUnitAccessError(accessError));
+        showActionError(formatBusinessUnitAccessError(accessError));
         setSubmitting(false);
         return;
       }
@@ -243,7 +261,7 @@ export default function OfflineSaleConflictsPanel({
           .filter((line) => line.quantity > 0);
 
         if (confirmed_lines.length === 0) {
-          setError("Enter at least one confirmed quantity greater than zero.");
+          showActionError("Enter at least one confirmed quantity greater than zero.");
           setSubmitting(false);
           return;
         }
@@ -259,12 +277,12 @@ export default function OfflineSaleConflictsPanel({
 
         if (remainder > 0.009) {
           if (!cashDifferenceAction) {
-            setError("Select a cash difference action for the remainder.");
+            showActionError("Select a cash difference action for the remainder.");
             setSubmitting(false);
             return;
           }
           if (!cashDifferenceNote.trim()) {
-            setError("Enter a cash difference note for the remainder.");
+            showActionError("Enter a cash difference note for the remainder.");
             setSubmitting(false);
             return;
           }
@@ -279,19 +297,19 @@ export default function OfflineSaleConflictsPanel({
         };
       } else if (selectedAction === "B") {
         if (!writeOffReason.trim()) {
-          setError("Write-off reason is required for action B.");
+          showActionError("Write-off reason is required for action B.");
           setSubmitting(false);
           return;
         }
         p_params = { write_off_reason: writeOffReason.trim() };
       } else {
         if (!reclassAction) {
-          setError("Select a reclass action for C.");
+          showActionError("Select a reclass action for C.");
           setSubmitting(false);
           return;
         }
         if (!reclassReason.trim()) {
-          setError("Reason is required for action C.");
+          showActionError("Reason is required for action C.");
           setSubmitting(false);
           return;
         }
@@ -311,7 +329,7 @@ export default function OfflineSaleConflictsPanel({
       );
 
       if (rpcError) {
-        setError(rpcError.message);
+        showActionError(rpcError.message);
         setSubmitting(false);
         return;
       }
@@ -320,7 +338,7 @@ export default function OfflineSaleConflictsPanel({
       resetResolutionForm();
       await refreshConflicts();
     } catch (resolveError) {
-      setError(
+      showActionError(
         resolveError instanceof Error
           ? resolveError.message
           : "Failed to resolve conflict.",
@@ -342,12 +360,6 @@ export default function OfflineSaleConflictsPanel({
         {" · "}
         Showing {conflicts.length} most recent
       </p>
-
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       {conflicts.length === 0 ? (
         <p className="rounded-md border border-slate-200 bg-white px-4 py-6 text-sm text-slate-500">

@@ -1,13 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "@/app/dashboard/scrollable-table";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import {
   discountRuleActiveBadgeClassName,
   formatDiscountAppliesTo,
@@ -34,17 +39,19 @@ export default function DiscountsList({
   initialRules,
   fetchError,
 }: DiscountsListProps) {
+  const { alertError } = useAlert();
   const rules = initialRules.map(normalizeDiscountRuleRow);
-  const [error] = useState<string | null>(fetchError);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
 
   return (
     <div className="space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       <div className="flex justify-end">
         <Link href="/dashboard/crm/discounts/new" className={primaryButtonClassName}>
           New Discount Rule

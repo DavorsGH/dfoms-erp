@@ -1,5 +1,7 @@
 "use client";
 
+import { useAlert } from "@/components/feedback/feedback-context";
+import { INVENTORY_ACTION_ALERT_TITLE } from "@/lib/inventory/inventory-item-business-unit-guard";
 import { useMemo, useState } from "react";
 import { inputClassName } from "../../../employees/employee-record-utils";
 import { formatInventoryMoney } from "../../inventory-utils";
@@ -43,6 +45,7 @@ export default function ReceivePurchaseModal({
   onClose,
   onReceived,
 }: ReceivePurchaseModalProps) {
+  const { alertError } = useAlert();
   const [purchaseDate, setPurchaseDate] = useState(
     () => new Date().toISOString().slice(0, 10),
   );
@@ -104,7 +107,9 @@ export default function ReceivePurchaseModal({
         | null;
 
       if (!response.ok) {
-        setError(payload?.error ?? "Unable to record receipt.");
+        const message = payload?.error ?? "Unable to record receipt.";
+        void alertError(message, { title: INVENTORY_ACTION_ALERT_TITLE });
+        setError(message);
         return;
       }
 

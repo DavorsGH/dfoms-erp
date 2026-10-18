@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { createClient } from "@/utils/supabase/client";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import SalesRepSelect from "@/components/sales-rep-select";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
@@ -57,6 +62,24 @@ export default function CommissionsWorkbench({
   fetchError,
 }: CommissionsWorkbenchProps) {
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const periodStartRef = useRef<HTMLInputElement>(null);
+  const periodEndRef = useRef<HTMLInputElement>(null);
+
+  function showActionError(message: string) {
+    void alertError(clientFacingSalesCrmError(message), {
+      title: SALES_CRM_ALERT_TITLE,
+    });
+  }
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
+
   const [employeeId, setEmployeeId] = useState(defaultEmployeeId);
   const [periodStart, setPeriodStart] = useState(monthStartIsoDate());
   const [periodEnd, setPeriodEnd] = useState(monthEndIsoDate());
@@ -65,7 +88,6 @@ export default function CommissionsWorkbench({
   );
   const [selectedCalculation, setSelectedCalculation] =
     useState<CommissionCalculationRow | null>(null);
-  const [error, setError] = useState<string | null>(fetchError);
   const [loading, setLoading] = useState(false);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
 
@@ -80,7 +102,7 @@ export default function CommissionsWorkbench({
       .order("calculated_at", { ascending: false });
 
     if (listError) {
-      setError(listError.message);
+      showActionError(listError.message);
       return;
     }
 
@@ -92,18 +114,26 @@ export default function CommissionsWorkbench({
   }
 
   async function handleCalculate() {
+    periodStartRef.current?.setCustomValidity("");
+    periodEndRef.current?.setCustomValidity("");
+    const employeeSelect = document.getElementById(
+      "commission-workbench-employee",
+    ) as HTMLSelectElement | null;
+    employeeSelect?.setCustomValidity("");
+
     if (!employeeId.trim()) {
-      setError("Select an employee.");
+      employeeSelect?.setCustomValidity("Select an employee.");
+      employeeSelect?.reportValidity();
       return;
     }
 
     if (!periodStart.trim() || !periodEnd.trim()) {
-      setError("Period start and end are required.");
+      periodStartRef.current?.setCustomValidity("Period start is required.");
+      periodStartRef.current?.reportValidity();
       return;
     }
 
     setLoading(true);
-    setError(null);
 
     const { data, error: rpcError } = await supabase.rpc("calculate_commission", {
       p_employee_id: employeeId.trim(),
@@ -112,7 +142,7 @@ export default function CommissionsWorkbench({
     });
 
     if (rpcError) {
-      setError(rpcError.message);
+      showActionError(rpcError.message);
       setLoading(false);
       return;
     }
@@ -137,7 +167,6 @@ export default function CommissionsWorkbench({
 
   async function handleStatusChange(calcId: string, newStatus: CommissionStatus) {
     setStatusUpdatingId(calcId);
-    setError(null);
 
     const { error: rpcError } = await supabase.rpc("set_commission_status", {
       p_calc_id: calcId,
@@ -145,7 +174,7 @@ export default function CommissionsWorkbench({
     });
 
     if (rpcError) {
-      setError(rpcError.message);
+      showActionError(rpcError.message);
       setStatusUpdatingId(null);
       return;
     }
@@ -169,16 +198,11 @@ export default function CommissionsWorkbench({
 
   return (
     <div className="space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="text-sm font-medium text-slate-700">Calculate Commission</h3>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SalesRepSelect
+            id="commission-workbench-employee"
             employees={initialEmployees}
             value={employeeId}
             onChange={setEmployeeId}
@@ -191,7 +215,9 @@ export default function CommissionsWorkbench({
               Period Start
             </label>
             <input
+              ref={periodStartRef}
               type="date"
+              required
               value={periodStart}
               onChange={(event) => setPeriodStart(event.target.value)}
               className={inputClassName}
@@ -202,7 +228,9 @@ export default function CommissionsWorkbench({
               Period End
             </label>
             <input
+              ref={periodEndRef}
               type="date"
+              required
               value={periodEnd}
               onChange={(event) => setPeriodEnd(event.target.value)}
               className={inputClassName}

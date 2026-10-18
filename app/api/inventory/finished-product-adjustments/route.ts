@@ -21,6 +21,7 @@ import {
   type FinishedProductAdjustmentType,
   type FinishedProductStockAdjustmentRecord,
 } from "@/app/dashboard/inventory/finished-products-utils";
+import { guardFinishedProductWriteBusinessUnit } from "@/lib/inventory/inventory-item-business-unit-guard.server";
 import { mapFinishedProductStockAdjustmentErrorMessage } from "@/lib/inventory/inventory-mutation-error";
 
 async function getTenantSupabase() {
@@ -227,6 +228,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: writeBu.error }, { status: writeBu.status });
   }
   const businessUnitId = writeBu.businessUnitId;
+
+  const productBuGuard = await guardFinishedProductWriteBusinessUnit({
+    supabase,
+    tenantId: auth.tenantId,
+    productId,
+    writeBusinessUnitId: businessUnitId,
+    action: "stock_adjustment",
+  });
+  if (!productBuGuard.ok) {
+    return NextResponse.json(
+      { error: productBuGuard.error },
+      { status: productBuGuard.status },
+    );
+  }
 
   const { data: adjustmentId, error: rpcError } = await supabase.rpc(
     "record_finished_product_manual_adjustment",

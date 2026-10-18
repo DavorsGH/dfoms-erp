@@ -3,6 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import CrmShell from "../../crm-shell";
 import EmailPromotionsShell from "../email-promotions-shell";
+import SalesCrmMountErrorAlert from "@/lib/crm/sales-crm-mount-error-alert";
 import Campaigns from "./campaigns";
 import {
   CAMPAIGN_SELECT,
@@ -24,8 +25,9 @@ export default async function CampaignsPage() {
     return (
       <CrmShell sectionTitle="Email & Promotions">
         <EmailPromotionsShell sectionTitle="Campaigns">
-          <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            Unable to resolve tenant for campaigns.
+          <SalesCrmMountErrorAlert message="Unable to resolve tenant for campaigns." />
+          <p className="text-sm text-slate-600">
+            Unable to load campaigns for this workspace.
           </p>
         </EmailPromotionsShell>
       </CrmShell>

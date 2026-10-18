@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { createClient } from "@/utils/supabase/client";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import SalesRepSelect from "@/components/sales-rep-select";
 import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
@@ -45,26 +50,45 @@ export default function SalesForecastView({
   fetchError,
 }: SalesForecastViewProps) {
   const supabase = createClient();
+  const { alertError } = useAlert();
   const buReadScope = useBusinessUnitReadScope();
+
+  function showActionError(message: string) {
+    void alertError(clientFacingSalesCrmError(message), {
+      title: SALES_CRM_ALERT_TITLE,
+    });
+  }
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
   const defaultRange = defaultForecastRange();
   const [employeeId, setEmployeeId] = useState(defaultEmployeeId);
   const [rangeStart, setRangeStart] = useState(defaultRange.start);
   const [rangeEnd, setRangeEnd] = useState(defaultRange.end);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(fetchError);
   const [opportunities, setOpportunities] = useState<ForecastOpportunityRow[]>([]);
   const [productSales, setProductSales] = useState<ForecastProductSaleRow[]>([]);
   const [invoices, setInvoices] = useState<ForecastInvoiceRow[]>([]);
   const [targets, setTargets] = useState<SalesTargetListRow[]>([]);
 
   async function loadForecastData() {
+    const employeeSelect = document.getElementById(
+      "sales-forecast-employee",
+    ) as HTMLSelectElement | null;
+    employeeSelect?.setCustomValidity("");
+
     if (!employeeId.trim()) {
-      setError("Select an employee to view forecast.");
+      employeeSelect?.setCustomValidity("Select an employee to view forecast.");
+      employeeSelect?.reportValidity();
       return;
     }
 
     setLoading(true);
-    setError(null);
 
     const [
       { data: opportunityRows, error: opportunitiesError },
@@ -116,7 +140,7 @@ export default function SalesForecastView({
       null;
 
     if (fetchErrorMessage) {
-      setError(fetchErrorMessage);
+      showActionError(fetchErrorMessage);
       setLoading(false);
       return;
     }
@@ -165,12 +189,6 @@ export default function SalesForecastView({
 
   return (
     <div className="space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <p className="text-sm text-slate-600">
           Pipeline-weighted forecast uses open opportunities (estimated value ×
@@ -179,6 +197,7 @@ export default function SalesForecastView({
         </p>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SalesRepSelect
+            id="sales-forecast-employee"
             employees={initialEmployees}
             value={employeeId}
             onChange={setEmployeeId}

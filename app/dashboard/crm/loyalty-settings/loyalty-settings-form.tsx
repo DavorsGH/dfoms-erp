@@ -1,8 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useAlert, useToast } from "@/components/feedback/feedback-context";
 import { createClient } from "@/utils/supabase/client";
 import { inputClassName } from "@/app/dashboard/hr-payroll/hr-register-utils";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import {
   formatLoyaltyMoney,
   normalizeLoyaltySettings,
@@ -22,6 +27,11 @@ export default function LoyaltySettingsForm({
   fetchError,
 }: LoyaltySettingsFormProps) {
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
+  const formRef = useRef<HTMLFormElement>(null);
+  const earnRateRef = useRef<HTMLInputElement>(null);
+  const redemptionValueRef = useRef<HTMLInputElement>(null);
   const normalized = initialSettings
     ? normalizeLoyaltySettings(initialSettings)
     : null;
@@ -32,30 +42,43 @@ export default function LoyaltySettingsForm({
   const [redemptionValue, setRedemptionValue] = useState(
     String(normalized?.redemption_value_per_point ?? ""),
   );
-  const [error, setError] = useState<string | null>(fetchError);
-  const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    setSaving(true);
-    setError(null);
-    setSuccess(null);
+    earnRateRef.current?.setCustomValidity("");
+    redemptionValueRef.current?.setCustomValidity("");
 
     const earn = Number.parseFloat(earnRate);
     const redeem = Number.parseFloat(redemptionValue);
 
     if (!Number.isFinite(earn) || earn < 0) {
-      setError("Earn rate must be zero or greater.");
-      setSaving(false);
+      earnRateRef.current?.setCustomValidity("Earn rate must be zero or greater.");
+      earnRateRef.current?.reportValidity();
       return;
     }
 
     if (!Number.isFinite(redeem) || redeem <= 0) {
-      setError("Redemption value must be greater than zero.");
-      setSaving(false);
+      redemptionValueRef.current?.setCustomValidity(
+        "Redemption value must be greater than zero.",
+      );
+      redemptionValueRef.current?.reportValidity();
       return;
     }
+
+    if (!formRef.current?.reportValidity()) {
+      return;
+    }
+
+    setSaving(true);
 
     const { error: rpcError } = await supabase.rpc("update_loyalty_settings", {
       p_earn_rate: earn,
@@ -63,28 +86,19 @@ export default function LoyaltySettingsForm({
     });
 
     if (rpcError) {
-      setError(rpcError.message);
+      void alertError(clientFacingSalesCrmError(rpcError.message), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
       setSaving(false);
       return;
     }
 
-    setSuccess("Loyalty settings updated.");
+    toast("Loyalty settings updated.");
     setSaving(false);
   }
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-xl space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-      {success ? (
-        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          {success}
-        </p>
-      ) : null}
-
+    <form ref={formRef} onSubmit={handleSubmit} className="max-w-xl space-y-6">
       <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <p className="text-sm text-slate-600">
           Configure how customers earn and redeem loyalty points for this tenant.
@@ -94,6 +108,7 @@ export default function LoyaltySettingsForm({
             GHS spent per 1 point earned
           </label>
           <input
+            ref={earnRateRef}
             type="number"
             min={0}
             step="0.01"
@@ -111,6 +126,7 @@ export default function LoyaltySettingsForm({
             GHS value per point redeemed
           </label>
           <input
+            ref={redemptionValueRef}
             type="number"
             min={0.01}
             step="0.01"

@@ -1,8 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { createClient } from "@/utils/supabase/client";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -77,13 +82,29 @@ export default function Customers({
   fetchError,
 }: CustomersProps) {
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const customerFormRef = useRef<HTMLFormElement>(null);
+
+  function showActionError(message: string) {
+    void alertError(clientFacingSalesCrmError(message), {
+      title: SALES_CRM_ALERT_TITLE,
+    });
+  }
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
+
   const [customers, setCustomers] = useState(initialCustomers);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(fetchError);
   const [filterStatus, setFilterStatus] = useState("");
   const [filterCustomerType, setFilterCustomerType] = useState("");
   const [filterContractStatus, setFilterContractStatus] = useState("");
@@ -120,12 +141,11 @@ export default function Customers({
       .order("client_name", { ascending: true });
 
     if (refreshError) {
-      setError(refreshError.message);
+      showActionError(refreshError.message);
       return;
     }
 
     setCustomers((data as CustomerEntry[] | null) ?? []);
-    setError(null);
   }
 
   function openAddForm() {
@@ -186,7 +206,6 @@ export default function Customers({
     }
 
     setDeletingId(clientId);
-    setError(null);
 
     const { error: deleteError } = await supabase
       .from("customers")
@@ -194,7 +213,7 @@ export default function Customers({
       .eq("client_id", clientId);
 
     if (deleteError) {
-      setError(getCustomerDeleteErrorMessage(deleteError));
+      showActionError(getCustomerDeleteErrorMessage(deleteError));
       setDeletingId(null);
       return;
     }
@@ -209,8 +228,11 @@ export default function Customers({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (!customerFormRef.current?.reportValidity()) {
+      return;
+    }
+
     setLoading(true);
-    setError(null);
 
     try {
     const payload = {
@@ -259,19 +281,19 @@ export default function Customers({
         .eq("client_id", editingId);
 
       if (saveError) {
-        setError(saveError.message);
+        showActionError(saveError.message);
         return;
       }
     } else {
       const clientAllocated = await allocateClientId(supabase);
       if (clientAllocated.error || !clientAllocated.clientId) {
-        setError(clientAllocated.error ?? "Unable to allocate customer ID.");
+        showActionError(clientAllocated.error ?? "Unable to allocate customer ID.");
         return;
       }
 
       const contractAllocated = await allocateContractNumber(supabase);
       if (contractAllocated.error || !contractAllocated.contractNumber) {
-        setError(
+        showActionError(
           contractAllocated.error ?? "Unable to allocate contract number.",
         );
         return;
@@ -284,7 +306,7 @@ export default function Customers({
       });
 
       if (saveError) {
-        setError(saveError.message);
+        showActionError(saveError.message);
         return;
       }
 
@@ -299,7 +321,7 @@ export default function Customers({
     closeForm();
     await refreshCustomers();
     } catch (unexpected) {
-      setError(
+      showActionError(
         unexpected instanceof Error
           ? unexpected.message
           : "Unable to save the customer.",
@@ -384,18 +406,12 @@ export default function Customers({
         </div>
       </div>
 
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       {showForm ? (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
             {editingId ? "Edit Customer" : "New Customer"}
           </h3>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form ref={customerFormRef} onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {editingId ? (
                 <div>

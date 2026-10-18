@@ -1,5 +1,7 @@
 "use client";
 
+import { useAlert } from "@/components/feedback/feedback-context";
+import { INVENTORY_ACTION_ALERT_TITLE } from "@/lib/inventory/inventory-item-business-unit-guard";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatDate } from "../finance/income-register-utils";
@@ -71,8 +73,13 @@ export default function ProductPurchases({
   fetchError,
   readOnly = false,
 }: ProductPurchasesProps) {
+  const { alertError } = useAlert();
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  function showSaveError(message: string) {
+    void alertError(message, { title: INVENTORY_ACTION_ALERT_TITLE });
+  }
   const productPurchaseIdFromQueryHandled = useRef<string | null>(null);
   const [purchases, setPurchases] = useState(initialPurchases);
   const [products] = useState(initialProducts);
@@ -233,7 +240,7 @@ export default function ProductPurchases({
         | null;
 
       if (!response.ok) {
-        setError(payload?.error ?? "Unable to update purchase.");
+        showSaveError(payload?.error ?? "Unable to update purchase.");
         return;
       }
 
@@ -263,7 +270,7 @@ export default function ProductPurchases({
       | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to record purchase.");
+      showSaveError(payload?.error ?? "Unable to record purchase.");
       return;
     }
 
@@ -283,7 +290,7 @@ export default function ProductPurchases({
     closeModal();
     router.refresh();
     } catch (unexpected) {
-      setError(
+      showSaveError(
         unexpected instanceof Error
           ? unexpected.message
           : "Unable to save the purchase.",

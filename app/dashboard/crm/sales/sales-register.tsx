@@ -1,8 +1,13 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
+import { useAlert } from "@/components/feedback/feedback-context";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import {
@@ -131,8 +136,24 @@ type SalesRegisterProps = {
 export default function SalesRegister(props: SalesRegisterProps) {
   const router = useRouter();
   const supabase = createClient();
+  const { alertError } = useAlert();
   const buReadScope = useBusinessUnitReadScope();
   const { viewAllBusinessUnits } = useBusinessUnitView();
+
+  function showActionError(message: string) {
+    void alertError(clientFacingSalesCrmError(message), {
+      title: SALES_CRM_ALERT_TITLE,
+    });
+  }
+
+  useEffect(() => {
+    if (props.fetchError) {
+      void alertError(
+        clientFacingSalesCrmError(props.fetchError, "Could not load."),
+        { title: SALES_CRM_ALERT_TITLE },
+      );
+    }
+  }, [props.fetchError, alertError]);
 
   const [incomeEntries, setIncomeEntries] = useState(
     props.initialIncomeEntries.map(normalizeProductSaleEntry),
@@ -141,7 +162,6 @@ export default function SalesRegister(props: SalesRegisterProps) {
   const [returnedQtyByIncomeId, setReturnedQtyByIncomeId] = useState<
     Map<string, number>
   >(() => new Map());
-  const [error, setError] = useState<string | null>(props.fetchError);
   const [showForm, setShowForm] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [returnInvoiceNo, setReturnInvoiceNo] = useState<string | null>(null);
@@ -239,7 +259,7 @@ export default function SalesRegister(props: SalesRegisterProps) {
     ).order("date", { ascending: false });
 
     if (refreshError) {
-      setError(refreshError.message);
+      showActionError(refreshError.message);
       return;
     }
     const normalized = ((data as ProductSaleEntry[] | null) ?? []).map((row) =>
@@ -247,7 +267,6 @@ export default function SalesRegister(props: SalesRegisterProps) {
     );
     setIncomeEntries(normalized);
     await reloadReturnedQuantities(normalized);
-    setError(null);
   }
 
   async function refreshWebhookSales() {
@@ -260,7 +279,7 @@ export default function SalesRegister(props: SalesRegisterProps) {
       .select(CRM_WEBHOOK_SALE_SELECT)
       .order("sale_date", { ascending: false });
     if (webhookError) {
-      setError(webhookError.message);
+      showActionError(webhookError.message);
       return;
     }
     setWebhookSales(
@@ -453,10 +472,9 @@ export default function SalesRegister(props: SalesRegisterProps) {
       return;
     }
     setVoidingId(entry.id);
-    setError(null);
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      showActionError(buContext.error);
       setVoidingId(null);
       return;
     }
@@ -466,7 +484,7 @@ export default function SalesRegister(props: SalesRegisterProps) {
         entry.business_unit_id,
       );
     } catch (accessError) {
-      setError(formatBusinessUnitAccessError(accessError));
+      showActionError(formatBusinessUnitAccessError(accessError));
       setVoidingId(null);
       return;
     }
@@ -474,7 +492,7 @@ export default function SalesRegister(props: SalesRegisterProps) {
       p_income_id: entry.id,
     });
     if (voidError) {
-      setError(formatVoidProductSaleRpcError(voidError.message));
+      showActionError(formatVoidProductSaleRpcError(voidError.message));
       setVoidingId(null);
       return;
     }
@@ -511,7 +529,7 @@ export default function SalesRegister(props: SalesRegisterProps) {
         props.initialClients,
       );
       if (result.kind === "unsupported") {
-        setError(result.reason);
+        showActionError(result.reason);
         return;
       }
       if (result.kind === "pos") {
@@ -520,7 +538,7 @@ export default function SalesRegister(props: SalesRegisterProps) {
       }
       setActiveReceipt({ kind: "product_sale", receipt: result.receipt });
     } catch (printError) {
-      setError(
+      showActionError(
         printError instanceof Error
           ? printError.message
           : "Unable to load receipt.",
@@ -594,12 +612,6 @@ export default function SalesRegister(props: SalesRegisterProps) {
           </DashboardButton>
         </div>
       </div>
-
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       {!viewAllBusinessUnits ? (
         <p className="text-xs text-slate-500">

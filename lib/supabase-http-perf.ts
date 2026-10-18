@@ -102,7 +102,7 @@ export type SupabaseHttpPerfSnapshot = {
 
 function snapshotFromCalls(calls: HttpCallRecord[]): SupabaseHttpPerfSnapshot {
   const totalMs = calls.reduce((sum, c) => sum + c.ms, 0);
-  const slowest = [...calls].sort((a, b) => b.ms - a.ms).slice(0, 3);
+  const slowest = [...calls].sort((a, b) => b.ms - a.ms).slice(0, 5);
   return {
     callCount: calls.length,
     totalMs,
@@ -117,6 +117,26 @@ export function getSupabaseHttpPerfSnapshot(): SupabaseHttpPerfSnapshot | null {
     return null;
   }
   return snapshotFromCalls(store.calls);
+}
+
+/** Supabase calls recorded after `callsBefore` (for page-level probe vs layout). */
+export function getSupabaseHttpPerfPageSnapshot(
+  callsBefore: number,
+): SupabaseHttpPerfSnapshot | null {
+  const store = layoutHttpPerfStorage.getStore();
+  if (!store) {
+    return null;
+  }
+  const pageCalls = store.calls.slice(Math.max(0, callsBefore));
+  if (pageCalls.length === 0) {
+    return {
+      callCount: 0,
+      totalMs: 0,
+      slowest: [],
+      calls: [],
+    };
+  }
+  return snapshotFromCalls(pageCalls);
 }
 
 export function labelSupabaseHttpRequest(input: RequestInfo | URL): string {
@@ -226,7 +246,7 @@ export function formatLayoutPerfMetaContent(options: {
 }): string {
   const { renderMs, snapshot } = options;
   const slowParts = snapshot.slowest.map((c) => `${c.label}@${c.ms}`);
-  while (slowParts.length < 3) {
+  while (slowParts.length < 5) {
     slowParts.push("-@0");
   }
   return [
@@ -236,5 +256,41 @@ export function formatLayoutPerfMetaContent(options: {
     `slow1=${slowParts[0]}`,
     `slow2=${slowParts[1]}`,
     `slow3=${slowParts[2]}`,
+    `slow4=${slowParts[3]}`,
+    `slow5=${slowParts[4]}`,
   ].join(";");
+}
+
+export const DFOMS_PERF_PAGE_MS_HEADER = "x-dfoms-perf-page-ms";
+export const DFOMS_PERF_PAGE_CALLS_HEADER = "x-dfoms-perf-page-calls";
+export const DFOMS_PERF_PAGE_SLOW_HEADERS = [
+  "x-dfoms-perf-page-slow1",
+  "x-dfoms-perf-page-slow2",
+  "x-dfoms-perf-page-slow3",
+  "x-dfoms-perf-page-slow4",
+  "x-dfoms-perf-page-slow5",
+] as const;
+
+export function attachPagePerfProbeHeaders(
+  response: { headers: Headers },
+  options: { renderMs: number; snapshot: SupabaseHttpPerfSnapshot | null },
+): void {
+  const snapshot = options.snapshot;
+  if (!snapshot) {
+    response.headers.set(DFOMS_PERF_PAGE_MS_HEADER, String(options.renderMs));
+    response.headers.set(DFOMS_PERF_PAGE_CALLS_HEADER, "0");
+    for (const header of DFOMS_PERF_PAGE_SLOW_HEADERS) {
+      response.headers.set(header, "-@0");
+    }
+    return;
+  }
+  response.headers.set(DFOMS_PERF_PAGE_MS_HEADER, String(options.renderMs));
+  response.headers.set(DFOMS_PERF_PAGE_CALLS_HEADER, String(snapshot.callCount));
+  const slowParts = snapshot.slowest.map((c) => `${c.label}@${c.ms}`);
+  while (slowParts.length < 5) {
+    slowParts.push("-@0");
+  }
+  DFOMS_PERF_PAGE_SLOW_HEADERS.forEach((header, index) => {
+    response.headers.set(header, slowParts[index] ?? "-@0");
+  });
 }

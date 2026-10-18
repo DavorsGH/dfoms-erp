@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireDividendsWrite } from "@/lib/finance/dividends-auth";
 import { dividendRpcClientErrorMessage } from "@/lib/finance/directors-board-api-errors";
+import { fetchDividendDeclarationWriteBundle } from "@/lib/finance/dividends-load";
 import { createAdminClient } from "@/utils/supabase/admin";
 import type { ShareholderPaymentMethod } from "@/app/dashboard/finance/dividends-types";
 
@@ -66,8 +67,19 @@ export async function POST(
     .maybeSingle();
 
   const declarationFullyPaid = declarationStatus === "paid";
+  const declarationId = updatedLine?.declaration_id;
+  const bundle =
+    typeof declarationId === "string" && declarationId
+      ? await fetchDividendDeclarationWriteBundle(
+          admin,
+          auth.tenantId,
+          declarationId,
+        )
+      : { declaration: null, lines: [] };
 
   return NextResponse.json({
+    declaration: bundle.declaration,
+    lines: bundle.lines,
     line: updatedLine,
     declarationFullyPaid,
     declarationStatus,

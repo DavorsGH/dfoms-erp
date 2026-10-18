@@ -1,6 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAlert, useToast } from "@/components/feedback/feedback-context";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import { formatChannelLabel } from "@/utils/message-templates-types";
 import type { MessageTemplateRow } from "@/utils/message-templates-types";
 import {
@@ -31,6 +36,16 @@ export default function NotificationRules({
   fetchError,
 }: NotificationRulesProps) {
   void tenantId;
+  const { alertError } = useAlert();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
 
   const [rules, setRules] = useState(initialRules);
   const [drafts, setDrafts] = useState<Record<string, DraftState>>(() => {
@@ -44,8 +59,6 @@ export default function NotificationRules({
     return initial;
   });
   const [savingEvent, setSavingEvent] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(fetchError);
-  const [success, setSuccess] = useState<string | null>(null);
 
   function updateDraft(
     eventType: string,
@@ -64,7 +77,9 @@ export default function NotificationRules({
   async function handleSave(eventType: string) {
     const draft = drafts[eventType];
     if (!draft?.template_id) {
-      setError("Pick a transactional template before saving.");
+      void alertError("Pick a transactional template before saving.", {
+        title: SALES_CRM_ALERT_TITLE,
+      });
       return;
     }
 
@@ -72,13 +87,13 @@ export default function NotificationRules({
       (row) => row.id === draft.template_id,
     );
     if (!template) {
-      setError("Selected template is not available.");
+      void alertError("Selected template is not available.", {
+        title: SALES_CRM_ALERT_TITLE,
+      });
       return;
     }
 
     setSavingEvent(eventType);
-    setError(null);
-    setSuccess(null);
 
     const response = await fetch("/api/notification-rules", {
       method: "PUT",
@@ -97,7 +112,12 @@ export default function NotificationRules({
     };
 
     if (!response.ok) {
-      setError(payload.error ?? "Failed to save notification rule.");
+      void alertError(
+        clientFacingSalesCrmError(
+          payload.error ?? "Failed to save notification rule.",
+        ),
+        { title: SALES_CRM_ALERT_TITLE },
+      );
       setSavingEvent(null);
       return;
     }
@@ -114,7 +134,9 @@ export default function NotificationRules({
       setDrafts(nextDrafts);
     }
 
-    setSuccess(`${TRANSACTIONAL_EVENT_LABELS[eventType as keyof typeof TRANSACTIONAL_EVENT_LABELS] ?? eventType} saved.`);
+    toast(
+      `${TRANSACTIONAL_EVENT_LABELS[eventType as keyof typeof TRANSACTIONAL_EVENT_LABELS] ?? eventType} saved.`,
+    );
     setSavingEvent(null);
   }
 
@@ -124,17 +146,6 @@ export default function NotificationRules({
         Automatic customer messages for operational events. These are not
         marketing campaigns and are not gated by marketing opt-out preferences.
       </p>
-
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-      {success ? (
-        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          {success}
-        </p>
-      ) : null}
 
       {transactionalTemplates.length === 0 ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">

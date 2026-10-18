@@ -9,6 +9,7 @@ import {
   getServerAuthUid,
 } from "@/utils/business-unit-access.server";
 import { logInventoryUserActivity } from "@/lib/inventory/inventory-audit-log";
+import { guardFinishedProductWriteBusinessUnit } from "@/lib/inventory/inventory-item-business-unit-guard.server";
 import {
   mapInternalConsumptionDeleteErrorMessage,
   mapInternalConsumptionMutationErrorMessage,
@@ -90,6 +91,23 @@ export async function PATCH(
   }
   if (!entryRow) {
     return NextResponse.json({ error: "Entry not found." }, { status: 404 });
+  }
+
+  const entryBusinessUnitId =
+    (entryRow as { business_unit_id?: string | null }).business_unit_id ?? null;
+
+  const productBuGuard = await guardFinishedProductWriteBusinessUnit({
+    supabase,
+    tenantId: auth.tenantId,
+    productId: body.product_id.trim(),
+    writeBusinessUnitId: entryBusinessUnitId,
+    action: "internal_use",
+  });
+  if (!productBuGuard.ok) {
+    return NextResponse.json(
+      { error: productBuGuard.error },
+      { status: productBuGuard.status },
+    );
   }
 
   const { error: rpcError } = await admin.rpc("update_internal_consumption_entry", {

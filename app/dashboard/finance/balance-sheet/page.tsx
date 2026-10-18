@@ -8,12 +8,18 @@ import {
 import BalanceSheet from "../balance-sheet";
 import { fetchBalanceSheetPageData } from "../balance-sheet-page-data";
 import BalanceSheetShell from "../balance-sheet-shell";
+import {
+  DashboardPagePerfMeta,
+  readSupabasePerfCallIndex,
+} from "@/lib/dashboard-page-perf-probe";
 
 type BalanceSheetPageProps = {
   searchParams: Promise<{ focusMonth?: string; year?: string }>;
 };
 
 export default async function BalanceSheetPage({ searchParams }: BalanceSheetPageProps) {
+  const renderStartedAt = Date.now();
+  const supabaseCallsBefore = readSupabasePerfCallIndex();
   const { focusMonth: focusMonthParam, year: yearParam } = await searchParams;
   const parsedFocusMonth = focusMonthParam ? Number(focusMonthParam) : null;
   const initialFocusMonth =
@@ -77,6 +83,10 @@ export default async function BalanceSheetPage({ searchParams }: BalanceSheetPag
 
   return (
     <BalanceSheetShell>
+      <DashboardPagePerfMeta
+        renderStartedAt={renderStartedAt}
+        supabaseCallsBefore={supabaseCallsBefore}
+      />
       <BalanceSheet
         tenantId={resolvedTenantId}
         initialIncomeEntries={initialIncomeEntries}

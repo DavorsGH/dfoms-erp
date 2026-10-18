@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
@@ -222,6 +227,30 @@ export default function PosCheckout({
   tenantId = null,
 }: PosCheckoutProps) {
   const supabase = useMemo(() => createClient(), []);
+  const { alert, alertError } = useAlert();
+
+  function showActionError(message: string) {
+    void alertError(clientFacingSalesCrmError(message), {
+      title: SALES_CRM_ALERT_TITLE,
+    });
+  }
+
+  function showPostSaleNotice(message: string) {
+    void alert({
+      title: "Sale recorded",
+      message,
+      variant: "info",
+    });
+  }
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
+
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -267,7 +296,6 @@ export default function PosCheckout({
   const [payerPhone, setPayerPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [momoWaiting, setMomoWaiting] = useState(false);
-  const [error, setError] = useState<string | null>(fetchError);
   /** True when the backend blocked payment because the tenant has no active
    * settlement account — shows a link to Payment Settings. */
   const [paymentSettingsRequired, setPaymentSettingsRequired] = useState(false);
@@ -291,14 +319,10 @@ export default function PosCheckout({
   const [loyaltyPointsRedeemed, setLoyaltyPointsRedeemed] = useState(0);
   const [loyaltyBalance, setLoyaltyBalance] = useState<number | null>(null);
   const [loyaltyRedeemInput, setLoyaltyRedeemInput] = useState("");
-  const [loyaltyRedeemError, setLoyaltyRedeemError] = useState<string | null>(null);
   const [loyaltyRedeemLoading, setLoyaltyRedeemLoading] = useState(false);
   const [selectedStoreCredit, setSelectedStoreCredit] =
     useState<PosSelectedStoreCredit | null>(null);
   const [creditNoteNumberLookup, setCreditNoteNumberLookup] = useState("");
-  const [storeCreditLookupError, setStoreCreditLookupError] = useState<
-    string | null
-  >(null);
   const [storeCreditPickerNotes, setStoreCreditPickerNotes] = useState<
     PosSelectedStoreCredit[]
   >([]);
@@ -366,8 +390,13 @@ export default function PosCheckout({
   }, [initialEmployees]);
 
   useEffect(() => {
-    setError(fetchError);
-  }, [fetchError]);
+    if (storeCreditUrlBootstrapError) {
+      void alertError(
+        clientFacingSalesCrmError(storeCreditUrlBootstrapError),
+        { title: SALES_CRM_ALERT_TITLE },
+      );
+    }
+  }, [storeCreditUrlBootstrapError, alertError]);
 
   const posHeldCartViewOnly = viewAllBusinessUnits;
   const posHeldCartViewOnlyTooltip = SALES_REGISTER_VIEW_ONLY_TOOLTIP;
@@ -391,7 +420,7 @@ export default function PosCheckout({
 
   async function refreshEmployees() {
     if (!tenantId) {
-      setError("Unable to resolve your workspace.");
+      showActionError("Unable to resolve your workspace.");
       return;
     }
 
@@ -401,7 +430,7 @@ export default function PosCheckout({
       buReadScope,
     );
     if (scoped.error) {
-      setError(scoped.error);
+      showActionError(scoped.error);
       return;
     }
 
@@ -411,7 +440,7 @@ export default function PosCheckout({
     ).order("full_name");
 
     if (refreshError) {
-      setError(refreshError.message);
+      showActionError(refreshError.message);
       return;
     }
 
@@ -425,7 +454,6 @@ export default function PosCheckout({
         ? ""
         : current,
     );
-    setError(null);
   }
 
   useEffect(() => {
@@ -440,17 +468,20 @@ export default function PosCheckout({
   }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
   async function recordQuoteConversionsForIncomeIds(incomeIds: string[]) {
-    if (!quoteConversionId || incomeIds.length === 0) {
+    const quoteId = quoteConversionId?.trim() ?? "";
+    if (!quoteId || incomeIds.length === 0) {
       return null;
     }
 
     try {
-      await recordQuoteSaleConversions(supabase, quoteConversionId, incomeIds);
+      await recordQuoteSaleConversions(supabase, quoteId, incomeIds);
       return null;
     } catch (conversionError) {
-      return conversionError instanceof Error
-        ? conversionError.message
-        : "Quote conversion recording failed.";
+      const message =
+        conversionError instanceof Error
+          ? conversionError.message?.trim()
+          : "";
+      return message || "Quote conversion recording failed.";
     }
   }
 
@@ -788,8 +819,6 @@ export default function PosCheckout({
 
         setSelectedStoreCredit(result.note);
         setCreditNoteNumberLookup(result.note.creditNoteNumber);
-        setStoreCreditLookupError(null);
-
         if (loadCreditLinesFromUrl) {
           const lines = await fetchCreditNoteCartLines(
             supabase,
@@ -872,20 +901,18 @@ export default function PosCheckout({
   function clearStoreCredit() {
     setSelectedStoreCredit(null);
     setCreditNoteNumberLookup("");
-    setStoreCreditLookupError(null);
     setStoreCreditUrlBootstrapError(null);
   }
 
   async function handleLookupStoreCreditByNumber() {
     if (!tenantId?.trim()) {
-      setStoreCreditLookupError("Workspace session unavailable.");
+      showActionError("Workspace session unavailable.");
       return;
     }
     if (isOffline) {
-      setStoreCreditLookupError(STORE_CREDIT_OFFLINE_BLOCK_MESSAGE);
+      showActionError(STORE_CREDIT_OFFLINE_BLOCK_MESSAGE);
       return;
     }
-    setStoreCreditLookupError(null);
     try {
       const note = await lookupCreditNoteByNumberForPos(
         supabase,
@@ -894,14 +921,12 @@ export default function PosCheckout({
         creditNoteNumberLookup,
       );
       if (!note) {
-        setStoreCreditLookupError(
-          "Credit note not found or has no available balance.",
-        );
+        showActionError("Credit note not found or has no available balance.");
         return;
       }
       setSelectedStoreCredit(note);
     } catch (lookupError) {
-      setStoreCreditLookupError(
+      showActionError(
         lookupError instanceof Error
           ? lookupError.message
           : "Could not look up credit note.",
@@ -915,12 +940,11 @@ export default function PosCheckout({
     setLoyaltyDiscount(0);
     setLoyaltyPointsRedeemed(0);
     setLoyaltyRedeemInput("");
-    setLoyaltyRedeemError(null);
   }
 
   async function refreshProducts() {
     if (!tenantId) {
-      setError("Unable to resolve your workspace.");
+      showActionError("Unable to resolve your workspace.");
       return;
     }
 
@@ -933,14 +957,14 @@ export default function PosCheckout({
       .order("product_name", { ascending: true });
 
     if (productError) {
-      setError(productError.message);
+      showActionError(productError.message);
       return;
     }
 
     const { stockMap, error: stockScopeError } =
       await fetchScopedFinishedProductStock(supabase, tenantId, buReadScope);
     if (stockScopeError) {
-      setError(stockScopeError);
+      showActionError(stockScopeError);
       return;
     }
 
@@ -977,7 +1001,6 @@ export default function PosCheckout({
   });
 
   function addProductToCart(product: FinishedProductRecord) {
-    setError(null);
     clearCheckoutAdjustments();
 
     setCartLines((current) => {
@@ -989,7 +1012,7 @@ export default function PosCheckout({
         createCartLineId,
       );
       if (!result.ok) {
-        setError(result.error);
+        showActionError(result.error);
         return current;
       }
       return result.lines;
@@ -1031,13 +1054,12 @@ export default function PosCheckout({
         const nextQuantity = Number.isNaN(quantity) ? 0 : quantity;
 
         if (nextQuantity > available) {
-          setError(
+          showActionError(
             `Only ${formatInventoryQuantity(available)} ${product.unit_of_measure} of ${product.product_name} available (including items already in cart).`,
           );
           return line;
         }
 
-        setError(null);
         return { ...line, quantity: nextQuantity };
       }),
     );
@@ -1061,12 +1083,11 @@ export default function PosCheckout({
       const available = getAvailableStockForProduct(product, current, lineId);
       const nextQuantity = roundMoney(Math.max(0.0001, line.quantity + delta));
       if (nextQuantity > available) {
-        setError(
+        showActionError(
           `Only ${formatInventoryQuantity(available)} ${product.unit_of_measure} of ${product.product_name} available (including items already in cart).`,
         );
         return current;
       }
-      setError(null);
       clearCheckoutAdjustments();
       return current.map((entry) =>
         entry.id === lineId ? { ...entry, quantity: nextQuantity } : entry,
@@ -1082,39 +1103,37 @@ export default function PosCheckout({
     clearStoreCredit();
     setCartLines([]);
     setActiveRecalledHeldCartId(null);
-    setError(null);
   }
 
   function openHoldCartDialog() {
     if (isOffline) {
-      setError(POS_HELD_CART_OFFLINE_MESSAGE);
+      showActionError(POS_HELD_CART_OFFLINE_MESSAGE);
       return;
     }
     if (posHeldCartViewOnly) {
-      setError(STAMP_REFUSED_VIEW_ALL_MESSAGE);
+      showActionError(STAMP_REFUSED_VIEW_ALL_MESSAGE);
       return;
     }
     if (cartLines.length === 0) {
-      setError("Add at least one product before holding the cart.");
+      showActionError("Add at least one product before holding the cart.");
       return;
     }
-    setError(null);
     setHoldLabelDialogOpen(true);
   }
 
   async function confirmHoldCart(label: string) {
     if (!tenantId) {
-      setError("Unable to resolve your workspace.");
+      showActionError("Unable to resolve your workspace.");
       return;
     }
     if (isOffline) {
-      setError(POS_HELD_CART_OFFLINE_MESSAGE);
+      showActionError(POS_HELD_CART_OFFLINE_MESSAGE);
       return;
     }
 
     const stampResult = await resolveCheckoutBusinessUnitId();
     if (!stampResult.ok) {
-      setError(stampResult.error);
+      showActionError(stampResult.error);
       return;
     }
 
@@ -1123,7 +1142,7 @@ export default function PosCheckout({
       error: userError,
     } = await supabase.auth.getUser();
     if (userError || !user?.id) {
-      setError("You must be signed in to hold a cart.");
+      showActionError("You must be signed in to hold a cart.");
       return;
     }
 
@@ -1133,7 +1152,6 @@ export default function PosCheckout({
     );
 
     setHoldSaving(true);
-    setError(null);
     try {
       await insertPosHeldCart(supabase, {
         tenantId,
@@ -1163,7 +1181,7 @@ export default function PosCheckout({
       setActiveRecalledHeldCartId(null);
       await refreshHeldCartCount();
     } catch (holdError) {
-      setError(
+      showActionError(
         holdError instanceof Error ? holdError.message : "Could not hold cart.",
       );
     } finally {
@@ -1249,7 +1267,6 @@ export default function PosCheckout({
       setRecallDialogOpen(false);
       setPendingRecallRow(null);
       setPendingRecallValidation(null);
-      setError(null);
     } finally {
       setRecallBusy(false);
     }
@@ -1271,22 +1288,21 @@ export default function PosCheckout({
 
   async function handleRedeemLoyaltyPoints() {
     if (isOffline) {
-      setLoyaltyRedeemError(offlineWriteMessage);
+      showActionError(offlineWriteMessage);
       return;
     }
     if (!clientId) {
-      setLoyaltyRedeemError("Select a customer to redeem points.");
+      showActionError("Select a customer to redeem points.");
       return;
     }
 
     const points = Number.parseFloat(loyaltyRedeemInput);
     if (!Number.isFinite(points) || points <= 0) {
-      setLoyaltyRedeemError("Enter a valid points amount.");
+      showActionError("Enter a valid points amount.");
       return;
     }
 
     setLoyaltyRedeemLoading(true);
-    setLoyaltyRedeemError(null);
 
     const result = await redeemLoyaltyPointsForCheckout(supabase, {
       clientId,
@@ -1295,7 +1311,7 @@ export default function PosCheckout({
     });
 
     if (!result.ok) {
-      setLoyaltyRedeemError(result.error);
+      showActionError(result.error);
       setLoyaltyRedeemLoading(false);
       return;
     }
@@ -1314,7 +1330,6 @@ export default function PosCheckout({
     setLoyaltyDiscount(0);
     setLoyaltyPointsRedeemed(0);
     setLoyaltyRedeemInput("");
-    setLoyaltyRedeemError(null);
   }
 
   async function recordLoyaltyEarnAfterSale(
@@ -1350,7 +1365,6 @@ export default function PosCheckout({
     setShowRequestPayment(false);
     setRequestPaymentDraft(null);
     setMomoWaiting(false);
-    setError(null);
     setPaymentSettingsRequired(false);
     clearCheckoutAdjustments();
     clearStoreCredit();
@@ -1366,22 +1380,22 @@ export default function PosCheckout({
     // Customer / walk-in payer are optional — anonymous cash sales are allowed.
 
     if (cartLines.length === 0) {
-      setError("Add at least one product to the cart.");
+      showActionError("Add at least one product to the cart.");
       return null;
     }
 
     if (!paymentMethod.trim()) {
-      setError("Select a payment method.");
+      showActionError("Select a payment method.");
       return null;
     }
 
     if (selectedStoreCredit && isMobileMoney) {
-      setError(STORE_CREDIT_MOMO_BLOCK_MESSAGE);
+      showActionError(STORE_CREDIT_MOMO_BLOCK_MESSAGE);
       return null;
     }
 
     if (selectedStoreCredit && !isCash) {
-      setError("Select Cash to pay any remainder when using store credit.");
+      showActionError("Select Cash to pay any remainder when using store credit.");
       return null;
     }
 
@@ -1389,7 +1403,7 @@ export default function PosCheckout({
       selectedStoreCredit &&
       (promoDiscount > 0 || loyaltyDiscount > 0 || loyaltyPointsRedeemed > 0)
     ) {
-      setError(
+      showActionError(
         "Remove promo or loyalty redemption before applying store credit.",
       );
       return null;
@@ -1397,12 +1411,12 @@ export default function PosCheckout({
 
     if (isCash && amountTenderBlocked) {
       if (parsedAmountTendered == null) {
-        setError("Enter the amount tendered by the customer.");
+        showActionError("Enter the amount tendered by the customer.");
       } else {
         const dueLabel = selectedStoreCredit
           ? formatGHS(cashDueAfterCredit)
           : formatGHS(payableTotal);
-        setError(
+        showActionError(
           `Amount tendered (${formatGHS(parsedAmountTendered)}) is less than the cash due (${dueLabel}).`,
         );
       }
@@ -1411,24 +1425,24 @@ export default function PosCheckout({
 
     for (const line of cartLines) {
       if (line.quantity <= 0) {
-        setError("Each cart line must have a quantity greater than zero.");
+        showActionError("Each cart line must have a quantity greater than zero.");
         return null;
       }
 
       if (line.unitPrice < 0) {
-        setError("Unit prices must be zero or greater.");
+        showActionError("Unit prices must be zero or greater.");
         return null;
       }
 
       const product = products.find((item) => item.id === line.productId);
       if (!product) {
-        setError("A product in the cart is no longer available.");
+        showActionError("A product in the cart is no longer available.");
         return null;
       }
 
       const available = getAvailableStockForProduct(product, cartLines, line.id);
       if (line.quantity > available) {
-        setError(
+        showActionError(
           `Only ${formatInventoryQuantity(available)} ${product.unit_of_measure} of ${product.product_name} available.`,
         );
         return null;
@@ -1483,31 +1497,31 @@ export default function PosCheckout({
   ) {
     const stampResult = await resolveCheckoutBusinessUnitId();
     if (!stampResult.ok) {
-      setError(stampResult.error);
+      showActionError(stampResult.error);
       return;
     }
 
     if (selectedStoreCredit) {
-      setError(STORE_CREDIT_OFFLINE_BLOCK_MESSAGE);
+      showActionError(STORE_CREDIT_OFFLINE_BLOCK_MESSAGE);
       return;
     }
 
     if (isMobileMoney) {
-      setError(
+      showActionError(
         "Mobile Money cannot be queued offline. Use Cash, or reconnect to pay with MoMo.",
       );
       return;
     }
 
     if (promoDiscount > 0 || loyaltyDiscount > 0 || loyaltyPointsRedeemed > 0) {
-      setError("Promo/loyalty redeem cannot be used offline");
+      showActionError("Promo/loyalty redeem cannot be used offline");
       return;
     }
 
     const session =
       writeQueue?.session ?? (await resolveClientCacheSession());
     if (!session) {
-      setError("Unable to queue offline — session not available.");
+      showActionError("Unable to queue offline — session not available.");
       return;
     }
 
@@ -1584,12 +1598,12 @@ export default function PosCheckout({
   ) {
     const stampResult = await resolveCheckoutBusinessUnitId();
     if (!stampResult.ok) {
-      setError(stampResult.error);
+      showActionError(stampResult.error);
       return;
     }
 
     if (!tenantId) {
-      setError("Unable to resolve your workspace.");
+      showActionError("Unable to resolve your workspace.");
       return;
     }
 
@@ -1632,13 +1646,15 @@ export default function PosCheckout({
     const conversionWarning = await recordQuoteConversionsFromSummary(summary);
 
     if (!summary.invoiceNo) {
-      setError("Checkout completed but no invoice number was returned from the server.");
+      showActionError("Checkout completed but no invoice number was returned from the server.");
       return;
     }
 
     const creditApplied = summary.creditApplied ?? 0;
     const cashRecorded = summary.cashRecorded ?? 0;
-    const amountReceived = roundMoney(creditApplied + cashRecorded);
+    const amountReceived = selectedStoreCredit
+      ? roundMoney(creditApplied + cashRecorded)
+      : payableTotal;
     const receiptPaymentMethod = selectedStoreCredit
       ? posIncomePaymentMethodLabel(
           paymentMethod.trim() || "Cash",
@@ -1672,7 +1688,7 @@ export default function PosCheckout({
 
     const loyaltyEarnWarning = await recordLoyaltyEarnAfterSale(
       trimmedClientId,
-      selectedStoreCredit ? amountReceived : payableTotal,
+      amountReceived,
       summary.invoiceNo,
     );
 
@@ -1711,13 +1727,13 @@ export default function PosCheckout({
       });
     }
 
-    if (loyaltyEarnWarning) {
-      setError(
-        `Sale recorded, but loyalty points could not be earned: ${loyaltyEarnWarning}`,
+    if (loyaltyEarnWarning?.trim()) {
+      showPostSaleNotice(
+        `Loyalty points could not be earned: ${loyaltyEarnWarning.trim()}`,
       );
-    } else if (conversionWarning) {
-      setError(
-        `Sale recorded, but quote conversion failed: ${conversionWarning}`,
+    } else if (quoteConversionId?.trim() && conversionWarning?.trim()) {
+      showPostSaleNotice(
+        `Quote conversion failed: ${conversionWarning.trim()}`,
       );
     }
   }
@@ -1727,7 +1743,7 @@ export default function PosCheckout({
     trimmedCustomerName: string | null,
   ) {
     if (selectedStoreCredit) {
-      setError(STORE_CREDIT_MOMO_BLOCK_MESSAGE);
+      showActionError(STORE_CREDIT_MOMO_BLOCK_MESSAGE);
       setLoading(false);
       return;
     }
@@ -1737,7 +1753,7 @@ export default function PosCheckout({
     try {
       const stampResult = await resolveCheckoutBusinessUnitId();
       if (!stampResult.ok) {
-        setError(stampResult.error);
+        showActionError(stampResult.error);
         setMomoWaiting(false);
         setLoading(false);
         return;
@@ -1765,7 +1781,7 @@ export default function PosCheckout({
         if (initPayload.code === PAYMENT_SETTINGS_REQUIRED_CODE) {
           setPaymentSettingsRequired(true);
         }
-        setError(initPayload.error ?? "Could not start Mobile Money payment.");
+        showActionError(initPayload.error ?? "Could not start Mobile Money payment.");
         setMomoWaiting(false);
         setLoading(false);
         return;
@@ -1774,7 +1790,7 @@ export default function PosCheckout({
       const accessCode = initPayload.access_code?.trim() ?? "";
       const paymentRequestId = initPayload.payment_request_id?.trim() ?? "";
       if (!accessCode || !paymentRequestId) {
-        setError("Paystack did not return an access code for Mobile Money.");
+        showActionError("Paystack did not return an access code for Mobile Money.");
         setMomoWaiting(false);
         setLoading(false);
         return;
@@ -1809,7 +1825,7 @@ export default function PosCheckout({
               (await confirmResponse.json()) as MomoConfirmResponse;
 
             if (!confirmResponse.ok || !confirmPayload.ok) {
-              setError(
+              showActionError(
                 confirmPayload.error ??
                   "Payment succeeded but sale confirmation failed. Retry or check Sales.",
               );
@@ -1819,7 +1835,7 @@ export default function PosCheckout({
             }
 
             if (!confirmPayload.invoice_no) {
-              setError("Payment confirmed but no invoice number was returned.");
+              showActionError("Payment confirmed but no invoice number was returned.");
               setMomoWaiting(false);
               setLoading(false);
               return;
@@ -1846,17 +1862,17 @@ export default function PosCheckout({
               confirmPayload.invoice_no,
             );
 
-            if (conversionWarning) {
-              setError(
-                `Sale recorded, but quote conversion failed: ${conversionWarning}`,
+            if (loyaltyEarnWarning?.trim()) {
+              showPostSaleNotice(
+                `Loyalty points could not be earned: ${loyaltyEarnWarning.trim()}`,
               );
-            } else if (loyaltyEarnWarning) {
-              setError(
-                `Sale recorded, but loyalty points could not be earned: ${loyaltyEarnWarning}`,
+            } else if (quoteConversionId?.trim() && conversionWarning?.trim()) {
+              showPostSaleNotice(
+                `Quote conversion failed: ${conversionWarning.trim()}`,
               );
             }
           } catch (confirmError) {
-            setError(
+            showActionError(
               confirmError instanceof Error
                 ? confirmError.message
                 : "Failed to confirm Mobile Money payment.",
@@ -1867,14 +1883,14 @@ export default function PosCheckout({
           }
         },
         onCancel: () => {
-          setError(
+          showActionError(
             "Mobile Money payment was cancelled. Your cart is unchanged — you can retry.",
           );
           setMomoWaiting(false);
           setLoading(false);
         },
         onError: (paystackError) => {
-          setError(
+          showActionError(
             paystackError.message?.trim() ||
               "Mobile Money payment failed. Your cart is unchanged — you can retry.",
           );
@@ -1883,7 +1899,7 @@ export default function PosCheckout({
         },
       });
     } catch (momoError) {
-      setError(
+      showActionError(
         momoError instanceof Error
           ? momoError.message
           : "Could not open Mobile Money payment.",
@@ -1896,7 +1912,6 @@ export default function PosCheckout({
   async function handleCompleteSale(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);
-    setError(null);
     setPaymentSettingsRequired(false);
     setReceipt(null);
 
@@ -1909,13 +1924,13 @@ export default function PosCheckout({
     const offlineNow = isOffline || !navigator.onLine;
     if (offlineNow) {
       if (selectedStoreCredit) {
-        setError(STORE_CREDIT_OFFLINE_BLOCK_MESSAGE);
+        showActionError(STORE_CREDIT_OFFLINE_BLOCK_MESSAGE);
         setLoading(false);
         return;
       }
 
       if (isMobileMoney) {
-        setError(
+        showActionError(
           "Mobile Money cannot be queued offline. Use Cash, or reconnect to pay with MoMo.",
         );
         setLoading(false);
@@ -1928,7 +1943,7 @@ export default function PosCheckout({
           basics.trimmedCustomerName,
         );
       } catch (queueError) {
-        setError(
+        showActionError(
           queueError instanceof Error
             ? queueError.message
             : "Could not queue offline cash sale.",
@@ -1955,7 +1970,7 @@ export default function PosCheckout({
       );
       setLoading(false);
     } catch (checkoutError) {
-      setError(
+      showActionError(
         checkoutError instanceof Error
           ? checkoutError.message
           : "Checkout failed.",
@@ -1971,10 +1986,9 @@ export default function PosCheckout({
    */
   function handleRequestPaymentLink() {
     if (isOffline) {
-      setError(offlineWriteMessage);
+      showActionError(offlineWriteMessage);
       return;
     }
-    setError(null);
     setPaymentSettingsRequired(false);
     setReceipt(null);
 
@@ -1985,7 +1999,7 @@ export default function PosCheckout({
 
     const amountGhs = payableTotal;
     if (amountGhs <= 0) {
-      setError("Cart total must be greater than zero.");
+      showActionError("Cart total must be greater than zero.");
       return;
     }
 
@@ -2163,9 +2177,6 @@ export default function PosCheckout({
                 </button>
               </div>
             )}
-            {loyaltyRedeemError ? (
-              <p className="text-sm text-red-700">{loyaltyRedeemError}</p>
-            ) : null}
           </div>
         ) : null}
 
@@ -2174,11 +2185,6 @@ export default function PosCheckout({
           {storeCreditUrlBootstrapLoading ? (
             <p className="mt-2 text-sm text-slate-600">
               Loading store credit from link…
-            </p>
-          ) : null}
-          {storeCreditUrlBootstrapError ? (
-            <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-              {storeCreditUrlBootstrapError}
             </p>
           ) : null}
           {selectedStoreCredit ? (
@@ -2252,7 +2258,6 @@ export default function PosCheckout({
                       );
                       if (note) {
                         setSelectedStoreCredit(note);
-                        setStoreCreditLookupError(null);
                       }
                     }}
                     className={inputClassName}
@@ -2271,9 +2276,6 @@ export default function PosCheckout({
                 <p className="text-sm text-amber-900">
                   {STORE_CREDIT_OFFLINE_BLOCK_MESSAGE}
                 </p>
-              ) : null}
-              {storeCreditLookupError ? (
-                <p className="text-sm text-red-700">{storeCreditLookupError}</p>
               ) : null}
             </div>
           )}
@@ -2389,10 +2391,9 @@ export default function PosCheckout({
                   nextMethod === POS_MOMO_PAYMENT_METHOD &&
                   selectedStoreCredit
                 ) {
-                  setError(STORE_CREDIT_MOMO_BLOCK_MESSAGE);
+                  showActionError(STORE_CREDIT_MOMO_BLOCK_MESSAGE);
                   return;
                 }
-                setError(null);
                 setPaymentMethod(nextMethod);
               }}
               className={inputClassName}
@@ -2444,15 +2445,6 @@ export default function PosCheckout({
                 <p className="mt-1 text-xs text-slate-500">
                   Enter the cash the customer handed over. Change is calculated live
                   on the customer display.
-                </p>
-              ) : null}
-              {amountTenderBlocked ? (
-                <p className="mt-1 text-sm text-red-700">
-                  {parsedAmountTendered == null
-                    ? "Enter amount tendered to complete this sale."
-                    : selectedStoreCredit
-                      ? `Amount tendered must be at least ${formatGHS(cashDueAfterCredit)}.`
-                      : `Amount tendered must be at least ${formatGHS(payableTotal)}.`}
                 </p>
               ) : null}
             </div>
@@ -2633,30 +2625,17 @@ export default function PosCheckout({
         ) : null}
       </div>
 
-      {error ? (
-        <div className="space-y-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {isPosCheckoutLineFailureMessage(error) ||
-          /only .* in stock, cannot sell/i.test(error) ? (
-            <p className="font-medium">
-              No sale was recorded. Fix the failed line below and retry the
-              whole cart.
-            </p>
-          ) : null}
-          <p>{error}</p>
-          {paymentSettingsRequired ? (
-            <p>
-              <Link
-                href="/dashboard/administration/billing?tab=payment"
-                className="inline-block rounded-md bg-[#0f2744] px-3 py-1.5 font-medium text-white transition-colors hover:bg-[#1a3a5c]"
-              >
-                Set up Payment Settings
-              </Link>{" "}
-              <span className="text-red-600">
-                (Administration → Billing Settings → Payment Settings)
-              </span>
-            </p>
-          ) : null}
-        </div>
+      {paymentSettingsRequired ? (
+        <p className="text-sm text-slate-700">
+          <Link
+            href="/dashboard/administration/billing?tab=payment"
+            className="font-medium text-[#0f2744] underline"
+          >
+            Set up Payment Settings
+          </Link>{" "}
+          (Administration → Billing Settings → Payment Settings) to accept Mobile
+          Money checkout.
+        </p>
       ) : null}
 
       {momoWaiting ? (

@@ -11,8 +11,14 @@ import {
 import { buildAvailableYears } from "../finance-year-utils";
 import FinanceNav from "../finance-nav";
 import ProfitLoss from "../profit-loss";
+import {
+  DashboardPagePerfMeta,
+  readSupabasePerfCallIndex,
+} from "@/lib/dashboard-page-perf-probe";
 
 export default async function ProfitLossPage() {
+  const renderStartedAt = Date.now();
+  const supabaseCallsBefore = readSupabasePerfCallIndex();
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
@@ -68,6 +74,10 @@ export default async function ProfitLossPage() {
 
   return (
     <div>
+      <DashboardPagePerfMeta
+        renderStartedAt={renderStartedAt}
+        supabaseCallsBefore={supabaseCallsBefore}
+      />
       <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">Finance</h1>
       <FinanceNav />
       <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">

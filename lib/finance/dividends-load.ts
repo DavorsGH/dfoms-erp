@@ -132,6 +132,30 @@ export async function fetchDividendDeclarations(
   return { rows: (data ?? []) as DividendDeclarationRow[], error: null };
 }
 
+export async function fetchDividendDeclarationWriteBundle(
+  supabase: SupabaseClient,
+  tenantId: string,
+  declarationId: string,
+): Promise<{
+  declaration: DividendDeclarationRow | null;
+  lines: DividendDeclarationLineRow[];
+}> {
+  const [declarationResult, linesResult] = await Promise.all([
+    supabase
+      .from("dividend_declarations")
+      .select(DIVIDEND_DECLARATION_SELECT)
+      .eq("tenant_id", tenantId)
+      .eq("id", declarationId)
+      .maybeSingle(),
+    fetchDividendDeclarationLines(supabase, tenantId, [declarationId]),
+  ]);
+
+  return {
+    declaration: (declarationResult.data ?? null) as DividendDeclarationRow | null,
+    lines: linesResult.rows,
+  };
+}
+
 export async function fetchDividendDeclarationLines(
   supabase: SupabaseClient,
   tenantId: string,

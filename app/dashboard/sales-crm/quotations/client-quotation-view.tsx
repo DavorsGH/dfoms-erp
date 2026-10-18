@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAlert } from "@/components/feedback/feedback-context";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import { pdf } from "@react-pdf/renderer";
 import { LoadingState } from "@/components/loading-indicator";
 import { useTenantBranding } from "@/app/dashboard/tenant-branding-context";
@@ -70,9 +75,18 @@ export default function ClientQuotationView({
   customerActiveContract = null,
 }: ClientQuotationViewProps) {
   const router = useRouter();
+  const { alertError } = useAlert();
   const branding = useTenantBranding();
   const [payload, setPayload] = useState<ClientQuotationDetailPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (error) {
+      void alertError(clientFacingSalesCrmError(error), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [error, alertError]);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [converting, setConverting] = useState(false);
@@ -283,17 +297,13 @@ export default function ClientQuotationView({
 
   if (error && !display) {
     return (
-      <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-        {error}
-      </p>
+      <p className="text-sm text-slate-600">Could not load this quotation.</p>
     );
   }
 
   if (!display) {
     return (
-      <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-        Quotation not found.
-      </p>
+      <p className="text-sm text-slate-600">Quotation not found.</p>
     );
   }
 
@@ -326,12 +336,6 @@ export default function ClientQuotationView({
   return (
     <div className="space-y-4">
       <ClientQuotationPrintStylesLegacy />
-
-      {error ? (
-        <p className="no-print rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       {showStaffActions && emailDelivery?.resend_message_id ? (
         <section className="no-print rounded-lg border border-slate-200 bg-white p-4 shadow-sm">

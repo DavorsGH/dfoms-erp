@@ -33,6 +33,7 @@ import {
 } from "@/utils/client-quotations-types";
 import { loadActivePaymentAccountsForTenant } from "@/utils/payment-accounts-server";
 import CrmShell from "@/app/dashboard/crm/crm-shell";
+import SalesCrmMountErrorAlert from "@/lib/crm/sales-crm-mount-error-alert";
 import ClientQuotationForm from "../client-quotation-form";
 
 export default async function NewClientQuotationPage() {
@@ -41,9 +42,7 @@ export default async function NewClientQuotationPage() {
   if (!tenantId) {
     return (
       <CrmShell sectionTitle="Quotations">
-        <p className="text-sm text-red-700">
-          Unable to resolve your workspace. Contact support if this persists.
-        </p>
+        <SalesCrmMountErrorAlert message="Unable to resolve your workspace. Contact support if this persists." />
       </CrmShell>
     );
   }

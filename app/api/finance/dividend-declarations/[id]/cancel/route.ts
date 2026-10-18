@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { requireDividendsWrite } from "@/lib/finance/dividends-auth";
 import { dividendRpcClientErrorMessage } from "@/lib/finance/directors-board-api-errors";
+import { fetchDividendDeclarationWriteBundle } from "@/lib/finance/dividends-load";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 
@@ -57,11 +58,10 @@ export async function POST(
     );
   }
 
-  const { data: refreshed } = await admin
-    .from("dividend_declarations")
-    .select("*")
-    .eq("id", id)
-    .single();
+  const bundle = await fetchDividendDeclarationWriteBundle(admin, auth.tenantId, id);
 
-  return NextResponse.json({ declaration: refreshed });
+  return NextResponse.json({
+    declaration: bundle.declaration,
+    lines: bundle.lines,
+  });
 }

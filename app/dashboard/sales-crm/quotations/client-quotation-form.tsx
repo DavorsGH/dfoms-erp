@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAlert } from "@/components/feedback/feedback-context";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import LineItemsEditor, { reindexLineItems } from "@/components/line-items-editor";
 import { useTenantBranding } from "@/app/dashboard/tenant-branding-context";
 import {
@@ -141,11 +146,26 @@ export default function ClientQuotationForm({
   fetchError = null,
 }: ClientQuotationFormProps) {
   const router = useRouter();
+  const { alertError } = useAlert();
+
+  function showActionError(message: string) {
+    void alertError(clientFacingSalesCrmError(message), {
+      title: SALES_CRM_ALERT_TITLE,
+    });
+  }
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
+
   const branding = useTenantBranding();
   const stampBusinessUnit = useStampBusinessUnitId();
   const { units } = useBusinessUnitView();
   const [form, setForm] = useState<ClientQuotationFormState>(initialForm);
-  const [error, setError] = useState<string | null>(fetchError);
   const [saving, setSaving] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -154,6 +174,22 @@ export default function ClientQuotationForm({
   >([]);
   const [loadingCustomerContracts, setLoadingCustomerContracts] = useState(false);
   const [customerContractsError, setCustomerContractsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (previewError) {
+      void alertError(clientFacingSalesCrmError(previewError), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [previewError, alertError]);
+
+  useEffect(() => {
+    if (customerContractsError) {
+      void alertError(clientFacingSalesCrmError(customerContractsError), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [customerContractsError, alertError]);
 
   const engagementType = normalizeQuotationEngagementType(form.quotation_engagement_type);
   const showContractPicker = isRenewalOrAmendmentQuotation(engagementType);
@@ -468,7 +504,6 @@ export default function ClientQuotationForm({
     }
 
     setSaving(true);
-    setError(null);
 
     const authorizedBy = resolveAuthorizedByFields(
       form.authorized_by_selection,
@@ -478,7 +513,7 @@ export default function ClientQuotationForm({
     );
 
     if (!authorizedBy.authorized_by_name?.trim()) {
-      setError("Authorized By is required.");
+      showActionError("Authorized By is required.");
       setSaving(false);
       return;
     }
@@ -550,7 +585,7 @@ export default function ClientQuotationForm({
       | null;
 
     if (!response.ok) {
-      setError(result?.error ?? "Unable to save quotation.");
+      showActionError(result?.error ?? "Unable to save quotation.");
       setSaving(false);
       return;
     }
@@ -561,18 +596,6 @@ export default function ClientQuotationForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
-      {previewError ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {previewError}
-        </p>
-      ) : null}
-
       {isConverted ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           This quotation has been converted to an invoice and can no longer be edited.

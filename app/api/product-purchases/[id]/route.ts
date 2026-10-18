@@ -14,6 +14,8 @@ import {
   type ProductPurchaseListRow,
   type ProductPurchaseWriteBody,
 } from "@/utils/product-purchases-types";
+import { guardFinishedProductWriteBusinessUnit } from "@/lib/inventory/inventory-item-business-unit-guard.server";
+import { mapInventoryMutationErrorMessage } from "@/lib/inventory/inventory-mutation-error";
 import { createClient } from "@/utils/supabase/server";
 
 type RouteContext = {
@@ -191,6 +193,23 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 
+  const purchaseBusinessUnitId =
+    (existing as { business_unit_id?: string | null }).business_unit_id ?? null;
+
+  const productBuGuard = await guardFinishedProductWriteBusinessUnit({
+    supabase,
+    tenantId: auth.tenantId,
+    productId: trimmed.product_id,
+    writeBusinessUnitId: purchaseBusinessUnitId,
+    action: "purchase",
+  });
+  if (!productBuGuard.ok) {
+    return NextResponse.json(
+      { error: productBuGuard.error },
+      { status: productBuGuard.status },
+    );
+  }
+
   const { data: supplier, error: supplierError } = await supabase
     .from("suppliers")
     .select("id, is_active")
@@ -224,7 +243,14 @@ export async function PATCH(request: Request, context: RouteContext) {
   });
 
   if (rpcError) {
-    return NextResponse.json({ error: rpcError.message }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: mapInventoryMutationErrorMessage(rpcError, {
+          fallbackMessage: "Couldn't update this purchase. Please try again.",
+        }),
+      },
+      { status: 400 },
+    );
   }
 
   const { error: projectUpdateError } = await supabase

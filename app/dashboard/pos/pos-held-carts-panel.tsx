@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
 import DashboardButton from "@/components/dashboard-button";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import { formatGHS } from "../finance/income-register-utils";
 import {
   deletePosHeldCart,
@@ -103,6 +108,16 @@ export function PosRecallWarningsDialog({
   onCancel: () => void;
   onAccept: () => void;
 }) {
+  const { alertError } = useAlert();
+
+  useEffect(() => {
+    if (open && storeCreditError) {
+      void alertError(clientFacingSalesCrmError(storeCreditError), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [open, storeCreditError, alertError]);
+
   if (!open) {
     return null;
   }
@@ -143,8 +158,8 @@ export function PosRecallWarningsDialog({
           <p className="mt-4 text-sm text-slate-600">No price or stock warnings.</p>
         )}
         {storeCreditError ? (
-          <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-            Store credit will not be applied: {storeCreditError}
+          <p className="mt-4 text-sm text-slate-600">
+            Store credit will not be applied for this recall.
           </p>
         ) : null}
         <div className="mt-6 flex justify-end gap-2">
@@ -172,20 +187,25 @@ export default function PosHeldCartsPanel({
   onRecall,
   onCountChange,
 }: PosHeldCartsPanelProps) {
+  const { alertError } = useAlert();
   const [rows, setRows] = useState<PosHeldCartRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
+
+  function showActionError(message: string) {
+    void alertError(clientFacingSalesCrmError(message), {
+      title: SALES_CRM_ALERT_TITLE,
+    });
+  }
 
   async function loadRows() {
     setLoading(true);
-    setError(null);
     try {
       const next = await fetchPosHeldCarts(supabase, tenantId);
       setRows(next);
       onCountChange?.(next.length);
     } catch (loadError) {
-      setError(
+      showActionError(
         loadError instanceof Error ? loadError.message : "Could not load held carts.",
       );
     } finally {
@@ -201,12 +221,11 @@ export default function PosHeldCartsPanel({
 
   async function handleDiscard(id: string) {
     setDiscardingId(id);
-    setError(null);
     try {
       await deletePosHeldCart(supabase, id);
       await loadRows();
     } catch (discardError) {
-      setError(
+      showActionError(
         discardError instanceof Error
           ? discardError.message
           : "Could not discard held cart.",
@@ -230,11 +249,6 @@ export default function PosHeldCartsPanel({
           </DashboardButton>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {error ? (
-            <p className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-              {error}
-            </p>
-          ) : null}
           {loading ? (
             <p className="text-sm text-slate-600">Loading…</p>
           ) : rows.length === 0 ? (

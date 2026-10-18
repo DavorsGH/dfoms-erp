@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { createClient } from "@/utils/supabase/client";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -41,10 +46,10 @@ export default function CommissionRulesList({
 }: CommissionRulesListProps) {
   const router = useRouter();
   const supabase = createClient();
+  const { alertError } = useAlert();
   const [rules, setRules] = useState(
     initialRules.map(normalizeCommissionRuleRow),
   );
-  const [error, setError] = useState<string | null>(fetchError);
   const [deleteTarget, setDeleteTarget] = useState<CommissionRuleListRow | null>(
     null,
   );
@@ -54,13 +59,20 @@ export default function CommissionRulesList({
     setRules(initialRules.map(normalizeCommissionRuleRow));
   }, [initialRules]);
 
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
+
   async function handleDeleteRule() {
     if (!deleteTarget) {
       return;
     }
 
     setDeleting(true);
-    setError(null);
 
     const { error: deleteError } = await supabase
       .from("commission_rules")
@@ -68,7 +80,9 @@ export default function CommissionRulesList({
       .eq("id", deleteTarget.id);
 
     if (deleteError) {
-      setError(deleteError.message);
+      void alertError(clientFacingSalesCrmError(deleteError.message), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
       setDeleting(false);
       return;
     }
@@ -81,12 +95,6 @@ export default function CommissionRulesList({
 
   return (
     <div className="space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       <div className="flex justify-end">
         <Link href="/dashboard/crm/commission-rules/new" className={primaryButtonClassName}>
           New Commission Rule

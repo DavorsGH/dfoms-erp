@@ -1,7 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import { formatCreditNoteUsageStatus } from "@/app/dashboard/finance/credit-note-display-utils";
 import { creditNoteAvailableBalance } from "@/app/dashboard/finance/credit-notes-utils";
 import { buildPosStoreCreditCheckoutUrl } from "@/app/dashboard/pos/pos-store-credit-utils";
@@ -97,7 +102,16 @@ export default function Customer360({
   creditAppliedToProductSales = 0,
   fetchError,
 }: Customer360Props) {
+  const { alertError } = useAlert();
   const [activeTab, setActiveTab] = useState<Customer360TabId>("opportunities");
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
   const summary = computeCustomer360Summary(productSales, invoices, activities, {
     creditAppliedToProductSales,
   });
@@ -128,12 +142,6 @@ export default function Customer360({
           Back to Customer List
         </Link>
       </div>
-
-      {fetchError ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {fetchError}
-        </p>
-      ) : null}
 
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

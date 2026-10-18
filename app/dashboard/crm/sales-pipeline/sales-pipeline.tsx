@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { createClient } from "@/utils/supabase/client";
+import {
+  SALES_CRM_ALERT_TITLE,
+  clientFacingSalesCrmError,
+} from "@/lib/crm/sales-crm-notifications";
 import { formatDate, formatGHS } from "../../finance/income-register-utils";
 import { inputClassName } from "../../hr-payroll/hr-register-utils";
 import {
@@ -94,6 +99,22 @@ export default function SalesPipeline({
   tenantId = null,
 }: SalesPipelineProps) {
   const supabase = createClient();
+  const { alertError } = useAlert();
+
+  function showActionError(message: string) {
+    void alertError(clientFacingSalesCrmError(message), {
+      title: SALES_CRM_ALERT_TITLE,
+    });
+  }
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(clientFacingSalesCrmError(fetchError, "Could not load."), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+    }
+  }, [fetchError, alertError]);
+
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const [opportunities, setOpportunities] = useState(initialOpportunities);
@@ -124,7 +145,6 @@ export default function SalesPipeline({
   const [completingActivityId, setCompletingActivityId] = useState<
     string | null
   >(null);
-  const [error, setError] = useState<string | null>(fetchError);
   const skipFirstEmployeeScopeRefresh = useRef(true);
 
   useEffect(() => {
@@ -161,7 +181,7 @@ export default function SalesPipeline({
 
   async function refreshEmployees() {
     if (!tenantId) {
-      setError("Unable to resolve your workspace.");
+      showActionError("Unable to resolve your workspace.");
       return;
     }
 
@@ -171,7 +191,7 @@ export default function SalesPipeline({
       buReadScope,
     );
     if (scoped.error) {
-      setError(scoped.error);
+      showActionError(scoped.error);
       return;
     }
 
@@ -181,14 +201,13 @@ export default function SalesPipeline({
     ).order("full_name");
 
     if (refreshError) {
-      setError(refreshError.message);
+      showActionError(refreshError.message);
       return;
     }
 
     setEmployees(
       filterActiveEmployees((data as HrEmployee[] | null) ?? []),
     );
-    setError(null);
   }
 
   useEffect(() => {
@@ -213,7 +232,7 @@ export default function SalesPipeline({
     ).order("updated_at", { ascending: false });
 
     if (refreshError) {
-      setError(refreshError.message);
+      showActionError(refreshError.message);
       return;
     }
 
@@ -231,7 +250,7 @@ export default function SalesPipeline({
       .order("due_date", { ascending: true, nullsFirst: false });
 
     if (refreshError) {
-      setError(refreshError.message);
+      showActionError(refreshError.message);
       return;
     }
 
@@ -249,7 +268,7 @@ export default function SalesPipeline({
       .order("client_name", { ascending: true });
 
     if (refreshError) {
-      setError(refreshError.message);
+      showActionError(refreshError.message);
       return;
     }
 
@@ -262,7 +281,6 @@ export default function SalesPipeline({
     setLeadForm(emptyLeadForm);
     setCreateNewLead(false);
     setShowAddForm(true);
-    setError(null);
   }
 
   function closeAddForm() {
@@ -276,7 +294,6 @@ export default function SalesPipeline({
     setShowAddForm(false);
     setEditingOpportunityId(opportunity.id);
     setOpportunityForm(opportunityToFormState(opportunity));
-    setError(null);
   }
 
   function closeEditForm() {
@@ -316,19 +333,19 @@ export default function SalesPipeline({
   async function createLeadClient(): Promise<string | null> {
     const clientName = leadForm.client_name.trim();
     if (!clientName) {
-      setError("Lead customer name is required.");
+      showActionError("Lead customer name is required.");
       return null;
     }
 
     const clientAllocated = await allocateClientId(supabase);
     if (clientAllocated.error || !clientAllocated.clientId) {
-      setError(clientAllocated.error ?? "Unable to allocate customer ID.");
+      showActionError(clientAllocated.error ?? "Unable to allocate customer ID.");
       return null;
     }
 
     const contractAllocated = await allocateContractNumber(supabase);
     if (contractAllocated.error || !contractAllocated.contractNumber) {
-      setError(
+      showActionError(
         contractAllocated.error ?? "Unable to allocate contract number.",
       );
       return null;
@@ -347,7 +364,7 @@ export default function SalesPipeline({
     });
 
     if (insertError) {
-      setError(insertError.message);
+      showActionError(insertError.message);
       return null;
     }
 
@@ -365,11 +382,9 @@ export default function SalesPipeline({
   async function handleCreateOpportunity(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);
-    setError(null);
-
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      showActionError(buContext.error);
       setLoading(false);
       return;
     }
@@ -379,7 +394,7 @@ export default function SalesPipeline({
       stamp: stampBusinessUnit,
     });
     if (!stampResult.ok) {
-      setError(stampResult.error);
+      showActionError(stampResult.error);
       setLoading(false);
       return;
     }
@@ -396,14 +411,14 @@ export default function SalesPipeline({
     }
 
     if (!clientId) {
-      setError("Select a customer or create a new lead customer.");
+      showActionError("Select a customer or create a new lead customer.");
       setLoading(false);
       return;
     }
 
     const parsed = parseOpportunityForm({ ...opportunityForm, client_id: clientId });
     if (!parsed.ok) {
-      setError(parsed.error);
+      showActionError(parsed.error);
       setLoading(false);
       return;
     }
@@ -424,13 +439,13 @@ export default function SalesPipeline({
     );
 
     if (rpcError) {
-      setError(rpcError.message);
+      showActionError(rpcError.message);
       setLoading(false);
       return;
     }
 
     if (!data) {
-      setError("Opportunity was not created.");
+      showActionError("Opportunity was not created.");
       setLoading(false);
       return;
     }
@@ -447,11 +462,9 @@ export default function SalesPipeline({
     }
 
     setLoading(true);
-    setError(null);
-
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      showActionError(buContext.error);
       setLoading(false);
       return;
     }
@@ -465,14 +478,14 @@ export default function SalesPipeline({
         existing?.business_unit_id,
       );
     } catch (accessError) {
-      setError(formatBusinessUnitAccessError(accessError));
+      showActionError(formatBusinessUnitAccessError(accessError));
       setLoading(false);
       return;
     }
 
     const parsed = parseOpportunityForm(opportunityForm);
     if (!parsed.ok) {
-      setError(parsed.error);
+      showActionError(parsed.error);
       setLoading(false);
       return;
     }
@@ -490,7 +503,7 @@ export default function SalesPipeline({
     });
 
     if (rpcError) {
-      setError(rpcError.message);
+      showActionError(rpcError.message);
       setLoading(false);
       return;
     }
@@ -506,11 +519,9 @@ export default function SalesPipeline({
     }
 
     setLoading(true);
-    setError(null);
-
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      showActionError(buContext.error);
       setLoading(false);
       return;
     }
@@ -521,7 +532,7 @@ export default function SalesPipeline({
         deleteTarget.business_unit_id,
       );
     } catch (accessError) {
-      setError(formatBusinessUnitAccessError(accessError));
+      showActionError(formatBusinessUnitAccessError(accessError));
       setLoading(false);
       return;
     }
@@ -531,7 +542,7 @@ export default function SalesPipeline({
     });
 
     if (rpcError) {
-      setError(rpcError.message);
+      showActionError(rpcError.message);
       setLoading(false);
       return;
     }
@@ -559,17 +570,15 @@ export default function SalesPipeline({
     if (newStage === "lost") {
       const lostReason = lostReasonDrafts[opportunity.id]?.trim() ?? "";
       if (!lostReason) {
-        setError("Enter a lost reason before moving to Lost.");
+        showActionError("Enter a lost reason before moving to Lost.");
         return;
       }
     }
 
     setStageUpdatingId(opportunity.id);
-    setError(null);
-
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      showActionError(buContext.error);
       setStageUpdatingId(null);
       return;
     }
@@ -580,7 +589,7 @@ export default function SalesPipeline({
         opportunity.business_unit_id,
       );
     } catch (accessError) {
-      setError(formatBusinessUnitAccessError(accessError));
+      showActionError(formatBusinessUnitAccessError(accessError));
       setStageUpdatingId(null);
       return;
     }
@@ -595,7 +604,7 @@ export default function SalesPipeline({
     });
 
     if (rpcError) {
-      setError(rpcError.message);
+      showActionError(rpcError.message);
       setStageUpdatingId(null);
       return;
     }
@@ -613,8 +622,6 @@ export default function SalesPipeline({
   ) {
     event.preventDefault();
     setLoading(true);
-    setError(null);
-
     const form = getActivityForm(opportunity.id);
 
     const { data, error: rpcError } = await supabase.rpc(
@@ -630,13 +637,13 @@ export default function SalesPipeline({
     );
 
     if (rpcError) {
-      setError(rpcError.message);
+      showActionError(rpcError.message);
       setLoading(false);
       return;
     }
 
     if (!data) {
-      setError("Follow-up activity was not created.");
+      showActionError("Follow-up activity was not created.");
       setLoading(false);
       return;
     }
@@ -651,14 +658,12 @@ export default function SalesPipeline({
 
   async function handleCompleteActivity(activityId: string) {
     setCompletingActivityId(activityId);
-    setError(null);
-
     const { error: rpcError } = await supabase.rpc("complete_sales_activity", {
       p_activity_id: activityId,
     });
 
     if (rpcError) {
-      setError(rpcError.message);
+      showActionError(rpcError.message);
       setCompletingActivityId(null);
       return;
     }
@@ -688,12 +693,6 @@ export default function SalesPipeline({
           {showAddForm ? "Cancel" : "Add Opportunity"}
         </button>
       </div>
-
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       {showAddForm ? (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -1019,7 +1018,7 @@ export default function SalesPipeline({
                               )}
                             </p>
                             {opportunity.lost_reason ? (
-                              <p className="text-xs text-red-700">
+                              <p className="text-xs text-slate-600">
                                 Lost reason: {opportunity.lost_reason}
                               </p>
                             ) : null}
