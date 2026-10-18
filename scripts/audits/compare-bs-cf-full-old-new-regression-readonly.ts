@@ -11,7 +11,7 @@ import { pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 
 const FY = 2026;
-const MONTHS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+const MONTHS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
 const TOL = 0.005;
 const STAGING_REF = "wieflwbfdmjtsdnwbfii";
 const PROD_REF = "tvcurcnmasnocwdxzgvz";

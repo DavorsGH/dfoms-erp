@@ -12,14 +12,12 @@ import {
 } from "./accrued-wages-utils";
 import { calculateMonthlyNetBookValueTotals } from "./fixed-assets-utils";
 import {
-  buildProfitLossReport,
   createEmptyMonthlyTotals,
   FULL_YEAR_INDEX,
   sumMonthlyTotals,
   type MonthlyTotals,
   type ProfitLossAssetEntry,
   type ProfitLossExpenseEntry,
-  type ProfitLossIncomeEntry,
 } from "./profit-loss-utils";
 import { getCurrentFinancialYear } from "./finance-year-utils";
 import {
@@ -30,9 +28,17 @@ import {
 import {
   buildClosingCashByMonth,
   buildMonthlyCashComponents,
-  resolveJanuaryOpeningCashBalance,
   type CashMovementManualEntry,
 } from "./cash-movement-utils";
+import {
+  inferFirstBookYearForBalanceSheet,
+  resolveJanuaryOpeningCashWithCarryForward,
+} from "@/lib/finance/balance-sheet-cash-opening";
+import {
+  calculateRetainedEarningsAtPriorYearEnd,
+  calculateRetainedEarningsByMonthWithCarryForward,
+} from "@/lib/finance/balance-sheet-retained-earnings";
+import type { ManualFinancialEntryRecord } from "./manual-financial-entries-utils";
 import { getPeriodMonthParts } from "./cash-flow-utils";
 import {
   calculateInventoryByMonth,
@@ -48,6 +54,7 @@ import {
   calculateInventoryAdjustmentGainByMonth,
   calculateInventoryAdjustmentLossByMonth,
   calculateInventoryAdjustmentOpeningEquityByMonth,
+  inventoryAdjustmentOpeningEquityPriorYearsTotal,
   filterStockAdjustmentsForPlOverlay,
   type InventoryStockAdjustmentRow,
 } from "@/lib/inventory/inventory-stock-adjustment-financials";
@@ -95,7 +102,6 @@ import {
   type InterUnitTransferCashScope,
 } from "./business-unit-transfers-utils";
 import {
-  calculateDeclaredDividendGrossReductionByMonth,
   calculateDividendsPayableByMonth,
   resolveDividendBalanceSheetFilter,
   type DividendBalanceSheetFilter,
@@ -385,8 +391,7 @@ type ManualLiabilityStockField =
 
 /**
  * Month-end outstanding balances from manual_financial_entries (stock).
- * Values carry forward to later months within the FY until a newer manual row
- * overrides (including 0 for repayment). Full-year column uses December.
+ * Latest row with period_month on or before each month-end carries across years.
  */
 export function calculateManualLiabilityStockByMonth(
   manualEntries: CashMovementManualEntry[],
@@ -394,27 +399,25 @@ export function calculateManualLiabilityStockByMonth(
   financialYear: number,
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
-
-  // Explicit month-end overrides for this FY (last row wins if duplicates).
-  const explicitByMonth = new Map<number, number>();
   const sortedEntries = [...manualEntries].sort((left, right) =>
     String(left.period_month).localeCompare(String(right.period_month)),
   );
 
-  for (const entry of sortedEntries) {
-    const parts = getPeriodMonthParts(entry.period_month);
-    if (!parts || parts.year !== financialYear) {
-      continue;
-    }
-    explicitByMonth.set(parts.month, Number(entry[field]) || 0);
-  }
-
-  let running = 0;
   for (let month = 1; month <= 12; month += 1) {
-    if (explicitByMonth.has(month)) {
-      running = explicitByMonth.get(month) ?? 0;
+    const monthEnd = getMonthEndDate(financialYear, month);
+    let value = 0;
+    let latestPeriod: string | null = null;
+    for (const entry of sortedEntries) {
+      const period = String(entry.period_month).slice(0, 10);
+      if (period > monthEnd) {
+        continue;
+      }
+      if (!latestPeriod || period >= latestPeriod) {
+        latestPeriod = period;
+        value = Number(entry[field]) || 0;
+      }
     }
-    totals[month - 1] = running;
+    totals[month - 1] = value;
   }
 
   totals[FULL_YEAR_INDEX] = totals[11];
@@ -584,41 +587,6 @@ function calculateFixedAssetsNetByMonth(
   return calculateMonthlyNetBookValueTotals(fixedAssets, financialYear);
 }
 
-function calculateRetainedEarningsByMonth(
-  incomeEntries: ProfitLossIncomeEntry[],
-  expenseEntries: ProfitLossExpenseEntry[],
-  fixedAssets: ProfitLossAssetEntry[],
-  financialYear: number,
-  inventoryAdjustmentPlNetByMonth: MonthlyTotals | null = null,
-  referenceDate?: Date,
-): MonthlyTotals {
-  const totals = createEmptyMonthlyTotals();
-  const report = buildProfitLossReport(
-    incomeEntries,
-    expenseEntries,
-    fixedAssets,
-    financialYear,
-    referenceDate,
-  );
-  const netProfitRow = report.rows.find((row) => row.key === "net-profit");
-
-  if (!netProfitRow) {
-    return totals;
-  }
-
-  let cumulative = 0;
-
-  for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
-    cumulative +=
-      (netProfitRow.amounts[monthIndex] ?? 0) +
-      (inventoryAdjustmentPlNetByMonth?.[monthIndex] ?? 0);
-    totals[monthIndex] = cumulative;
-  }
-
-  totals[FULL_YEAR_INDEX] = cumulative;
-  return totals;
-}
-
 function calculateCashAndCashEquivalentsByMonth(
   capitalContributions: CapitalContributionEntry[],
   incomeEntries: BalanceSheetIncomeEntry[],
@@ -633,39 +601,43 @@ function calculateCashAndCashEquivalentsByMonth(
   staffSalaryNetByPayrollMonth?: Map<string, number>,
   options: BalanceSheetReportOptions = { tenantId: "" },
   referenceDate?: Date,
+  firstBookYear: number | null = null,
 ): MonthlyTotals {
+  const cashMovementInputs = {
+    tenantId: options.tenantId,
+    incomeEntries,
+    expenseEntries,
+    capitalContributions,
+    fixedAssets,
+    rawMaterialCashPurchases,
+    productCashPurchases,
+    inventoryConfig,
+    manualEntries,
+    accountsPayableSettlements: payableEntries,
+    accountsPayablePayments: options.accountsPayablePayments,
+    directorsLoanRepayments: options.directorsLoanRepayments,
+    directorsLoanLedgerEntries: options.directorsLoanLedgerEntries,
+    staffSalaryNetByPayrollMonth,
+    creditNoteApplications: options.creditNoteApplicationsForCash,
+    staffSalaryAdvanceEntries: options.staffSalaryAdvanceEntries,
+    businessUnitTransfers: options.businessUnitTransfers,
+    interUnitTransferScope: options.interUnitTransferScope,
+    dividendDeclarations: options.dividendDeclarations,
+    dividendLines: options.dividendLines,
+    balanceSheetBusinessUnitId: options.balanceSheetBusinessUnitId,
+    dividendBalanceSheetFilter: options.dividendBalanceSheetFilter,
+  };
   const components = buildMonthlyCashComponents(
-    {
-      tenantId: options.tenantId,
-      incomeEntries,
-      expenseEntries,
-      capitalContributions,
-      fixedAssets,
-      rawMaterialCashPurchases,
-      productCashPurchases,
-      inventoryConfig,
-      manualEntries,
-      accountsPayableSettlements: payableEntries,
-      accountsPayablePayments: options.accountsPayablePayments,
-      directorsLoanRepayments: options.directorsLoanRepayments,
-      directorsLoanLedgerEntries: options.directorsLoanLedgerEntries,
-      staffSalaryNetByPayrollMonth,
-      creditNoteApplications: options.creditNoteApplicationsForCash,
-      staffSalaryAdvanceEntries: options.staffSalaryAdvanceEntries,
-      businessUnitTransfers: options.businessUnitTransfers,
-      interUnitTransferScope: options.interUnitTransferScope,
-      dividendDeclarations: options.dividendDeclarations,
-      dividendLines: options.dividendLines,
-      balanceSheetBusinessUnitId: options.balanceSheetBusinessUnitId,
-      dividendBalanceSheetFilter: options.dividendBalanceSheetFilter,
-      balanceSheetReferenceDate: referenceDate,
-    },
+    { ...cashMovementInputs, balanceSheetReferenceDate: referenceDate },
     financialYear,
   );
-  const januaryOpening = resolveJanuaryOpeningCashBalance(
+  const januaryOpening = resolveJanuaryOpeningCashWithCarryForward({
     manualEntries,
     financialYear,
-  );
+    firstBookYear,
+    cashMovementInputs,
+    referenceDate,
+  });
   return buildClosingCashByMonth(components.netMovement, januaryOpening);
 }
 
@@ -775,6 +747,21 @@ export function buildBalanceSheetReport(
     payrollHistory,
     monthEndCloseNetPay,
   );
+  const firstBookYear = inferFirstBookYearForBalanceSheet({
+    incomeEntries,
+    expenseEntries,
+    payableEntries,
+    capitalContributions,
+    manualEntries,
+    fixedAssets,
+    taxLedgerEntries,
+    payrollHistory,
+    inventoryGoLiveDate: inventoryInput.config?.go_live_date ?? null,
+    inventoryCashPurchases: inventoryInput.cashPurchases,
+    inventoryProductCashPurchases: inventoryInput.productCashPurchases,
+  });
+  const rawManualForRetainedEarnings = (options.rawManualFinancialEntries ??
+    manualEntries) as ManualFinancialEntryRecord[];
   const cash = projectBs(
     calculateCashAndCashEquivalentsByMonth(
       capitalContributions,
@@ -795,6 +782,7 @@ export function buildBalanceSheetReport(
         balanceSheetBusinessUnitId: dividendBuId,
       },
       bsReferenceDate,
+      firstBookYear,
     ),
   );
   const accountsReceivable = projectBs(
@@ -880,7 +868,12 @@ export function buildBalanceSheetReport(
   const inventoryAdjustmentOpeningEquity = roundMonthlyTotals(
     (() => {
       const totals = createEmptyMonthlyTotals();
-      let cumulative = 0;
+      let cumulative = inventoryAdjustmentOpeningEquityPriorYearsTotal(
+        stockAdjustments,
+        financialYear,
+        inventoryInput.config?.go_live_date ?? null,
+        bsReferenceDate,
+      );
       for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
         cumulative = roundCurrency(
           cumulative + (inventoryAdjustmentOpeningEquityRaw[monthIndex] ?? 0),
@@ -1007,24 +1000,34 @@ export function buildBalanceSheetReport(
   const shareCapital = roundMonthlyTotals(
     calculateShareCapitalByMonth(capitalContributions, financialYear),
   );
-  const retainedEarningsBase = calculateRetainedEarningsByMonth(
+  const openingRetainedEarnings = calculateRetainedEarningsAtPriorYearEnd({
+    financialYear,
+    firstBookYear,
     incomeEntries,
     expenseEntries,
     fixedAssets,
-    financialYear,
-    inventoryAdjustmentPlNet,
-    bsReferenceDate,
-  );
-  const declaredGrossReduction = calculateDeclaredDividendGrossReductionByMonth(
+    stockAdjustments,
+    stockAdjustmentRegisterLinkedPlKeys:
+      inventoryInput.stockAdjustmentRegisterLinkedPlKeys,
+    goLiveDate: inventoryInput.config?.go_live_date ?? null,
     dividendDeclarations,
-    financialYear,
     dividendFilter,
-  );
+    manualEntries: rawManualForRetainedEarnings,
+    referenceDate: bsReferenceDate,
+  });
   const retainedEarnings = projectBs(
     roundMonthlyTotals(
-      retainedEarningsBase.map((value, index) =>
-        roundCurrency(value - (declaredGrossReduction[index] ?? 0)),
-      ) as MonthlyTotals,
+      calculateRetainedEarningsByMonthWithCarryForward({
+        financialYear,
+        openingRetainedEarnings,
+        incomeEntries,
+        expenseEntries,
+        fixedAssets,
+        inventoryAdjustmentPlNetByMonth: inventoryAdjustmentPlNet,
+        dividendDeclarations,
+        dividendFilter,
+        referenceDate: bsReferenceDate,
+      }),
     ),
   );
   const dividendsPayable = roundMonthlyTotals(

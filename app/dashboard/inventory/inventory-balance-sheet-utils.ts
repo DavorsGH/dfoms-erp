@@ -9,6 +9,7 @@ import {
   type MonthlyTotals,
 } from "../finance/profit-loss-utils";
 import { getMonthEndDate } from "../finance/capital-contributions-utils";
+import { extractYearFromDate } from "../finance/finance-year-utils";
 
 function roundInventoryCurrency(value: number): number {
   return Math.round(value * 100) / 100;
@@ -590,9 +591,18 @@ export function calculateInventoryByMonth(
     return totals;
   }
 
-  const goLiveMonthIndex = getEntryMonthIndex(config.go_live_date, financialYear);
+  const goLiveMonthInThisYear = getEntryMonthIndex(
+    config.go_live_date,
+    financialYear,
+  );
+  let goLiveMonthIndex = goLiveMonthInThisYear;
+  const goLiveYear = extractYearFromDate(config.go_live_date);
   if (goLiveMonthIndex === null) {
-    return totals;
+    if (goLiveYear !== null && financialYear > goLiveYear) {
+      goLiveMonthIndex = 0;
+    } else {
+      return totals;
+    }
   }
 
   const referenceDateOnly = normalizeDate(referenceDate.toISOString());
@@ -628,9 +638,9 @@ export function calculateInventoryByMonth(
   // Add after carry-forward so opening never leaks into later months.
   const openingInventoryValue =
     Number(config.opening_inventory_value) || 0;
-  if (openingInventoryValue !== 0) {
-    totals[goLiveMonthIndex] = roundInventoryCurrency(
-      (totals[goLiveMonthIndex] ?? 0) + openingInventoryValue,
+  if (openingInventoryValue !== 0 && goLiveMonthInThisYear !== null) {
+    totals[goLiveMonthInThisYear] = roundInventoryCurrency(
+      (totals[goLiveMonthInThisYear] ?? 0) + openingInventoryValue,
     );
   }
 

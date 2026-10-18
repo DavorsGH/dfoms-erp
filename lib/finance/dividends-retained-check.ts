@@ -21,6 +21,7 @@ export async function getRetainedEarningsAsOfDate(input: {
   const pageData = await fetchBalanceSheetPageData(input.supabase, input.tenantId, {
     activeBusinessUnitId: input.businessUnitId,
     viewAllBusinessUnits: false,
+    financialYear: year,
   });
 
   if (pageData.fetchError) {
@@ -58,6 +59,7 @@ export async function isBalanceSheetBalancedAsOf(input: {
   const pageData = await fetchBalanceSheetPageData(input.supabase, input.tenantId, {
     activeBusinessUnitId: input.businessUnitId,
     viewAllBusinessUnits: input.viewAllBusinessUnits,
+    financialYear: input.year,
   });
   if (pageData.fetchError) {
     return false;

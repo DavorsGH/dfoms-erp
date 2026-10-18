@@ -6,6 +6,10 @@ import {
 } from "@/app/dashboard/finance/profit-loss-utils";
 import { inventoryMovementAmountFromQtyCost } from "@/lib/inventory/inventory-movement-amount";
 import { resolveBalanceSheetEntryMonthIndex } from "@/lib/finance/balance-sheet-reference-date";
+import {
+  extractYearFromDate,
+  MIN_FINANCE_YEAR,
+} from "@/app/dashboard/finance/finance-year-utils";
 
 export type InventoryStockAdjustmentKind =
   | "opening_balance"
@@ -158,6 +162,41 @@ export function calculateInventoryAdjustmentOpeningEquityByMonth(
   }
 
   return totals.map((value) => roundCurrency(value)) as MonthlyTotals;
+}
+
+/** Dec cumulative opening-equity adjustments for all calendar years before `financialYear`. */
+export function inventoryAdjustmentOpeningEquityPriorYearsTotal(
+  adjustments: InventoryStockAdjustmentRow[],
+  financialYear: number,
+  goLiveDate: string | null,
+  referenceDate?: Date,
+): number {
+  if (!goLiveDate) {
+    return 0;
+  }
+  const goLiveYear =
+    extractYearFromDate(goLiveDate) ?? financialYear;
+  let total = 0;
+  for (
+    let year = Math.max(goLiveYear, MIN_FINANCE_YEAR);
+    year < financialYear;
+    year += 1
+  ) {
+    const raw = calculateInventoryAdjustmentOpeningEquityByMonth(
+      adjustments,
+      year,
+      goLiveDate,
+      referenceDate,
+    );
+    let yearCumulative = 0;
+    for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
+      yearCumulative = roundCurrency(
+        yearCumulative + (raw[monthIndex] ?? 0),
+      );
+    }
+    total = roundCurrency(total + yearCumulative);
+  }
+  return total;
 }
 
 export function calculateInventoryAdjustmentGainByMonth(

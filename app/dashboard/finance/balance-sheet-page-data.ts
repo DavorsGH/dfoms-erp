@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildAvailableYears } from "./finance-year-utils";
+import { getBalanceSheetFetchDateRangeForFinancialYear } from "@/lib/finance/balance-sheet-cash-opening";
 import type { CapitalContributionEntry } from "./capital-contributions-utils";
 import type {
   CashFlowIncomeEntry,
@@ -145,6 +146,8 @@ export type FetchBalanceSheetPageDataOptions = {
   preloadedInventoryBalanceSheetPromise?: Promise<InventoryBalanceSheetInput>;
   /** As-of date for inventory month clamp (integrity cron / probes). */
   referenceDate?: Date;
+  /** When set, widens register fetch for RE/cash carry-forward (e.g. ?year=2027). */
+  financialYear?: number;
 };
 
 export function buildCustomerCreditsBalanceSheetOptions(
@@ -755,7 +758,12 @@ export async function fetchBalanceSheetPageData(
 ): Promise<BalanceSheetPageData> {
   const dateRange =
     options.dateRange === undefined
-      ? getDefaultBalanceSheetDateRange()
+      ? options.financialYear !== undefined
+        ? getBalanceSheetFetchDateRangeForFinancialYear(
+            options.financialYear,
+            options.referenceDate ?? new Date(),
+          )
+        : getDefaultBalanceSheetDateRange(options.referenceDate ?? new Date())
       : options.dateRange;
   const requestCounter = options.requestCounter;
   const activeBusinessUnitId = options.activeBusinessUnitId ?? null;

@@ -8,8 +8,11 @@ import {
   buildClosingCashByMonth,
   buildMonthlyCashComponents,
   buildOpeningCashDisplayByMonth,
-  resolveJanuaryOpeningCashBalance,
 } from "./cash-movement-utils";
+import {
+  inferFirstBookYearForBalanceSheet,
+  resolveJanuaryOpeningCashWithCarryForward,
+} from "@/lib/finance/balance-sheet-cash-opening";
 import {
   addAmountToMonth,
   createEmptyMonthlyTotals,
@@ -54,6 +57,8 @@ export type CashFlowReportOptions = {
   dividendLines?: import("./dividends-types").DividendBalanceSheetLine[];
   balanceSheetBusinessUnitId?: string | null;
   dividendBalanceSheetFilter?: import("./dividends-balance-sheet-utils").DividendBalanceSheetFilter;
+  /** When omitted, inferred from register dates (parity with balance sheet). */
+  firstBookYear?: number | null;
 };
 
 export { MONTH_LABELS, FULL_YEAR_INDEX } from "./profit-loss-utils";
@@ -243,33 +248,46 @@ export function buildCashFlowReport(
     }),
   );
 
-  const components = buildMonthlyCashComponents(
-    {
-      tenantId: options.tenantId,
+  const cashMovementInputs = {
+    tenantId: options.tenantId,
+    incomeEntries,
+    expenseEntries: expenseForCash,
+    capitalContributions,
+    fixedAssets,
+    rawMaterialCashPurchases: inventoryPurchases.rawMaterialCashPurchases,
+    productCashPurchases: inventoryPurchases.productCashPurchases,
+    inventoryConfig: inventoryPurchases.inventoryConfig,
+    manualEntries,
+    accountsPayableSettlements,
+    accountsPayablePayments: options.accountsPayablePayments,
+    directorsLoanRepayments: options.directorsLoanRepayments,
+    directorsLoanLedgerEntries: options.directorsLoanLedgerEntries,
+    staffSalaryNetByPayrollMonth,
+    creditNoteApplications: options.creditNoteApplications,
+    staffSalaryAdvanceEntries: options.staffSalaryAdvanceEntries,
+    businessUnitTransfers: options.businessUnitTransfers,
+    interUnitTransferScope: options.interUnitTransferScope,
+    dividendDeclarations: options.dividendDeclarations,
+    dividendLines: options.dividendLines,
+    balanceSheetBusinessUnitId: options.balanceSheetBusinessUnitId,
+    dividendBalanceSheetFilter: options.dividendBalanceSheetFilter,
+  };
+  const firstBookYear =
+    options.firstBookYear ??
+    inferFirstBookYearForBalanceSheet({
       incomeEntries,
-      expenseEntries: expenseForCash,
+      expenseEntries,
+      payableEntries: accountsPayableSettlements,
       capitalContributions,
-      fixedAssets,
-      rawMaterialCashPurchases: inventoryPurchases.rawMaterialCashPurchases,
-      productCashPurchases: inventoryPurchases.productCashPurchases,
-      inventoryConfig: inventoryPurchases.inventoryConfig,
       manualEntries,
-      accountsPayableSettlements,
-      accountsPayablePayments: options.accountsPayablePayments,
-      directorsLoanRepayments: options.directorsLoanRepayments,
-      directorsLoanLedgerEntries: options.directorsLoanLedgerEntries,
-      staffSalaryNetByPayrollMonth,
-      creditNoteApplications: options.creditNoteApplications,
-      staffSalaryAdvanceEntries: options.staffSalaryAdvanceEntries,
-      businessUnitTransfers: options.businessUnitTransfers,
-      interUnitTransferScope: options.interUnitTransferScope,
-      dividendDeclarations: options.dividendDeclarations,
-      dividendLines: options.dividendLines,
-      balanceSheetBusinessUnitId: options.balanceSheetBusinessUnitId,
-      dividendBalanceSheetFilter: options.dividendBalanceSheetFilter,
-    },
-    financialYear,
-  );
+      fixedAssets,
+      taxLedgerEntries: [],
+      payrollHistory: [],
+      inventoryGoLiveDate: inventoryPurchases.inventoryConfig?.go_live_date ?? null,
+      inventoryCashPurchases: inventoryPurchases.rawMaterialCashPurchases,
+      inventoryProductCashPurchases: inventoryPurchases.productCashPurchases,
+    });
+  const components = buildMonthlyCashComponents(cashMovementInputs, financialYear);
 
   const totalCashInflows = [
     components.incomeReceived,
@@ -491,10 +509,12 @@ export function buildCashFlowReport(
     },
   );
 
-  const januaryOpening = resolveJanuaryOpeningCashBalance(
+  const januaryOpening = resolveJanuaryOpeningCashWithCarryForward({
     manualEntries,
     financialYear,
-  );
+    firstBookYear,
+    cashMovementInputs,
+  });
   const closingCashBalance = buildClosingCashByMonth(
     components.netMovement,
     januaryOpening,

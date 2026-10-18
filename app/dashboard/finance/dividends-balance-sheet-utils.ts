@@ -95,29 +95,60 @@ function declarationsThroughMonthEnd(
   });
 }
 
-/** Cumulative declared gross reduces retained earnings (no P&L expense). */
-export function calculateDeclaredDividendGrossReductionByMonth(
+export function dividendGrossDeclaredThroughDate(
+  declarations: DividendBalanceSheetDeclaration[],
+  asOfDate: string,
+  filter: DividendBalanceSheetFilter = { mode: "all" },
+): number {
+  const cutoff = normalizeDate(asOfDate);
+  let gross = 0;
+  for (const row of declarations) {
+    if (!ACTIVE_DECLARATION_STATUSES.includes(row.status)) {
+      continue;
+    }
+    if (!declarationMatchesFilter(row.business_unit_id, filter)) {
+      continue;
+    }
+    const declDate = normalizeDate(row.declaration_date);
+    if (declDate <= cutoff) {
+      gross += Number(row.gross_amount) || 0;
+    }
+  }
+  return roundCurrency(gross);
+}
+
+/** All declared gross on or before each month-end (all calendar years). */
+export function calculateDeclaredDividendGrossReductionCumulativeByMonth(
   declarations: DividendBalanceSheetDeclaration[],
   financialYear: number,
   filter: DividendBalanceSheetFilter = { mode: "all" },
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
-  let cumulative = 0;
 
   for (let month = 1; month <= 12; month += 1) {
-    const monthGross = declarationsDeclaredInMonth(
+    const monthEnd = getMonthEndDate(financialYear, month);
+    totals[month - 1] = dividendGrossDeclaredThroughDate(
       declarations,
-      financialYear,
-      month,
+      monthEnd,
       filter,
-    ).reduce((sum, row) => sum + (Number(row.gross_amount) || 0), 0);
-
-    cumulative = roundCurrency(cumulative + monthGross);
-    totals[month - 1] = cumulative;
+    );
   }
 
   totals[FULL_YEAR_INDEX] = totals[11];
   return totals;
+}
+
+/** @deprecated Use calculateDeclaredDividendGrossReductionCumulativeByMonth for RE. */
+export function calculateDeclaredDividendGrossReductionByMonth(
+  declarations: DividendBalanceSheetDeclaration[],
+  financialYear: number,
+  filter: DividendBalanceSheetFilter = { mode: "all" },
+): MonthlyTotals {
+  return calculateDeclaredDividendGrossReductionCumulativeByMonth(
+    declarations,
+    financialYear,
+    filter,
+  );
 }
 
 /** Net declared minus line payments (by payment_date). */

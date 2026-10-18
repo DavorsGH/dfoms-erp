@@ -51,6 +51,7 @@ export default async function BalanceSheetPage({ searchParams }: BalanceSheetPag
   const data = await fetchBalanceSheetPageData(supabase, tenantId, {
     activeBusinessUnitId,
     viewAllBusinessUnits,
+    financialYear: initialFocusYear ?? undefined,
   });
   const {
     tenantId: resolvedTenantId,
