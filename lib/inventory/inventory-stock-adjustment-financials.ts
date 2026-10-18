@@ -4,6 +4,8 @@ import {
   getEntryMonthIndex,
   type MonthlyTotals,
 } from "@/app/dashboard/finance/profit-loss-utils";
+import { inventoryMovementAmountFromQtyCost } from "@/lib/inventory/inventory-movement-amount";
+import { resolveBalanceSheetEntryMonthIndex } from "@/lib/finance/balance-sheet-reference-date";
 
 export type InventoryStockAdjustmentKind =
   | "opening_balance"
@@ -22,6 +24,8 @@ export type InventoryStockAdjustmentRow = {
   quantity_delta: number;
   cost_per_unit: number;
   business_unit_id: string | null;
+  /** When register link exists: signed GHS movement (matches income/expense amount). */
+  booked_signed_amount?: number;
 };
 
 function roundCurrency(value: number): number {
@@ -29,10 +33,17 @@ function roundCurrency(value: number): number {
 }
 
 export function inventoryAdjustmentSignedValue(
-  row: Pick<InventoryStockAdjustmentRow, "quantity_delta" | "cost_per_unit">,
+  row: Pick<
+    InventoryStockAdjustmentRow,
+    "quantity_delta" | "cost_per_unit" | "booked_signed_amount"
+  >,
 ): number {
-  return roundCurrency(
-    (Number(row.quantity_delta) || 0) * (Number(row.cost_per_unit) || 0),
+  if (row.booked_signed_amount != null && Number.isFinite(row.booked_signed_amount)) {
+    return roundCurrency(Number(row.booked_signed_amount));
+  }
+  return inventoryMovementAmountFromQtyCost(
+    Number(row.quantity_delta) || 0,
+    Number(row.cost_per_unit) || 0,
   );
 }
 
@@ -78,10 +89,23 @@ export function inventoryAdjustmentPlAmount(row: InventoryStockAdjustmentRow): n
   return 0;
 }
 
+function adjustmentMonthIndex(
+  effectiveDate: string,
+  financialYear: number,
+  referenceDate?: Date,
+): number | null {
+  return resolveBalanceSheetEntryMonthIndex(
+    effectiveDate,
+    financialYear,
+    referenceDate,
+  );
+}
+
 export function calculateInventoryAdjustmentAssetDeltaByMonth(
   adjustments: InventoryStockAdjustmentRow[],
   financialYear: number,
   goLiveDate: string | null,
+  referenceDate?: Date,
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
   if (!goLiveDate) {
@@ -95,7 +119,7 @@ export function calculateInventoryAdjustmentAssetDeltaByMonth(
     if (!effective || effective < goLive) {
       continue;
     }
-    const monthIndex = getEntryMonthIndex(effective, financialYear);
+    const monthIndex = adjustmentMonthIndex(effective, financialYear, referenceDate);
     if (monthIndex === null) {
       continue;
     }
@@ -109,6 +133,7 @@ export function calculateInventoryAdjustmentOpeningEquityByMonth(
   adjustments: InventoryStockAdjustmentRow[],
   financialYear: number,
   goLiveDate: string | null,
+  referenceDate?: Date,
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
   if (!goLiveDate) {
@@ -125,7 +150,7 @@ export function calculateInventoryAdjustmentOpeningEquityByMonth(
     if (!effective || effective < goLive) {
       continue;
     }
-    const monthIndex = getEntryMonthIndex(effective, financialYear);
+    const monthIndex = adjustmentMonthIndex(effective, financialYear, referenceDate);
     if (monthIndex === null) {
       continue;
     }
@@ -139,6 +164,7 @@ export function calculateInventoryAdjustmentGainByMonth(
   adjustments: InventoryStockAdjustmentRow[],
   financialYear: number,
   goLiveDate: string | null,
+  referenceDate?: Date,
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
   if (!goLiveDate) {
@@ -155,7 +181,7 @@ export function calculateInventoryAdjustmentGainByMonth(
     if (!effective || effective < goLive) {
       continue;
     }
-    const monthIndex = getEntryMonthIndex(effective, financialYear);
+    const monthIndex = adjustmentMonthIndex(effective, financialYear, referenceDate);
     if (monthIndex === null) {
       continue;
     }
@@ -169,6 +195,7 @@ export function calculateInventoryAdjustmentLossByMonth(
   adjustments: InventoryStockAdjustmentRow[],
   financialYear: number,
   goLiveDate: string | null,
+  referenceDate?: Date,
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
   if (!goLiveDate) {
@@ -185,7 +212,7 @@ export function calculateInventoryAdjustmentLossByMonth(
     if (!effective || effective < goLive) {
       continue;
     }
-    const monthIndex = getEntryMonthIndex(effective, financialYear);
+    const monthIndex = adjustmentMonthIndex(effective, financialYear, referenceDate);
     if (monthIndex === null) {
       continue;
     }

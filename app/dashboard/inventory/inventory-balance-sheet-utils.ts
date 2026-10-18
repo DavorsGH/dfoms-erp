@@ -93,6 +93,8 @@ export type FinishedProductInventoryAdjustment = {
   effective_date: string;
   quantity_delta: number;
   cost_per_unit: number;
+  /** Register-linked signed GHS movement (2 dp); overrides qty×cost when set. */
+  signed_movement_amount?: number;
 };
 
 export type InventoryValuationHistory = {
@@ -353,11 +355,18 @@ export function calculateFinishedProductValueAsOf(
         continue;
       }
       const qty = Number(adjustment.quantity_delta) || 0;
-      const unit = Number(adjustment.cost_per_unit) || 0;
-      if (qty === 0) {
+      if (qty === 0 && adjustment.signed_movement_amount == null) {
         continue;
       }
-      value += qty * unit;
+      if (
+        adjustment.signed_movement_amount != null &&
+        Number.isFinite(adjustment.signed_movement_amount)
+      ) {
+        value += Number(adjustment.signed_movement_amount);
+      } else {
+        const unit = Number(adjustment.cost_per_unit) || 0;
+        value += qty * unit;
+      }
     }
 
     total += value;

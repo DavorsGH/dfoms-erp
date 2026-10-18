@@ -14,6 +14,7 @@ import {
   isCustomerRefundCashOutflowExpense,
   type CustomerRefundExpenseMarker,
 } from "./customer-refund-expense-utils";
+import { resolveBalanceSheetEntryMonthIndex } from "@/lib/finance/balance-sheet-reference-date";
 
 export const MONTH_LABELS = [
   "Jan",
@@ -341,6 +342,7 @@ function resolveProfitLossExpenseLineLabel(
 function groupIncomeByServiceCategory(
   entries: ProfitLossIncomeEntry[],
   financialYear: number,
+  referenceDate?: Date,
 ): ProfitLossRow[] {
   const grouped = new Map<string, MonthlyTotals>();
 
@@ -349,7 +351,11 @@ function groupIncomeByServiceCategory(
       continue;
     }
 
-    const monthIndex = getEntryMonthIndex(entry.date, financialYear);
+    const monthIndex = resolveBalanceSheetEntryMonthIndex(
+      entry.date,
+      financialYear,
+      referenceDate,
+    );
     if (monthIndex === null) {
       continue;
     }
@@ -374,6 +380,7 @@ function groupExpensesBySubCategory(
   entries: ProfitLossExpenseEntry[],
   expenseCategory: string,
   financialYear: number,
+  referenceDate?: Date,
 ): ProfitLossRow[] {
   const targetCategory = normalizeCategoryName(expenseCategory);
   const grouped = new Map<string, MonthlyTotals>();
@@ -390,7 +397,11 @@ function groupExpensesBySubCategory(
       continue;
     }
 
-    const monthIndex = getEntryMonthIndex(entry.date, financialYear);
+    const monthIndex = resolveBalanceSheetEntryMonthIndex(
+      entry.date,
+      financialYear,
+      referenceDate,
+    );
     if (monthIndex === null) {
       continue;
     }
@@ -471,10 +482,15 @@ export function buildProfitLossReport(
   expenseEntries: ProfitLossExpenseEntry[],
   fixedAssets: ProfitLossAssetEntry[],
   financialYear = getCurrentFinancialYear(),
+  referenceDate?: Date,
 ): ProfitLossReport {
   const rows: ProfitLossRow[] = [];
 
-  const revenueRows = groupIncomeByServiceCategory(incomeEntries, financialYear);
+  const revenueRows = groupIncomeByServiceCategory(
+    incomeEntries,
+    financialYear,
+    referenceDate,
+  );
   const totalRevenue = sumMonthlyTotals(revenueRows.map((row) => row.amounts));
 
   rows.push({
@@ -498,6 +514,7 @@ export function buildProfitLossReport(
       expenseEntries,
       section.category,
       financialYear,
+      referenceDate,
     );
     const { rows: sectionRows, subtotal } = buildSectionRows(
       section.title,

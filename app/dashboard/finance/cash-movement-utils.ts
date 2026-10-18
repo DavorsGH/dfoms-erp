@@ -69,6 +69,7 @@ import type {
   DividendBalanceSheetDeclaration,
   DividendBalanceSheetLine,
 } from "./dividends-types";
+import { resolveBalanceSheetEntryMonthIndex } from "@/lib/finance/balance-sheet-reference-date";
 
 export {
   parseCashPaidFromExpenseNotes,
@@ -141,6 +142,8 @@ export type CashMovementInputs = {
   dividendLines?: DividendBalanceSheetLine[];
   balanceSheetBusinessUnitId?: string | null;
   dividendBalanceSheetFilter?: DividendBalanceSheetFilter;
+  /** Mid-month BS: only bucket flows on or before this date in the reference month. */
+  balanceSheetReferenceDate?: Date;
 };
 
 export type MonthlyCashComponents = {
@@ -217,6 +220,7 @@ function manualFieldToMonthlyTotals(
 function sumIncomeReceivedByMonth(
   incomeEntries: CashMovementIncomeEntry[],
   financialYear: number,
+  referenceDate?: Date,
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
 
@@ -234,7 +238,11 @@ function sumIncomeReceivedByMonth(
       continue;
     }
 
-    const monthIndex = getEntryMonthIndex(entry.date ?? null, financialYear);
+    const monthIndex = resolveBalanceSheetEntryMonthIndex(
+      entry.date ?? null,
+      financialYear,
+      referenceDate,
+    );
     if (monthIndex === null) {
       continue;
     }
@@ -248,11 +256,16 @@ function sumIncomeReceivedByMonth(
 function sumCreditNoteApplicationsByMonth(
   applications: CustomerCreditsApplicationRow[],
   financialYear: number,
+  referenceDate?: Date,
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
 
   for (const row of applications) {
-    const monthIndex = getEntryMonthIndex(row.applied_date, financialYear);
+    const monthIndex = resolveBalanceSheetEntryMonthIndex(
+      row.applied_date,
+      financialYear,
+      referenceDate,
+    );
     if (monthIndex === null) {
       continue;
     }
@@ -265,11 +278,16 @@ function sumCreditNoteApplicationsByMonth(
 function sumCapitalContributionsByMonth(
   contributions: CapitalContributionEntry[],
   financialYear: number,
+  referenceDate?: Date,
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
 
   for (const entry of contributions) {
-    const monthIndex = getEntryMonthIndex(entry.date, financialYear);
+    const monthIndex = resolveBalanceSheetEntryMonthIndex(
+      entry.date,
+      financialYear,
+      referenceDate,
+    );
     if (monthIndex === null) {
       continue;
     }
@@ -292,6 +310,7 @@ function sumPaidExpensesByMonth(
   expenseEntries: BalanceSheetCashExpenseEntry[],
   financialYear: number,
   staffSalaryNetByPayrollMonth?: Map<string, number>,
+  referenceDate?: Date,
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
   const countedStaffSalaryPayrollMonths = new Set<string>();
@@ -301,7 +320,11 @@ function sumPaidExpensesByMonth(
       continue;
     }
 
-    const monthIndex = getEntryMonthIndex(entry.date, financialYear);
+    const monthIndex = resolveBalanceSheetEntryMonthIndex(
+      entry.date,
+      financialYear,
+      referenceDate,
+    );
     if (monthIndex === null) {
       continue;
     }
@@ -380,13 +403,16 @@ export function buildMonthlyCashComponents(
   inputs: CashMovementInputs,
   financialYear: number,
 ): MonthlyCashComponents {
+  const referenceDate = inputs.balanceSheetReferenceDate;
   const incomeReceivedGross = sumIncomeReceivedByMonth(
     inputs.incomeEntries,
     financialYear,
+    referenceDate,
   );
   const creditApplied = sumCreditNoteApplicationsByMonth(
     inputs.creditNoteApplications ?? [],
     financialYear,
+    referenceDate,
   );
   const incomeReceived = subtractMonthlyTotals(
     incomeReceivedGross,
@@ -395,6 +421,7 @@ export function buildMonthlyCashComponents(
   const capitalContributions = sumCapitalContributionsByMonth(
     inputs.capitalContributions,
     financialYear,
+    referenceDate,
   );
   const loanProceeds = manualFieldToMonthlyTotals(
     inputs.manualEntries,
@@ -410,6 +437,7 @@ export function buildMonthlyCashComponents(
     inputs.expenseEntries,
     financialYear,
     inputs.staffSalaryNetByPayrollMonth,
+    referenceDate,
   );
   const loanRepayments = manualFieldToMonthlyTotals(
     inputs.manualEntries,

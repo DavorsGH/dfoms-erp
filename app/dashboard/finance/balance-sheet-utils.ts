@@ -109,6 +109,10 @@ import {
   isTaxLedgerAmountOpenAsOfMonthEndWithClearance,
   type TaxLedgerBsClearanceContext,
 } from "@/lib/finance/tax-ledger-bs-clearance";
+import {
+  balanceSheetAsOfDateForMonthColumn,
+  projectBalanceSheetMonthlyTotalsAfterReference,
+} from "@/lib/finance/balance-sheet-reference-date";
 
 export type { BalanceSheetWelfareFundEntry } from "./staff-welfare-fund-utils";
 export {
@@ -314,11 +318,16 @@ export {
 function calculateAccountsReceivableByMonth(
   incomeEntries: BalanceSheetIncomeEntry[],
   financialYear: number,
+  referenceDate?: Date,
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
 
   for (let month = 1; month <= 12; month += 1) {
-    const monthEnd = getMonthEndDate(financialYear, month);
+    const monthEnd = balanceSheetAsOfDateForMonthColumn(
+      month - 1,
+      financialYear,
+      referenceDate,
+    );
 
     totals[month - 1] = incomeEntries.reduce((sum, entry) => {
       if (!isActiveIncomeForReporting(entry)) {
@@ -342,11 +351,16 @@ export function calculateAccountsPayableByMonth(
   payableEntries: BalanceSheetAccountsPayableEntry[],
   financialYear: number,
   payments: AccountsPayablePaymentLedgerRow[] = [],
+  referenceDate?: Date,
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
 
   for (let month = 1; month <= 12; month += 1) {
-    const monthEnd = getMonthEndDate(financialYear, month);
+    const monthEnd = balanceSheetAsOfDateForMonthColumn(
+      month - 1,
+      financialYear,
+      referenceDate,
+    );
 
     totals[month - 1] = payableEntries.reduce((sum, entry) => {
       if (isStatutoryRemittancePayable(entry)) {
@@ -479,6 +493,7 @@ function calculateOpenTaxBalancesByMonth(
   taxLedgerEntries: BalanceSheetTaxLedgerEntry[],
   financialYear: number,
   clearanceContext: TaxLedgerBsClearanceContext,
+  referenceDate?: Date,
 ): OpenTaxBalancesByMonth {
   const whtReceivable = createEmptyMonthlyTotals();
   const whtPayable = createEmptyMonthlyTotals();
@@ -488,7 +503,11 @@ function calculateOpenTaxBalancesByMonth(
   const ssnitPayable = createEmptyMonthlyTotals();
 
   for (let month = 1; month <= 12; month += 1) {
-    const monthEnd = getMonthEndDate(financialYear, month);
+    const monthEnd = balanceSheetAsOfDateForMonthColumn(
+      month - 1,
+      financialYear,
+      referenceDate,
+    );
     let outputVat = 0;
     let inputVat = 0;
     let whtRecv = 0;
@@ -571,6 +590,7 @@ function calculateRetainedEarningsByMonth(
   fixedAssets: ProfitLossAssetEntry[],
   financialYear: number,
   inventoryAdjustmentPlNetByMonth: MonthlyTotals | null = null,
+  referenceDate?: Date,
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
   const report = buildProfitLossReport(
@@ -578,6 +598,7 @@ function calculateRetainedEarningsByMonth(
     expenseEntries,
     fixedAssets,
     financialYear,
+    referenceDate,
   );
   const netProfitRow = report.rows.find((row) => row.key === "net-profit");
 
@@ -611,6 +632,7 @@ function calculateCashAndCashEquivalentsByMonth(
   financialYear: number,
   staffSalaryNetByPayrollMonth?: Map<string, number>,
   options: BalanceSheetReportOptions = { tenantId: "" },
+  referenceDate?: Date,
 ): MonthlyTotals {
   const components = buildMonthlyCashComponents(
     {
@@ -636,6 +658,7 @@ function calculateCashAndCashEquivalentsByMonth(
       dividendLines: options.dividendLines,
       balanceSheetBusinessUnitId: options.balanceSheetBusinessUnitId,
       dividendBalanceSheetFilter: options.dividendBalanceSheetFilter,
+      balanceSheetReferenceDate: referenceDate,
     },
     financialYear,
   );
@@ -740,45 +763,73 @@ export function buildBalanceSheetReport(
   const dividendBuId =
     dividendFilter.mode === "unit" ? dividendFilter.businessUnitId : null;
 
+  const bsReferenceDate = inventoryInput.referenceDate;
+  const projectBs = (totals: MonthlyTotals) =>
+    projectBalanceSheetMonthlyTotalsAfterReference(
+      totals,
+      bsReferenceDate,
+      financialYear,
+    );
+
   const staffSalaryNetByPayrollMonth = buildNetPayByPayrollMonth(
     payrollHistory,
     monthEndCloseNetPay,
   );
-  const cash = calculateCashAndCashEquivalentsByMonth(
-    capitalContributions,
-    incomeEntries,
-    cashFlowExpenseEntries,
-    fixedAssets,
-    inventoryInput.cashPurchases,
-    inventoryInput.productCashPurchases,
-    inventoryInput.config,
-    manualEntries,
-    payableEntries,
-    financialYear,
-    staffSalaryNetByPayrollMonth,
-    {
-      ...options,
-      dividendDeclarations,
-      dividendLines,
-      balanceSheetBusinessUnitId: dividendBuId,
-    },
+  const cash = projectBs(
+    calculateCashAndCashEquivalentsByMonth(
+      capitalContributions,
+      incomeEntries,
+      cashFlowExpenseEntries,
+      fixedAssets,
+      inventoryInput.cashPurchases,
+      inventoryInput.productCashPurchases,
+      inventoryInput.config,
+      manualEntries,
+      payableEntries,
+      financialYear,
+      staffSalaryNetByPayrollMonth,
+      {
+        ...options,
+        dividendDeclarations,
+        dividendLines,
+        balanceSheetBusinessUnitId: dividendBuId,
+      },
+      bsReferenceDate,
+    ),
   );
-  const accountsReceivable = roundMonthlyTotals(
-    calculateAccountsReceivableByMonth(incomeEntries, financialYear),
+  const accountsReceivable = projectBs(
+    roundMonthlyTotals(
+      calculateAccountsReceivableByMonth(
+        incomeEntries,
+        financialYear,
+        bsReferenceDate,
+      ),
+    ),
   );
   const taxClearanceContext = buildTaxLedgerBsClearanceContext(
     cashFlowExpenseEntries,
   );
-  const openTax = calculateOpenTaxBalancesByMonth(
+  const openTaxRaw = calculateOpenTaxBalancesByMonth(
     taxLedgerEntries,
     financialYear,
     taxClearanceContext,
+    bsReferenceDate,
   );
+  const openTax = {
+    whtReceivable: projectBs(openTaxRaw.whtReceivable),
+    whtPayable: projectBs(openTaxRaw.whtPayable),
+    netVatPayable: projectBs(openTaxRaw.netVatPayable),
+    netVatReceivable: projectBs(openTaxRaw.netVatReceivable),
+    payePayable: projectBs(openTaxRaw.payePayable),
+    ssnitPayable: projectBs(openTaxRaw.ssnitPayable),
+  };
   const staffWelfarePayable = roundMonthlyTotals(
     calculateStaffWelfarePayableByMonth(welfareFundEntries, financialYear),
   );
-  const fixedAssetsNet = roundMonthlyTotals(
-    calculateFixedAssetsNetByMonth(fixedAssets, financialYear),
+  const fixedAssetsNet = projectBs(
+    roundMonthlyTotals(
+      calculateFixedAssetsNetByMonth(fixedAssets, financialYear),
+    ),
   );
   const stockAdjustments = inventoryInput.stockAdjustments ?? [];
   const linkedPlKeys = new Set(
@@ -802,6 +853,7 @@ export function buildBalanceSheetReport(
       stockAdjustmentsForPlOverlay,
       financialYear,
       inventoryInput.config?.go_live_date ?? null,
+      bsReferenceDate,
     ),
   );
   const inventoryAdjustmentLoss = roundMonthlyTotals(
@@ -809,6 +861,7 @@ export function buildBalanceSheetReport(
       stockAdjustmentsForPlOverlay,
       financialYear,
       inventoryInput.config?.go_live_date ?? null,
+      bsReferenceDate,
     ),
   );
   const inventoryAdjustmentPlNet = roundMonthlyTotals(
@@ -822,6 +875,7 @@ export function buildBalanceSheetReport(
       stockAdjustments,
       financialYear,
       inventoryInput.config?.go_live_date ?? null,
+      bsReferenceDate,
     );
   const inventoryAdjustmentOpeningEquity = roundMonthlyTotals(
     (() => {
@@ -906,15 +960,18 @@ export function buildBalanceSheetReport(
     ]),
   );
 
-  const accountsPayable = roundMonthlyTotals(
-    calculateAccountsPayableByMonth(
-      payableEntries,
-      financialYear,
-      (options.accountsPayablePayments ?? []).map((row) => ({
-        accounts_payable_id: row.accounts_payable_id,
-        payment_date: row.payment_date,
-        amount: row.amount,
-      })),
+  const accountsPayable = projectBs(
+    roundMonthlyTotals(
+      calculateAccountsPayableByMonth(
+        payableEntries,
+        financialYear,
+        (options.accountsPayablePayments ?? []).map((row) => ({
+          accounts_payable_id: row.accounts_payable_id,
+          payment_date: row.payment_date,
+          amount: row.amount,
+        })),
+        bsReferenceDate,
+      ),
     ),
   );
   const accruedWagesPayable = roundMonthlyTotals(
@@ -935,12 +992,15 @@ export function buildBalanceSheetReport(
     "other_long_term_liabilities",
     financialYear,
   );
-  const customerCredits = roundMonthlyTotals(
-    calculateCustomerCreditsPayableByMonth(
-      options.creditNotesForCustomerCredits ?? [],
-      options.refundsForCustomerCredits ?? [],
-      options.creditNoteApplicationsForCash ?? [],
-      financialYear,
+  const customerCredits = projectBs(
+    roundMonthlyTotals(
+      calculateCustomerCreditsPayableByMonth(
+        options.creditNotesForCustomerCredits ?? [],
+        options.refundsForCustomerCredits ?? [],
+        options.creditNoteApplicationsForCash ?? [],
+        financialYear,
+        bsReferenceDate,
+      ),
     ),
   );
 
@@ -953,16 +1013,19 @@ export function buildBalanceSheetReport(
     fixedAssets,
     financialYear,
     inventoryAdjustmentPlNet,
+    bsReferenceDate,
   );
   const declaredGrossReduction = calculateDeclaredDividendGrossReductionByMonth(
     dividendDeclarations,
     financialYear,
     dividendFilter,
   );
-  const retainedEarnings = roundMonthlyTotals(
-    retainedEarningsBase.map((value, index) =>
-      roundCurrency(value - (declaredGrossReduction[index] ?? 0)),
-    ) as MonthlyTotals,
+  const retainedEarnings = projectBs(
+    roundMonthlyTotals(
+      retainedEarningsBase.map((value, index) =>
+        roundCurrency(value - (declaredGrossReduction[index] ?? 0)),
+      ) as MonthlyTotals,
+    ),
   );
   const dividendsPayable = roundMonthlyTotals(
     calculateDividendsPayableByMonth(

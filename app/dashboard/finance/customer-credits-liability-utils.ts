@@ -1,4 +1,5 @@
 import { getMonthEndDate } from "./capital-contributions-utils";
+import { balanceSheetAsOfDateForMonthColumn } from "@/lib/finance/balance-sheet-reference-date";
 import {
   createEmptyMonthlyTotals,
   FULL_YEAR_INDEX,
@@ -103,10 +104,15 @@ export function calculateCustomerCreditsPayableByMonth(
   refunds: CustomerCreditsRefundRow[],
   applications: CustomerCreditsApplicationRow[],
   financialYear: number,
+  referenceDate?: Date,
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
   for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
-    const monthEnd = getMonthEndDate(financialYear, monthIndex + 1);
+    const monthEnd = balanceSheetAsOfDateForMonthColumn(
+      monthIndex,
+      financialYear,
+      referenceDate,
+    );
     totals[monthIndex] = customerCreditsBalanceAsOf(
       creditNotes,
       refunds,

@@ -395,7 +395,7 @@ export async function fetchInventoryBalanceSheetInput(
     ),
     supabase
       .from("inventory_stock_adjustment_register_links")
-      .select("source_kind, adjustment_id")
+      .select("source_kind, adjustment_id, pl_kind, amount")
       .eq("tenant_id", tenantId),
     supabase
       .from("business_units")
@@ -503,6 +503,22 @@ export async function fetchInventoryBalanceSheetInput(
       current_stock: number | string | null;
     }>,
   );
+  const registerLinkSignedAmountByKey = new Map<string, number>();
+  for (const link of registerLinksResult.data ?? []) {
+    const amt = Math.round((Number(link.amount) || 0) * 100) / 100;
+    if (amt === 0) continue;
+    const kind = String(link.pl_kind ?? "");
+    const signed =
+      kind === "loss" ? -amt : kind === "gain" ? amt : amt;
+    registerLinkSignedAmountByKey.set(
+      stockAdjustmentPlLinkKey(
+        link.source_kind === "raw" ? "raw" : "finished",
+        String(link.adjustment_id),
+      ),
+      signed,
+    );
+  }
+
   const stockAdjustments: InventoryStockAdjustmentRow[] = [
     ...((finishedProductAdjustmentsResult.data ?? []) as Array<{
       id: string;
@@ -511,15 +527,20 @@ export async function fetchInventoryBalanceSheetInput(
       cost_per_unit: number;
       created_at: string;
       business_unit_id: string | null;
-    }>).map((row) => ({
-      id: String(row.id),
-      source: "finished" as const,
-      adjustment_type: row.adjustment_type as InventoryStockAdjustmentKind,
-      effective_date: String(row.created_at ?? "").slice(0, 10),
-      quantity_delta: Number(row.quantity_delta) || 0,
-      cost_per_unit: Number(row.cost_per_unit) || 0,
-      business_unit_id: row.business_unit_id,
-    })),
+    }>).map((row) => {
+      const id = String(row.id);
+      const linkKey = stockAdjustmentPlLinkKey("finished", id);
+      return {
+        id,
+        source: "finished" as const,
+        adjustment_type: row.adjustment_type as InventoryStockAdjustmentKind,
+        effective_date: String(row.created_at ?? "").slice(0, 10),
+        quantity_delta: Number(row.quantity_delta) || 0,
+        cost_per_unit: Number(row.cost_per_unit) || 0,
+        business_unit_id: row.business_unit_id,
+        booked_signed_amount: registerLinkSignedAmountByKey.get(linkKey),
+      };
+    }),
     ...((rawMaterialAdjustmentsResult.data ?? []) as Array<{
       id: string;
       adjustment_type: string;
@@ -527,15 +548,20 @@ export async function fetchInventoryBalanceSheetInput(
       cost_per_unit: number;
       created_at: string;
       business_unit_id: string | null;
-    }>).map((row) => ({
-      id: String(row.id),
-      source: "raw" as const,
-      adjustment_type: row.adjustment_type as InventoryStockAdjustmentKind,
-      effective_date: String(row.created_at ?? "").slice(0, 10),
-      quantity_delta: Number(row.quantity_delta) || 0,
-      cost_per_unit: Number(row.cost_per_unit) || 0,
-      business_unit_id: row.business_unit_id,
-    })),
+    }>).map((row) => {
+      const id = String(row.id);
+      const linkKey = stockAdjustmentPlLinkKey("raw", id);
+      return {
+        id,
+        source: "raw" as const,
+        adjustment_type: row.adjustment_type as InventoryStockAdjustmentKind,
+        effective_date: String(row.created_at ?? "").slice(0, 10),
+        quantity_delta: Number(row.quantity_delta) || 0,
+        cost_per_unit: Number(row.cost_per_unit) || 0,
+        business_unit_id: row.business_unit_id,
+        booked_signed_amount: registerLinkSignedAmountByKey.get(linkKey),
+      };
+    }),
   ];
 
   const valuationHistory: InventoryValuationHistory = {
@@ -619,17 +645,24 @@ export async function fetchInventoryBalanceSheetInput(
     })),
     finishedProductAdjustments: (
       (finishedProductAdjustmentsResult.data ?? []) as Array<{
+        id: string;
         product_id: string;
         quantity_delta: number;
         cost_per_unit: number;
         created_at: string;
       }>
-    ).map((row) => ({
-      product_id: String(row.product_id),
-      effective_date: String(row.created_at ?? "").slice(0, 10),
-      quantity_delta: Number(row.quantity_delta) || 0,
-      cost_per_unit: Number(row.cost_per_unit) || 0,
-    })),
+    ).map((row) => {
+      const adjId = String(row.id);
+      const linkKey = stockAdjustmentPlLinkKey("finished", adjId);
+      const booked = registerLinkSignedAmountByKey.get(linkKey);
+      return {
+        product_id: String(row.product_id),
+        effective_date: String(row.created_at ?? "").slice(0, 10),
+        quantity_delta: Number(row.quantity_delta) || 0,
+        cost_per_unit: Number(row.cost_per_unit) || 0,
+        signed_movement_amount: booked,
+      };
+    }),
   };
 
   const stockAdjustmentRegisterLinkedPlKeys = (
