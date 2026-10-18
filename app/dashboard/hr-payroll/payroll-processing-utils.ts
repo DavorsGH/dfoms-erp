@@ -147,6 +147,7 @@ export function findMissingBasicSalaryWarnings(
       employee.employment_type,
       employee.shift,
       asOf,
+      employee.business_unit_id,
     );
 
     if (!resolved.missing_basic) {
@@ -171,7 +172,7 @@ export function findMissingBasicSalaryWarnings(
 export function resolvePayrollPolicyCompensation(
   employee: Pick<
     PayrollEmployeeSource,
-    "position" | "employment_type" | "shift"
+    "position" | "employment_type" | "shift" | "business_unit_id"
   >,
   config: PayrollCompensationPolicyConfig | null | undefined,
   asOf?: Date,
@@ -188,6 +189,7 @@ export function resolvePayrollPolicyCompensation(
     employee.employment_type,
     employee.shift,
     asOf,
+    employee.business_unit_id,
   );
   const legacy = mapAllowancesToLegacyColumns(resolved.allowances);
 

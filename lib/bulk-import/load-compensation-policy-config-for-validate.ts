@@ -14,6 +14,8 @@ function mapSalaryRateRow(row: Record<string, unknown>): SalaryRateConfig {
     shift: String(row.shift ?? ""),
     basic_salary: Number(row.basic_salary) || 0,
     effective_date: String(row.effective_date ?? "").slice(0, 10),
+    business_unit_id:
+      row.business_unit_id == null ? null : String(row.business_unit_id),
   };
 }
 

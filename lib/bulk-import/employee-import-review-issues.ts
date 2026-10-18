@@ -363,6 +363,11 @@ export function collectEmployeeImportReviewIssues(input: {
           }),
         );
       } else if (position && employmentType && shift) {
+      const importBusinessUnitId =
+        mappedData.business_unit_id == null ||
+        mappedData.business_unit_id === undefined
+          ? null
+          : String(mappedData.business_unit_id).trim() || null;
       const resolved = resolveEmployeeCompensation(
         compensationPolicyConfig.salaryRates,
         compensationPolicyConfig.compensationPolicies,
@@ -370,6 +375,8 @@ export function collectEmployeeImportReviewIssues(input: {
         position,
         employmentType,
         shift,
+        undefined,
+        importBusinessUnitId,
       );
 
       if (resolved.missing_basic) {

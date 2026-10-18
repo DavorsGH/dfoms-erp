@@ -101,6 +101,28 @@ export function applyBusinessUnitScope<T>(
 }
 
 /**
+ * Salary Settings list: when a specific business unit is selected, show that
+ * unit's rates plus workspace-default (NULL business_unit_id) rows — same
+ * fallback order as payroll basic-salary lookup.
+ */
+export function applySalaryRateConfigReadScope<T>(
+  query: T,
+  scope: BusinessUnitReadScope,
+): T {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const q = query as any;
+  if (scope.mode === "all") {
+    return query;
+  }
+  if (scope.mode === "unit") {
+    return q.or(
+      `business_unit_id.eq.${scope.id},business_unit_id.is.null`,
+    ) as T;
+  }
+  return q.is("business_unit_id", null) as T;
+}
+
+/**
  * Stamp target for creates, or refuse when viewing All Businesses.
  */
 export function resolveStampBusinessUnitId(args: {

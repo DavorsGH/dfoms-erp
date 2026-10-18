@@ -79,6 +79,7 @@ export function resolveEmployeeCompensation(
   employmentType: string | null | undefined,
   shift: string | null | undefined,
   asOf = new Date(),
+  businessUnitId?: string | null,
 ): ResolvedCompensation {
   const pos = (position ?? "").trim();
   const empType = (employmentType ?? "").trim();
@@ -94,6 +95,7 @@ export function resolveEmployeeCompensation(
     empType,
     sh,
     asOf,
+    businessUnitId,
   );
   const missing_basic = matchedBasic === null && Boolean(pos && empType && sh);
   const basic_salary = matchedBasic ?? 0;

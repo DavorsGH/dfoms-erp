@@ -5,7 +5,35 @@ export type SalaryRateConfig = {
   shift: string;
   basic_salary: number;
   effective_date: string;
+  business_unit_id?: string | null;
 };
+
+function normalizeBusinessUnitId(
+  businessUnitId: string | null | undefined,
+): string | null {
+  if (businessUnitId == null) {
+    return null;
+  }
+  const trimmed = String(businessUnitId).trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function salaryRateBusinessUnitRank(
+  rate: SalaryRateConfig,
+  employeeBusinessUnitId: string | null,
+): number {
+  const rateBu = normalizeBusinessUnitId(rate.business_unit_id);
+  if (employeeBusinessUnitId) {
+    if (rateBu === employeeBusinessUnitId) {
+      return 0;
+    }
+    if (rateBu === null) {
+      return 1;
+    }
+    return 2;
+  }
+  return rateBu === null ? 0 : 2;
+}
 
 export type SsnitRateConfig = {
   employee_rate: number;
@@ -71,27 +99,38 @@ export function findMatchingSalaryRate(
   employmentType: string,
   shift: string,
   asOf = new Date(),
+  businessUnitId?: string | null,
 ): number | null {
   if (!position || !employmentType || !shift) {
     return null;
   }
 
-  const today = asOf.toISOString().slice(0, 10);
+  const asOfDay = asOf.toISOString().slice(0, 10);
+  const employeeBu = normalizeBusinessUnitId(businessUnitId);
   const matches = rates.filter(
     (rate) =>
       rate.position === position &&
       rate.employment_type === employmentType &&
       rate.shift === shift &&
-      rate.effective_date.slice(0, 10) <= today,
+      rate.effective_date.slice(0, 10) <= asOfDay &&
+      salaryRateBusinessUnitRank(rate, employeeBu) < 2,
   );
 
   if (matches.length === 0) {
     return null;
   }
 
-  matches.sort((a, b) =>
-    b.effective_date.slice(0, 10).localeCompare(a.effective_date.slice(0, 10)),
-  );
+  matches.sort((a, b) => {
+    const rankDiff =
+      salaryRateBusinessUnitRank(a, employeeBu) -
+      salaryRateBusinessUnitRank(b, employeeBu);
+    if (rankDiff !== 0) {
+      return rankDiff;
+    }
+    return b.effective_date
+      .slice(0, 10)
+      .localeCompare(a.effective_date.slice(0, 10));
+  });
 
   return matches[0].basic_salary;
 }

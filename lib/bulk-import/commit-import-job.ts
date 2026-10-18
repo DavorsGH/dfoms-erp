@@ -217,6 +217,7 @@ function applySalarySettingsCompensationToEmployeePayload(
       position: payload.position,
       employment_type: payload.employment_type,
       shift: payload.shift,
+      business_unit_id: payload.business_unit_id,
     },
     compensationPolicyConfig,
   );
@@ -301,6 +302,7 @@ async function insertEmployeeRow(
       projectCode,
       supervisorId,
       assignedSiteCode,
+      businessUnitId,
     }),
     compensationPolicyConfig,
   );

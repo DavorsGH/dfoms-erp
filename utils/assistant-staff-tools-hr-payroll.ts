@@ -156,6 +156,7 @@ export async function getEmployeeCompensation(
         position: payrollEmployee.position ?? null,
         employment_type: payrollEmployee.employment_type,
         shift: payrollEmployee.shift ?? null,
+        business_unit_id: payrollEmployee.business_unit_id,
       },
       liveBundle.liveContext.compensationPolicyConfig,
       new Date(),

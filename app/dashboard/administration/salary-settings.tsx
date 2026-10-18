@@ -1,7 +1,14 @@
 "use client";
 
+import { useAlert, useToast } from "@/components/feedback";
+import { useRouter } from "next/navigation";
 import { confirmDialog } from "@/components/feedback/app-dialogs";
-import { useEffect, useMemo, useState } from "react";
+import {
+  mapAllowanceTypeSaveError,
+  mapCompensationPolicySaveError,
+  SALARY_SETTINGS_GENERIC_SAVE_ERROR,
+} from "@/lib/administration/salary-settings-save-errors";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import {
   formatGHS,
@@ -68,7 +75,13 @@ export default function SalarySettings({
   fetchError,
 }: SalarySettingsProps) {
   const supabase = createClient();
+  const router = useRouter();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
+  const policySubmitGuardRef = useRef(false);
+  const typeSubmitGuardRef = useRef(false);
+  const localPolicyMutationRef = useRef(false);
   const [tab, setTab] = useState<TabId>("basic");
   const [positions, setPositions] = useState(initialPositions);
   const [allowanceTypes, setAllowanceTypes] = useState(initialAllowanceTypes);
@@ -99,8 +112,12 @@ export default function SalarySettings({
 
   useEffect(() => {
     setPositions(initialPositions);
-    setAllowanceTypes(initialAllowanceTypes);
-    setPolicies(initialPolicies);
+    if (localPolicyMutationRef.current) {
+      localPolicyMutationRef.current = false;
+    } else {
+      setAllowanceTypes(initialAllowanceTypes);
+      setPolicies(initialPolicies);
+    }
     setDefaultWelfareRateDraft(
       formatDefaultWelfareDeductionRate(
         initialHrPayrollSettings?.default_welfare_deduction_rate,
@@ -289,6 +306,9 @@ export default function SalarySettings({
 
   async function handleSavePolicy(e: React.FormEvent) {
     e.preventDefault();
+    if (policySubmitGuardRef.current) {
+      return;
+    }
     if (!policyForm.position || !policyForm.employment_type || !policyForm.shift) {
       setError("Position, employment type, and shift are required.");
       return;
@@ -298,46 +318,56 @@ export default function SalarySettings({
       return;
     }
 
+    policySubmitGuardRef.current = true;
     setLoading(true);
     setError(null);
 
-    // Replace all policy rows for this combination.
-    const { error: deleteError } = await supabase
-      .from("compensation_policy")
-      .delete()
-      .eq("tenant_id", tenantId)
-      .eq("position", policyForm.position)
-      .eq("employment_type", policyForm.employment_type)
-      .eq("shift", policyForm.shift);
+    try {
+      const { error: deleteError } = await supabase
+        .from("compensation_policy")
+        .delete()
+        .eq("tenant_id", tenantId)
+        .eq("position", policyForm.position)
+        .eq("employment_type", policyForm.employment_type)
+        .eq("shift", policyForm.shift);
 
-    if (deleteError) {
-      setError(deleteError.message);
+      if (deleteError) {
+        void alertError(SALARY_SETTINGS_GENERIC_SAVE_ERROR, {
+          title: "Could not complete action",
+        });
+        return;
+      }
+
+      const inserts = activeTypes.map((type) => ({
+        tenant_id: tenantId,
+        position: policyForm.position,
+        employment_type: policyForm.employment_type,
+        shift: policyForm.shift,
+        allowance_type_id: type.id,
+        amount: Number(amountDrafts[type.id]) || 0,
+      }));
+
+      const { error: insertError } = await supabase
+        .from("compensation_policy")
+        .insert(inserts);
+
+      if (insertError) {
+        const friendly = mapCompensationPolicySaveError(insertError, policyForm);
+        void alertError(friendly ?? SALARY_SETTINGS_GENERIC_SAVE_ERROR, {
+          title: "Could not complete action",
+        });
+        return;
+      }
+
+      localPolicyMutationRef.current = true;
+      closePolicyForm();
+      await refreshPoliciesAndTypes();
+      router.refresh();
+      toast("Allowance combination saved.");
+    } finally {
+      policySubmitGuardRef.current = false;
       setLoading(false);
-      return;
     }
-
-    const inserts = activeTypes.map((type) => ({
-      tenant_id: tenantId,
-      position: policyForm.position,
-      employment_type: policyForm.employment_type,
-      shift: policyForm.shift,
-      allowance_type_id: type.id,
-      amount: Number(amountDrafts[type.id]) || 0,
-    }));
-
-    const { error: insertError } = await supabase
-      .from("compensation_policy")
-      .insert(inserts);
-
-    if (insertError) {
-      setError(insertError.message);
-      setLoading(false);
-      return;
-    }
-
-    closePolicyForm();
-    await refreshPoliciesAndTypes();
-    setLoading(false);
   }
 
   async function handleDeletePolicyGroup(group: (typeof policyGroups)[number]) {
@@ -397,6 +427,9 @@ export default function SalarySettings({
 
   async function handleSaveType(e: React.FormEvent) {
     e.preventDefault();
+    if (typeSubmitGuardRef.current) {
+      return;
+    }
     const code = typeForm.code.trim().toUpperCase().replace(/\s+/g, "_");
     const name = typeForm.name.trim();
     if (!code || !name) {
@@ -404,34 +437,64 @@ export default function SalarySettings({
       return;
     }
 
+    typeSubmitGuardRef.current = true;
     setLoading(true);
     setError(null);
 
-    const payload = {
-      tenant_id: tenantId,
-      code,
-      name,
-      sort_order: Number(typeForm.sort_order) || 0,
-      is_active: true,
-    };
+    try {
+      const payload = {
+        tenant_id: tenantId,
+        code,
+        name,
+        sort_order: Number(typeForm.sort_order) || 0,
+        is_active: true,
+      };
 
-    const { error: saveError } = editingTypeId
-      ? await supabase
-          .from("allowance_types")
-          .update({ name: payload.name, sort_order: payload.sort_order })
-          .eq("id", editingTypeId)
-          .eq("tenant_id", tenantId)
-      : await supabase.from("allowance_types").insert(payload);
+      const saveResult = editingTypeId
+        ? await supabase
+            .from("allowance_types")
+            .update({ name: payload.name, sort_order: payload.sort_order })
+            .eq("id", editingTypeId)
+            .eq("tenant_id", tenantId)
+            .select("id, code, name, is_active, sort_order")
+            .single()
+        : await supabase
+            .from("allowance_types")
+            .insert(payload)
+            .select("id, code, name, is_active, sort_order")
+            .single();
 
-    if (saveError) {
-      setError(saveError.message);
+      const saveError = saveResult.error;
+      const savedType = saveResult.data as AllowanceTypeRow | null;
+
+      if (saveError) {
+        const friendly = mapAllowanceTypeSaveError(saveError, code);
+        void alertError(friendly ?? SALARY_SETTINGS_GENERIC_SAVE_ERROR, {
+          title: "Could not complete action",
+        });
+        return;
+      }
+
+      if (savedType) {
+        localPolicyMutationRef.current = true;
+        setAllowanceTypes((current) => {
+          const next = current.filter((row) => row.id !== savedType.id);
+          next.push(savedType);
+          return next.sort(
+            (a, b) =>
+              a.sort_order - b.sort_order || a.name.localeCompare(b.name),
+          );
+        });
+      }
+
+      closeTypeForm();
+      await refreshPoliciesAndTypes();
+      router.refresh();
+      toast(editingTypeId ? "Allowance type updated." : "Allowance type added.");
+    } finally {
+      typeSubmitGuardRef.current = false;
       setLoading(false);
-      return;
     }
-
-    closeTypeForm();
-    await refreshPoliciesAndTypes();
-    setLoading(false);
   }
 
   async function handleDeactivateType(type: AllowanceTypeRow) {
@@ -793,7 +856,8 @@ export default function SalarySettings({
             <button
               type="button"
               onClick={() => (showTypeForm ? closeTypeForm() : openAddType())}
-              className="shrink-0 rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
+              disabled={loading}
+              className="shrink-0 rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {showTypeForm ? "Cancel" : "Add Type"}
             </button>

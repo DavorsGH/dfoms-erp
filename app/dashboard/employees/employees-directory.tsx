@@ -341,7 +341,7 @@ function buildPayload(
 function resolveDirectoryListCompensation(
   employee: Pick<
     EmployeeRecord,
-    "position" | "employment_type" | "shift"
+    "position" | "employment_type" | "shift" | "business_unit_id"
   >,
   payConfig: EmployeePayConfig,
 ): ResolvedCompensation {
@@ -352,6 +352,8 @@ function resolveDirectoryListCompensation(
     employee.position,
     employee.employment_type,
     employee.shift,
+    undefined,
+    employee.business_unit_id,
   );
 }
 
@@ -791,6 +793,21 @@ export default function EmployeesDirectory({
     setSortDirection("asc");
   }
 
+  const compensationBusinessUnitId = useMemo(() => {
+    if (editingEmployeeId) {
+      return (
+        employees.find((employee) => employee.employee_id === editingEmployeeId)
+          ?.business_unit_id ?? null
+      );
+    }
+    return stampBusinessUnit.ok ? stampBusinessUnit.businessUnitId : null;
+  }, [
+    editingEmployeeId,
+    employees,
+    stampBusinessUnit.ok,
+    stampBusinessUnit.ok ? stampBusinessUnit.businessUnitId : null,
+  ]);
+
   const resolvedCompensation = useMemo(
     () =>
       resolveEmployeeCompensation(
@@ -800,6 +817,8 @@ export default function EmployeesDirectory({
         form.position,
         form.employment_type,
         form.shift,
+        undefined,
+        compensationBusinessUnitId,
       ),
     [
       payConfig.salaryRates,
@@ -808,6 +827,7 @@ export default function EmployeesDirectory({
       form.position,
       form.employment_type,
       form.shift,
+      compensationBusinessUnitId,
     ],
   );
 

@@ -119,6 +119,7 @@ export type EmployeeCommitInsert = {
   contract_project: string | null;
   shift: string | null;
   assigned_site_id: string | null;
+  business_unit_id: string | null;
   basic_salary: number;
   housing_allowance: number;
   transport_allowance: number;
@@ -256,6 +257,7 @@ export function buildEmployeeCommitInsert(input: {
   projectCode: string | null;
   supervisorId: string | null;
   assignedSiteCode: string | null;
+  businessUnitId?: string | null;
 }): EmployeeCommitInsert {
   const employmentType = resolveCanonicalEnumValue(
     input.mappedData.employment_type,
@@ -304,6 +306,7 @@ export function buildEmployeeCommitInsert(input: {
       SHIFT_OPTIONS,
     ),
     assigned_site_id: input.assignedSiteCode,
+    business_unit_id: input.businessUnitId ?? null,
     basic_salary: 0,
     housing_allowance: 0,
     transport_allowance: 0,
