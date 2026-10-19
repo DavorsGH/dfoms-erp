@@ -1,7 +1,8 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useAlert, useToast } from "@/components/feedback";
 import { useRouter } from "next/navigation";
 import { PASSWORD_MIN_LENGTH } from "@/utils/password-policy";
 import { parseApiErrorResponse } from "@/utils/parse-api-error";
@@ -132,6 +133,10 @@ export default function UserAccounts({
   fetchError,
 }: UserAccountsProps) {
   const router = useRouter();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
+  const createSubmitGuardRef = useRef(false);
+  const updateSubmitGuardRef = useRef(false);
   const [accounts, setAccounts] = useState(initialAccounts);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createMode, setCreateMode] = useState<CreateUserMode>("password");
@@ -146,7 +151,7 @@ export default function UserAccounts({
   const [resetPassword, setResetPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(fetchError);
+  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [businessUnitAccessForm, setBusinessUnitAccessForm] =
     useState<BusinessUnitAccessFormState>(emptyBusinessUnitAccessForm());
@@ -160,6 +165,12 @@ export default function UserAccounts({
   useEffect(() => {
     setAccounts(initialAccounts);
   }, [initialAccounts]);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError, { title: "Could not complete action" });
+    }
+  }, [alertError, fetchError]);
 
   async function loadBusinessUnitAccess(authUid: string) {
     if (!showBusinessUnitAccess) {
@@ -257,6 +268,10 @@ export default function UserAccounts({
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (createSubmitGuardRef.current || loading) {
+      return;
+    }
+    createSubmitGuardRef.current = true;
     setLoading(true);
     setError(null);
     setSuccess(null);
@@ -291,7 +306,8 @@ export default function UserAccounts({
         response,
         createMode === "invite" ? "Failed to send invite" : "Failed to create user",
       );
-      setError(message);
+      void alertError(message, { title: "Could not complete action" });
+      createSubmitGuardRef.current = false;
       setLoading(false);
       return;
     }
@@ -310,6 +326,7 @@ export default function UserAccounts({
         "User created, but business unit access failed to save",
       ))
     ) {
+      createSubmitGuardRef.current = false;
       setLoading(false);
       return;
     }
@@ -318,11 +335,12 @@ export default function UserAccounts({
     setCreateBusinessUnitAccessForm(emptyBusinessUnitAccessForm());
     setCreateMode("password");
     setShowCreateForm(false);
-    setSuccess(
+    toast(
       createMode === "invite"
         ? (result?.message ?? "Invite email sent.")
         : "User account created.",
     );
+    createSubmitGuardRef.current = false;
     setLoading(false);
     router.refresh();
   }
@@ -333,6 +351,9 @@ export default function UserAccounts({
     displayName: string,
   ) {
     e.preventDefault();
+    if (updateSubmitGuardRef.current || actionId === authUid) {
+      return;
+    }
 
     const originalAccount = accounts.find((account) => account.auth_uid === authUid);
     if (originalAccount?.is_active && !editForm.is_active) {
@@ -341,6 +362,7 @@ export default function UserAccounts({
       }
     }
 
+    updateSubmitGuardRef.current = true;
     setActionId(authUid);
     setError(null);
     setSuccess(null);
@@ -355,9 +377,11 @@ export default function UserAccounts({
     });
 
     if (!response.ok) {
-      setError(
+      void alertError(
         await parseApiErrorResponse(response, "Failed to update user"),
+        { title: "Could not complete action" },
       );
+      updateSubmitGuardRef.current = false;
       setActionId(null);
       return;
     }
@@ -369,19 +393,24 @@ export default function UserAccounts({
         "User saved, but business unit access failed to update",
       );
       if (!accessSaved) {
+        void alertError("User saved, but business unit access failed to update.", {
+          title: "Could not complete action",
+        });
+        updateSubmitGuardRef.current = false;
         setActionId(null);
         return;
       }
     }
 
     setEditingUid(null);
-    setSuccess(
+    toast(
       originalAccount?.is_active && !editForm.is_active
         ? "User account deactivated."
         : !originalAccount?.is_active && editForm.is_active
           ? "User account reactivated."
           : "User account updated.",
     );
+    updateSubmitGuardRef.current = false;
     setActionId(null);
     router.refresh();
   }

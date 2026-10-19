@@ -22,6 +22,7 @@ import {
   findStaffAccountByEmail,
   REUSED_ACCOUNT_LOGIN_HINT,
 } from "@/utils/email-reuse";
+import { mapSupabaseCreateUserError } from "@/lib/administration/admin-user-auth-email-errors";
 
 type CreateUserBody = {
   employee_id?: string | null;
@@ -168,8 +169,9 @@ export async function POST(request: Request) {
   if (authError || !authData.user) {
     return NextResponse.json(
       {
-        error: mapSupabasePasswordError(
+        error: mapSupabaseCreateUserError(
           authError ?? { message: "Failed to create auth user" },
+          mapSupabasePasswordError,
         ),
       },
       { status: 400 },

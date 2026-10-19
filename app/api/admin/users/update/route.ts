@@ -10,6 +10,10 @@ import {
 } from "@/utils/admin-user-role";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { syncAuthUserPortalMetadata } from "@/lib/auth/portal-metadata";
+import {
+  ADMIN_USER_UPDATE_FAILED,
+  mapSupabaseAuthEmailError,
+} from "@/lib/administration/admin-user-auth-email-errors";
 
 type UpdateUserBody = {
   auth_uid?: string;
@@ -128,7 +132,7 @@ export async function POST(request: Request) {
 
     if (authUpdateError) {
       return NextResponse.json(
-        { error: authUpdateError.message },
+        { error: mapSupabaseAuthEmailError(authUpdateError, "update") },
         { status: 400 },
       );
     }
@@ -149,7 +153,14 @@ export async function POST(request: Request) {
     .eq("tenant_id", tenantId);
 
   if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 400 });
+    console.error("[admin/users/update] user_accounts update failed:", {
+      auth_uid,
+      tenantId,
+      message: updateError.message,
+      authEmailChanged:
+        existingAccount.email?.toLowerCase() !== normalizedEmail,
+    });
+    return NextResponse.json({ error: ADMIN_USER_UPDATE_FAILED }, { status: 400 });
   }
 
   const siteSyncError = await syncSupervisorSites(
