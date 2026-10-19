@@ -93,7 +93,6 @@ import {
   buildStatutoryLiabilitiesReport,
   extractStatementRowsForMonth,
   formatReportPeriodLabel,
-  getDefaultReportMonthYear,
   monthIndexFromMonthNumber,
   REPORT_MONTH_OPTIONS,
   type AgingBucketKey,
@@ -113,6 +112,13 @@ import {
   formatReportCurrency,
   formatReportDate,
 } from "./report-ui";
+import { useMonthYearSelection } from "./report-period-selection";
+import {
+  getDefaultReportPeriod,
+  parseReportMonthQueryParam,
+  parseReportYearQueryParam,
+  resolveInitialReportYear,
+} from "./report-period-utils";
 
 type FetchErrorProps = {
   fetchError: string | null;
@@ -128,34 +134,6 @@ function ReportFetchError({ fetchError }: FetchErrorProps) {
       {fetchError}
     </p>
   );
-}
-
-function useMonthYearSelection(
-  availableYears: number[],
-  options?: { initialYear?: number; initialMonth?: number },
-) {
-  const defaults = getDefaultReportMonthYear();
-  const preferredYear = options?.initialYear ?? defaults.year;
-  const preferredMonth = options?.initialMonth ?? defaults.month;
-  const [year, setYear] = useState(
-    availableYears.includes(preferredYear)
-      ? preferredYear
-      : (availableYears[0] ?? preferredYear),
-  );
-  const [month, setMonth] = useState(
-    preferredMonth >= 1 && preferredMonth <= 12 ? preferredMonth : defaults.month,
-  );
-  const monthIndex = monthIndexFromMonthNumber(month);
-  const periodLabel = formatReportPeriodLabel(year, month);
-
-  return {
-    year,
-    month,
-    setYear,
-    setMonth,
-    monthIndex,
-    periodLabel,
-  };
 }
 
 function handleReportPrint() {
@@ -1360,16 +1338,13 @@ export function BudgetVsActualReport({
   fetchError: string | null;
 }) {
   const searchParams = useSearchParams();
-  const queryYear = Number(searchParams.get("year"));
-  const queryMonth = Number(searchParams.get("month"));
+  const queryYear = parseReportYearQueryParam(searchParams.get("year"));
+  const queryMonth = parseReportMonthQueryParam(searchParams.get("month"));
   const { year, month, setYear, setMonth, monthIndex } = useMonthYearSelection(
     availableYears,
     {
-      initialYear: Number.isFinite(queryYear) ? queryYear : undefined,
-      initialMonth:
-        Number.isFinite(queryMonth) && queryMonth >= 1 && queryMonth <= 12
-          ? queryMonth
-          : undefined,
+      initialYear: queryYear,
+      initialMonth: queryMonth,
     },
   );
   const [projectFilter, setProjectFilter] = useState(ALL_PROJECTS_FILTER);
@@ -1719,11 +1694,9 @@ export function ContractProfitabilityReport({
   availableYears: number[];
   fetchError: string | null;
 }) {
-  const defaults = getDefaultReportMonthYear();
-  const [year, setYear] = useState(
-    availableYears.includes(defaults.year)
-      ? defaults.year
-      : (availableYears[0] ?? defaults.year),
+  const defaults = getDefaultReportPeriod();
+  const [year, setYear] = useState(() =>
+    resolveInitialReportYear(availableYears, defaults.year),
   );
   const [month, setMonth] = useState(defaults.month);
   const [allocationMode, setAllocationMode] =

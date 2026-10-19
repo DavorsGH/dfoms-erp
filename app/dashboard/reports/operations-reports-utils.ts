@@ -1,3 +1,4 @@
+import { buildReportYearOptions } from "./report-period-utils";
 import type { ClientEntry } from "../operations/clients-utils";
 import {
   getCorrectiveActionClientName,
@@ -931,20 +932,18 @@ export function getIndividualIncidentReport(
 export function buildAvailableOperationsReportYears(
   ...dateLists: string[][]
 ): number[] {
-  const years = new Set<number>();
-  const currentYear = new Date().getFullYear();
-  years.add(currentYear);
+  const fromData: number[] = [];
 
   for (const dates of dateLists) {
     for (const date of dates) {
       const year = Number(date.slice(0, 4));
       if (Number.isFinite(year) && year > 0) {
-        years.add(year);
+        fromData.push(year);
       }
     }
   }
 
-  return [...years].sort((left, right) => right - left);
+  return buildReportYearOptions(fromData);
 }
 
 export function formatTrendIndicator(trend: TrendDirection): string {

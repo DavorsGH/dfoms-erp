@@ -3,10 +3,8 @@ import {
   type UnitStatus,
 } from "../real-estate/properties-utils";
 import { rentOutstandingGhs, isActiveLeaseStatus } from "../real-estate/rent-ledger-utils";
-import {
-  formatReportPeriodLabel,
-  getDefaultReportMonthYear,
-} from "./finance-reports-utils";
+import { formatReportPeriodLabel } from "./finance-reports-utils";
+import { buildReportYearOptions } from "./report-period-utils";
 
 export type ReReportLandlordOption = {
   tenantId: string;
@@ -63,21 +61,19 @@ export const RE_ARREARS_BUCKET_LABELS: Record<ReArrearsBucketKey, string> = {
 export function buildAvailableReReportYears(
   ...dateLists: Array<Array<string | null | undefined>>
 ): number[] {
-  const years = new Set<number>();
-  const defaults = getDefaultReportMonthYear();
-  years.add(defaults.year);
+  const fromData: number[] = [];
 
   for (const list of dateLists) {
     for (const value of list) {
       if (!value) continue;
       const year = Number(String(value).slice(0, 4));
       if (Number.isFinite(year) && year >= 2000 && year <= 2100) {
-        years.add(year);
+        fromData.push(year);
       }
     }
   }
 
-  return [...years].sort((a, b) => b - a);
+  return buildReportYearOptions(fromData);
 }
 
 export function periodBoundsIso(

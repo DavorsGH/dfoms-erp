@@ -37,6 +37,7 @@ import {
   type SelectedPayrollPeriod,
 } from "./payroll-period-utils";
 import { getAttendanceMonthBounds } from "./attendance-register-utils";
+import { getDefaultReportPeriod } from "../reports/report-period-utils";
 import {
   buildManualInputsFromRow,
   buildProcessingPayload,
@@ -168,7 +169,7 @@ export default function PayrollProcessing({
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const workspaceLoadGenerationRef = useRef(0);
-  const now = new Date();
+  const defaultReportPeriod = getDefaultReportPeriod();
   const [knownPayrollMonths, setKnownPayrollMonths] =
     useState(initialPayrollMonths);
   const [monthEndCloseRows, setMonthEndCloseRows] = useState(
@@ -180,9 +181,10 @@ export default function PayrollProcessing({
   const [loans, setLoans] = useState(initialLoans);
   const [salaryAdvances, setSalaryAdvances] = useState(initialSalaryAdvances);
   const [maternityLeaves] = useState(initialMaternityLeaves);
-  const [selectedPeriodKey, setSelectedPeriodKey] = useState(
-    buildPeriodKey(now.getFullYear(), now.getMonth() + 1),
-  );
+  const [selectedPeriodKey, setSelectedPeriodKey] = useState(() => {
+    const { year, month } = getDefaultReportPeriod();
+    return buildPeriodKey(year, month);
+  });
   const [currentPeriod, setCurrentPeriod] = useState<SelectedPayrollPeriod | null>(
     null,
   );
@@ -1590,9 +1592,9 @@ export default function PayrollProcessing({
               Month
             </label>
             <select
-              value={selectedParsed?.month ?? now.getMonth() + 1}
+              value={selectedParsed?.month ?? defaultReportPeriod.month}
               onChange={(event) => {
-                const year = selectedParsed?.year ?? now.getFullYear();
+                const year = selectedParsed?.year ?? defaultReportPeriod.year;
                 setSelectedPeriodKey(
                   buildPeriodKey(year, Number(event.target.value)),
                 );
@@ -1612,9 +1614,9 @@ export default function PayrollProcessing({
               Year
             </label>
             <select
-              value={selectedParsed?.year ?? now.getFullYear()}
+              value={selectedParsed?.year ?? defaultReportPeriod.year}
               onChange={(event) => {
-                const month = selectedParsed?.month ?? now.getMonth() + 1;
+                const month = selectedParsed?.month ?? defaultReportPeriod.month;
                 setSelectedPeriodKey(
                   buildPeriodKey(Number(event.target.value), month),
                 );

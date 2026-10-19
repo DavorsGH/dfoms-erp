@@ -644,8 +644,8 @@ export function getCurrentCalendarMonth(referenceDate = new Date()): {
   month: number;
 } {
   return {
-    year: referenceDate.getFullYear(),
-    month: referenceDate.getMonth() + 1,
+    year: referenceDate.getUTCFullYear(),
+    month: referenceDate.getUTCMonth() + 1,
   };
 }
 

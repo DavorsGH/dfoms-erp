@@ -24,14 +24,13 @@ import {
   type HrEmployee,
 } from "../employee-utils";
 import HrPayrollShell from "../hr-payroll-shell";
+import { getDefaultReportPeriod } from "../../reports/report-period-utils";
 
 export default async function AttendancePage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
-  const now = new Date();
-  const initialYear = now.getFullYear();
-  const initialMonth = now.getMonth() + 1;
+  const { year: initialYear, month: initialMonth } = getDefaultReportPeriod();
   const { start, end } = getAttendanceMonthBounds(initialYear, initialMonth);
 
   const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =

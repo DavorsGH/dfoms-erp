@@ -1,3 +1,5 @@
+import { buildReportYearOptions } from "../reports/report-period-utils";
+
 export type AttendanceRegisterEntry = {
   id: string;
   date: string;
@@ -35,18 +37,11 @@ export const ATTENDANCE_MONTH_OPTIONS = [
   { value: 12, label: "December" },
 ] as const;
 
-/** Calendar year options for the attendance filter (current ± 1, floored at 2024). */
+/** Calendar year options for the attendance filter. */
 export function buildAttendanceYearOptions(
-  referenceDate: Date = new Date(),
+  _referenceDate: Date = new Date(),
 ): number[] {
-  const currentYear = referenceDate.getFullYear();
-  const startYear = Math.min(2024, currentYear - 1);
-  const endYear = currentYear + 1;
-  const years: number[] = [];
-  for (let year = endYear; year >= startYear; year -= 1) {
-    years.push(year);
-  }
-  return years;
+  return buildReportYearOptions([]);
 }
 
 export function getAttendanceMonthBounds(

@@ -25,10 +25,8 @@ import ScrollableTable, {
   scrollableTableThClassName,
   scrollableTableWrapTdClassName,
 } from "../scrollable-table";
-import {
-  formatReportPeriodLabel,
-  getDefaultReportMonthYear,
-} from "./finance-reports-utils";
+import { formatReportPeriodLabel } from "./finance-reports-utils";
+import { useMonthYearSelection } from "./report-period-selection";
 import {
   buildClientServiceReport,
   buildCorrectiveActionStatusReport,
@@ -79,25 +77,6 @@ function ReportFetchError({ fetchError, incidentFetchError }: FetchErrorProps) {
       ) : null}
     </>
   );
-}
-
-function useMonthYearSelection(availableYears: number[]) {
-  const defaults = getDefaultReportMonthYear();
-  const [year, setYear] = useState(
-    availableYears.includes(defaults.year)
-      ? defaults.year
-      : (availableYears[0] ?? defaults.year),
-  );
-  const [month, setMonth] = useState(defaults.month);
-  const periodLabel = formatReportPeriodLabel(year, month);
-
-  return {
-    year,
-    month,
-    setYear,
-    setMonth,
-    periodLabel,
-  };
 }
 
 function handleReportPrint() {

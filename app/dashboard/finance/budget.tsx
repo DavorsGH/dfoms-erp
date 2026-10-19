@@ -73,6 +73,7 @@ import {
   type BudgetRecord,
 } from "./budget-utils";
 import { getDefaultPeriodSelection } from "./manual-financial-entries-utils";
+import { buildReportYearOptions } from "../reports/report-period-utils";
 
 type BudgetProps = {
   tenantId: string;
@@ -161,17 +162,11 @@ export default function Budget({
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
   const availableYears = useMemo(() => {
-    const years = new Set<number>([
-      defaultPeriod.year,
-      ...entries.map(
-        (entry) => getPeriodMonthParts(entry.period_month)?.year ?? 0,
-      ),
-    ]);
-
-    return Array.from(years)
-      .filter((year) => year > 0)
-      .sort((left, right) => right - left);
-  }, [defaultPeriod.year, entries]);
+    const fromData = entries
+      .map((entry) => getPeriodMonthParts(entry.period_month)?.year ?? 0)
+      .filter((year) => year > 0);
+    return buildReportYearOptions(fromData);
+  }, [entries]);
 
   const visibleEntries = useMemo(
     () =>

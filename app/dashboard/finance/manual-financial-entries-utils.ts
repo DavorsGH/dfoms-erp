@@ -275,13 +275,7 @@ export function formToPayload(
   };
 }
 
-export function getDefaultPeriodSelection(): { year: number; month: number } {
-  const now = new Date();
-  return {
-    year: now.getFullYear(),
-    month: now.getMonth() + 1,
-  };
-}
+export { getDefaultReportPeriod as getDefaultPeriodSelection } from "../reports/report-period-utils";
 
 export type LiabilityStockKey =
   | "bank_loans"

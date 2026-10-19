@@ -108,13 +108,7 @@ export type CapitalContributionSummaryRow = {
   runningTotal: number;
 };
 
-export function getDefaultReportMonthYear(): { year: number; month: number } {
-  const now = new Date();
-  return {
-    year: now.getFullYear(),
-    month: now.getMonth() + 1,
-  };
-}
+export { getDefaultReportMonthYear } from "./report-period-utils";
 
 export function monthIndexFromMonthNumber(month: number): number {
   return Math.min(Math.max(month, 1), 12) - 1;

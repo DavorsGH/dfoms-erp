@@ -23,6 +23,7 @@ import {
   type PayrollProcessingRow,
   type PayrollTaxConfigs,
 } from "../hr-payroll/payroll-processing-utils";
+import { buildReportYearOptions } from "./report-period-utils";
 import {
   resolvePayrollWelfareConfigForEmployee,
   type HrPayrollSettingsRow,
@@ -163,21 +164,18 @@ function getEmployeeMap(
 export function buildAvailableHrReportYears(
   ...dateLists: string[][]
 ): number[] {
-  const years = new Set<number>();
+  const fromData: number[] = [];
 
   for (const dates of dateLists) {
     for (const date of dates) {
       const year = Number(date.slice(0, 4));
       if (Number.isFinite(year) && year > 0) {
-        years.add(year);
+        fromData.push(year);
       }
     }
   }
 
-  const currentYear = new Date().getFullYear();
-  years.add(currentYear);
-
-  return [...years].sort((left, right) => right - left);
+  return buildReportYearOptions(fromData);
 }
 
 export function resolvePayrollSummarySource(

@@ -49,6 +49,7 @@ import {
   type LiabilityStockKey,
   type ManualFinancialEntryRecord,
 } from "./manual-financial-entries-utils";
+import { buildReportYearOptions } from "../reports/report-period-utils";
 import DirectorsLoanLedgerPanel from "./directors-loan-ledger-panel";
 import type { AccountsPayablePaymentRow } from "./directors-loan-utils";
 import type { DirectorsLoanLedgerEntry } from "./directors-loan-ledger-utils";
@@ -166,17 +167,11 @@ export default function ManualFinancialEntries({
   const [loading, setLoading] = useState(false);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const availableYears = useMemo(() => {
-    const years = new Set<number>([
-      defaultPeriod.year,
-      ...entries.map(
-        (entry) => getPeriodMonthParts(entry.period_month)?.year ?? 0,
-      ),
-    ]);
-
-    return Array.from(years)
-      .filter((year) => year > 0)
-      .sort((left, right) => right - left);
-  }, [defaultPeriod.year, entries]);
+    const fromData = entries
+      .map((entry) => getPeriodMonthParts(entry.period_month)?.year ?? 0)
+      .filter((year) => year > 0);
+    return buildReportYearOptions(fromData);
+  }, [entries]);
 
   const periodMonth = buildPeriodMonth(
     Number(selectedYear),

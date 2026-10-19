@@ -1,8 +1,18 @@
+import {
+  buildReportYearOptions,
+  getCurrentReportYear,
+  resolveInitialReportYear,
+} from "../reports/report-period-utils";
+
 export const MIN_FINANCE_YEAR = 2024;
-export const MAX_FINANCE_YEAR = 2035;
+
+/** Upper bound for finance year pickers (current calendar year + 1). */
+export function getMaxFinanceYear(): number {
+  return getCurrentReportYear() + 1;
+}
 
 export function getCurrentFinancialYear(): number {
-  return new Date().getFullYear();
+  return getCurrentReportYear();
 }
 
 export function extractYearFromDate(
@@ -21,32 +31,18 @@ export function buildAvailableYears(
   expenseDates: Array<string | null | undefined>,
   additionalDates: Array<string | null | undefined> = [],
 ): number[] {
-  const years = new Set<number>();
-
-  for (let year = MIN_FINANCE_YEAR; year <= MAX_FINANCE_YEAR; year += 1) {
-    years.add(year);
-  }
-
-  years.add(getCurrentFinancialYear());
+  const fromData: number[] = [];
 
   for (const date of [...incomeDates, ...expenseDates, ...additionalDates]) {
     const year = extractYearFromDate(date);
     if (year) {
-      years.add(year);
+      fromData.push(year);
     }
   }
 
-  return Array.from(years)
-    .filter((year) => year >= MIN_FINANCE_YEAR && year <= MAX_FINANCE_YEAR)
-    .sort((left, right) => right - left);
+  return buildReportYearOptions(fromData);
 }
 
 export function getDefaultSelectedYear(availableYears: number[]): number {
-  const currentYear = getCurrentFinancialYear();
-
-  if (availableYears.includes(currentYear)) {
-    return currentYear;
-  }
-
-  return availableYears[0] ?? currentYear;
+  return resolveInitialReportYear(availableYears);
 }

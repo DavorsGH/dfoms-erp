@@ -8,10 +8,11 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import { formatReportPeriodLabel } from "./finance-reports-utils";
 import {
-  formatReportPeriodLabel,
-  getDefaultReportMonthYear,
-} from "./finance-reports-utils";
+  getDefaultReportPeriod,
+  resolveInitialReportYear,
+} from "./report-period-utils";
 import {
   FINANCE_REPORT_PRINT_AREA_ID,
   ReportActionBar,
@@ -688,11 +689,9 @@ export function IncomeByPropertyReport({
   fetchError,
   filterMode = "staff",
 }: IncomeByPropertyReportProps) {
-  const defaults = getDefaultReportMonthYear();
-  const [year, setYear] = useState(
-    availableYears.includes(defaults.year)
-      ? defaults.year
-      : (availableYears[0] ?? defaults.year),
+  const defaults = getDefaultReportPeriod();
+  const [year, setYear] = useState(() =>
+    resolveInitialReportYear(availableYears, defaults.year),
   );
   const [month, setMonth] = useState(defaults.month);
   const { landlordId, propertyId, filterControls, showLandlordColumn } =
