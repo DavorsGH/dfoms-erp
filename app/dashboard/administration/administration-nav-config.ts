@@ -58,6 +58,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         href: "/dashboard/administration/inventory-go-live",
       },
       {
+        label: "Scanner Setup (POS Devices)",
+        href: "/dashboard/pos/scanner-setup",
+      },
+      {
         label: "Approvers",
         href: "/dashboard/administration/approvers",
       },

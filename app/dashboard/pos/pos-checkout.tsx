@@ -143,7 +143,14 @@ import {
   StickyEdgePanel,
 } from "@/components/floating-ui-avoidance";
 import { useBarcodeScannerWedge } from "@/hooks/use-barcode-scanner-wedge";
-import { findProductByScanCode } from "@/utils/barcode-scan-utils";
+import {
+  findProductByScanCode,
+  parseBarcodeScanPayload,
+} from "@/utils/barcode-scan-utils";
+import {
+  useConfirm,
+  useToast,
+} from "@/components/feedback/feedback-context";
 
 type PosCheckoutProps = {
   /** Hidden when the page renders inside the Sales & CRM shell, which already
@@ -228,6 +235,9 @@ export default function PosCheckout({
 }: PosCheckoutProps) {
   const supabase = useMemo(() => createClient(), []);
   const { alert, alertError } = useAlert();
+  const { toast } = useToast();
+  const confirm = useConfirm();
+  const router = useRouter();
 
   function showActionError(message: string) {
     void alertError(clientFacingSalesCrmError(message), {
@@ -251,7 +261,6 @@ export default function PosCheckout({
     }
   }, [fetchError, alertError]);
 
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const pendingSsrStoreCreditRef = useRef({
@@ -984,13 +993,30 @@ export default function PosCheckout({
   function handlePosBarcodeScan(rawPayload: string) {
     const product = findProductByScanCode(products, rawPayload);
     if (!product) {
+      const code =
+        parseBarcodeScanPayload(rawPayload) || rawPayload.trim() || "—";
       setScanSuccess(null);
-      setScanError("Product not found for scanned code.");
+      setScanError(null);
+      toast(`Barcode ${code} not found`);
+      void (async () => {
+        const openInventory = await confirm({
+          title: "Product not found",
+          message: `No product matches barcode ${code}. Open Inventory to assign this barcode to a product?`,
+          confirmLabel: "Open Inventory",
+          cancelLabel: "Dismiss",
+        });
+        if (openInventory) {
+          router.push(
+            `/dashboard/inventory/finished-products?assignBarcode=${encodeURIComponent(code)}`,
+          );
+        }
+      })();
       return;
     }
 
     setScanError(null);
     setScanSuccess(`Added ${product.product_code} — ${product.product_name}`);
+    toast(`Added ${product.product_name}`);
     addProductToCart(product);
   }
 

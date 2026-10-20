@@ -1,5 +1,9 @@
 export const BARCODE_SCAN_INTER_KEY_MS = 50;
 
+export const BARCODE_SCAN_MIN_LENGTH = 3;
+
+export const BARCODE_WEDGE_INPUT_ATTR = "data-barcode-wedge-input";
+
 /** Batch labels encode `barcode|batch_number|expiration_date` — take first segment. */
 export function parseBarcodeScanPayload(raw: string): string {
   const trimmed = raw.trim();

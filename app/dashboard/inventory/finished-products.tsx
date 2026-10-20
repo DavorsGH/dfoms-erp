@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
 import FinishedProductPhoto from "@/components/finished-product-photo";
 import { createClient } from "@/utils/supabase/client";
@@ -33,6 +33,17 @@ import {
   formatInventoryQuantity,
 } from "./inventory-utils";
 import { allocateProductBarcode, allocateProductCode } from "./inventory-ids-api";
+import ProductBarcodeLabelPrint from "./product-barcode-label-print";
+import {
+  findFinishedProductIdByBarcode,
+  mapFinishedProductBarcodeSaveError,
+  normalizeProductBarcodeInput,
+} from "@/utils/finished-product-barcode-utils";
+import {
+  BARCODE_WEDGE_INPUT_ATTR,
+  parseBarcodeScanPayload,
+} from "@/utils/barcode-scan-utils";
+import { useBarcodeScannerWedge } from "@/hooks/use-barcode-scanner-wedge";
 import {
   buildFinishedProductSavePayload,
   DEFAULT_FINISHED_PRODUCT_SOURCING_TYPE,
@@ -110,6 +121,7 @@ type FinishedProductsProps = {
 
 const emptyForm: {
   product_code: string;
+  barcode: string;
   product_name: string;
   unit_of_measure: string;
   standard_selling_price: string;
@@ -117,6 +129,7 @@ const emptyForm: {
   supplier_id: string;
 } = {
   product_code: "",
+  barcode: "",
   product_name: "",
   unit_of_measure: UNITS_OF_MEASURE_PRESETS[0]!,
   standard_selling_price: "",
@@ -160,6 +173,10 @@ export default function FinishedProducts({
   const internalUseReadOnly = internalConsumptionReadOnly ?? readOnly;
   const supabase = createClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const [labelPrintProduct, setLabelPrintProduct] =
+    useState<FinishedProductRecord | null>(null);
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const { viewAllBusinessUnits } = useBusinessUnitView();
@@ -191,6 +208,7 @@ export default function FinishedProducts({
       target?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, []);
+
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [archivingProductId, setArchivingProductId] = useState<string | null>(null);
@@ -218,6 +236,20 @@ export default function FinishedProducts({
         : null,
     [editingProductId, products],
   );
+
+  useBarcodeScannerWedge({
+    enabled: showForm && !readOnly,
+    onScan: (rawPayload) => {
+      const parsed = parseBarcodeScanPayload(rawPayload);
+      if (!parsed) {
+        return;
+      }
+      setForm((current) => ({ ...current, barcode: parsed }));
+      if (barcodeInputRef.current) {
+        barcodeInputRef.current.setCustomValidity("");
+      }
+    },
+  });
 
   const primarySupplierOptions = useMemo(() => {
     const base = toVendorSupplierOptions(initialSuppliers);
@@ -399,6 +431,16 @@ export default function FinishedProducts({
     setShowForm(true);
   }
 
+  useEffect(() => {
+    const assignBarcode = searchParams.get("assignBarcode")?.trim();
+    if (!assignBarcode || readOnly) {
+      return;
+    }
+    openAddForm();
+    setForm((current) => ({ ...current, barcode: assignBarcode }));
+    router.replace("/dashboard/inventory/finished-products", { scroll: false });
+  }, [readOnly, router, searchParams]);
+
   function openEditForm(product: FinishedProductRecord) {
     setLoading(false);
     setEditingProductId(product.id);
@@ -501,19 +543,54 @@ export default function FinishedProducts({
       }
 
       const payload = buildFinishedProductSavePayload(form);
+      const barcodeInput = normalizeProductBarcodeInput(form.barcode);
+      const updateRow: Record<string, unknown> = {
+        product_name: payload.product_name,
+        unit_of_measure: payload.unit_of_measure,
+        standard_selling_price: payload.standard_selling_price,
+        sourcing_type: payload.sourcing_type,
+        supplier_id: payload.supplier_id,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (barcodeInput) {
+        const duplicate = await findFinishedProductIdByBarcode(
+          supabase,
+          barcodeInput,
+          editingProductId,
+        );
+        if (duplicate.error) {
+          setError(duplicate.error);
+          return;
+        }
+        if (duplicate.productId) {
+          if (barcodeInputRef.current) {
+            barcodeInputRef.current.setCustomValidity(
+              "This barcode is already used by another product in your workspace.",
+            );
+            barcodeInputRef.current.reportValidity();
+          }
+          return;
+        }
+        updateRow.barcode = barcodeInput;
+      }
+
+      if (barcodeInputRef.current) {
+        barcodeInputRef.current.setCustomValidity("");
+      }
+
       const { error: saveError } = await supabase
         .from("finished_products")
-        .update({
-          product_name: payload.product_name,
-          unit_of_measure: payload.unit_of_measure,
-          standard_selling_price: payload.standard_selling_price,
-          sourcing_type: payload.sourcing_type,
-          supplier_id: payload.supplier_id,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateRow)
         .eq("id", editingProductId);
 
       if (saveError) {
+        const barcodeMessage = mapFinishedProductBarcodeSaveError(saveError);
+        if (barcodeMessage && barcodeInputRef.current) {
+          barcodeInputRef.current.setCustomValidity(barcodeMessage);
+          barcodeInputRef.current.reportValidity();
+          return;
+        }
         setError(saveError.message);
         return;
       }
@@ -527,17 +604,43 @@ export default function FinishedProducts({
         return;
       }
 
-      const [allocated, barcodeAllocated] = await Promise.all([
-        allocateProductCode(supabase),
-        allocateProductBarcode(supabase),
-      ]);
+      const allocated = await allocateProductCode(supabase);
       if (allocated.error || !allocated.productCode) {
         setError(allocated.error ?? "Unable to allocate product code.");
         return;
       }
-      if (barcodeAllocated.error || !barcodeAllocated.barcode) {
-        setError(barcodeAllocated.error ?? "Unable to allocate product barcode.");
-        return;
+
+      const manualBarcode = normalizeProductBarcodeInput(form.barcode);
+      let barcodeToSave = manualBarcode;
+      if (!barcodeToSave) {
+        const barcodeAllocated = await allocateProductBarcode(supabase);
+        if (barcodeAllocated.error || !barcodeAllocated.barcode) {
+          setError(barcodeAllocated.error ?? "Unable to allocate product barcode.");
+          return;
+        }
+        barcodeToSave = barcodeAllocated.barcode;
+      } else {
+        const duplicate = await findFinishedProductIdByBarcode(
+          supabase,
+          barcodeToSave,
+        );
+        if (duplicate.error) {
+          setError(duplicate.error);
+          return;
+        }
+        if (duplicate.productId) {
+          if (barcodeInputRef.current) {
+            barcodeInputRef.current.setCustomValidity(
+              "This barcode is already used by another product in your workspace.",
+            );
+            barcodeInputRef.current.reportValidity();
+          }
+          return;
+        }
+      }
+
+      if (barcodeInputRef.current) {
+        barcodeInputRef.current.setCustomValidity("");
       }
 
       const payload = buildFinishedProductSavePayload({
@@ -549,13 +652,19 @@ export default function FinishedProducts({
         .from("finished_products")
         .insert({
           ...payload,
-          barcode: barcodeAllocated.barcode,
+          barcode: barcodeToSave,
           business_unit_id: stampResult.businessUnitId,
         })
         .select("id")
         .single();
 
       if (saveError) {
+        const barcodeMessage = mapFinishedProductBarcodeSaveError(saveError);
+        if (barcodeMessage && barcodeInputRef.current) {
+          barcodeInputRef.current.setCustomValidity(barcodeMessage);
+          barcodeInputRef.current.reportValidity();
+          return;
+        }
         setError(saveError.message);
         return;
       }
@@ -988,6 +1097,36 @@ export default function FinishedProducts({
                 />
               </div>
             ) : null}
+            <div {...{ [BARCODE_WEDGE_INPUT_ATTR]: "product-barcode" }}>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Barcode
+              </label>
+              <input
+                ref={barcodeInputRef}
+                type="text"
+                value={form.barcode}
+                onChange={(event) => {
+                  if (barcodeInputRef.current) {
+                    barcodeInputRef.current.setCustomValidity("");
+                  }
+                  setForm((current) => ({
+                    ...current,
+                    barcode: event.target.value,
+                  }));
+                }}
+                placeholder={
+                  editingProductId
+                    ? "Scan or type manufacturer barcode"
+                    : "Scan, type, or leave blank to auto-generate"
+                }
+                className={inputClassName}
+                autoComplete="off"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Supports EAN-13/UPC on bought-in goods. Blank on create uses{" "}
+                <span className="font-mono">BC####</span> from your code series.
+              </p>
+            </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">
                 Product Name
@@ -1218,6 +1357,8 @@ export default function FinishedProducts({
                   </td>
                   {!readOnly ? (
                   <RegisterRowActions
+                    onPrint={() => setLabelPrintProduct(product)}
+                    printLabel="Print labels"
                     onEdit={() => openEditForm(product)}
                     onDelete={
                       showDeactivateAction || product.is_archived
@@ -1624,6 +1765,13 @@ export default function FinishedProducts({
           readOnly={internalUseReadOnly}
         />
       </section>
+
+      {labelPrintProduct ? (
+        <ProductBarcodeLabelPrint
+          product={labelPrintProduct}
+          onClose={() => setLabelPrintProduct(null)}
+        />
+      ) : null}
     </div>
   );
 }

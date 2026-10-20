@@ -12,6 +12,7 @@ import { isCrmNavItemVisibleForRole } from "@/utils/rbac-access";
 const navItems = [
   { label: "Customer List", href: "/dashboard/crm/customers" },
   { label: "POS", href: "/dashboard/pos" },
+  { label: "Scanner Setup", href: "/dashboard/pos/scanner-setup" },
   { label: "Sales", href: "/dashboard/crm/sales" },
   { label: "Credit Notes", href: "/dashboard/crm/credit-notes" },
   { label: "Quotations", href: "/dashboard/sales-crm/quotations" },

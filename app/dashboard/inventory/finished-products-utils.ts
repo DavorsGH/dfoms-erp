@@ -295,6 +295,7 @@ export function normalizeFinishedProduct(
 export function finishedProductToForm(product: FinishedProductRecord) {
   return {
     product_code: product.product_code,
+    barcode: product.barcode ?? "",
     product_name: product.product_name,
     unit_of_measure: product.unit_of_measure,
     standard_selling_price:

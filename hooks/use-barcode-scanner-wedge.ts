@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { BARCODE_SCAN_INTER_KEY_MS } from "@/utils/barcode-scan-utils";
+import {
+  BARCODE_SCAN_INTER_KEY_MS,
+  BARCODE_SCAN_MIN_LENGTH,
+  BARCODE_WEDGE_INPUT_ATTR,
+} from "@/utils/barcode-scan-utils";
 
 export type UseBarcodeScannerWedgeOptions = {
   enabled?: boolean;
@@ -9,10 +13,19 @@ export type UseBarcodeScannerWedgeOptions = {
   paused?: boolean;
   onScan: (rawPayload: string) => void;
   interKeyMs?: number;
+  minLength?: number;
 };
+
+function isDedicatedBarcodeWedgeInput(element: HTMLElement): boolean {
+  return element.closest(`[${BARCODE_WEDGE_INPUT_ATTR}]`) != null;
+}
 
 function shouldIgnoreScanKeystroke(target: EventTarget | null): boolean {
   if (!target || !(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (isDedicatedBarcodeWedgeInput(target)) {
     return false;
   }
 
@@ -44,6 +57,7 @@ export function useBarcodeScannerWedge({
   paused = false,
   onScan,
   interKeyMs = BARCODE_SCAN_INTER_KEY_MS,
+  minLength = BARCODE_SCAN_MIN_LENGTH,
 }: UseBarcodeScannerWedgeOptions) {
   const bufferRef = useRef("");
   const lastKeyTimeRef = useRef(0);
@@ -71,7 +85,7 @@ export function useBarcodeScannerWedge({
         const payload = bufferRef.current.trim();
         bufferRef.current = "";
         lastKeyTimeRef.current = 0;
-        if (payload) {
+        if (payload.length >= minLength) {
           event.preventDefault();
           onScanRef.current(payload);
         }
@@ -98,5 +112,5 @@ export function useBarcodeScannerWedge({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [enabled, paused, interKeyMs]);
+  }, [enabled, paused, interKeyMs, minLength]);
 }

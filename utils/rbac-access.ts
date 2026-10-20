@@ -136,6 +136,7 @@ export const CRM_SALES_REP_NAV_HREFS: readonly string[] = [
   "/dashboard/crm/customers",
   "/dashboard/sales-crm/quotations",
   "/dashboard/pos",
+  "/dashboard/pos/scanner-setup",
   "/dashboard/crm/sales",
   "/dashboard/crm/credit-notes",
 ];
