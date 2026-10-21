@@ -1,8 +1,18 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
-import { mapApproverRows } from "../../approver-utils";
-import type { Approver, Employee } from "../../lookup-types";
+import {
+  buildActiveStaffChoices,
+  type ActiveStaffAccount,
+  type ActiveStaffEmployee,
+} from "@/lib/active-staff-options";
+import {
+  FINANCE_APPROVER_ACCOUNT_SELECT,
+  FINANCE_APPROVER_SELECT,
+  buildFinanceApproverFormLookups,
+} from "@/lib/finance-approver-lookups";
+import type { Approver } from "../../lookup-types";
 import Approvers from "../approvers";
 
 export default async function ApproversPage() {
@@ -21,30 +31,53 @@ export default async function ApproversPage() {
     );
   }
 
+  const admin = createAdminClient();
   const [
     { data: approvers, error: approversError },
     { data: employees, error: employeesError },
+    { data: accounts, error: accountsError },
   ] = await Promise.all([
     supabase
       .from("approvers")
-      .select("employee_id, employees!approvers_employee_id_fkey(full_name)")
+      .select(FINANCE_APPROVER_SELECT)
       .eq("tenant_id", tenantId)
       .order("employee_id", { ascending: true }),
-    supabase
+    admin
       .from("employees")
-      .select("employee_id, full_name")
+      .select("employee_id, staff_id, full_name, employment_status")
       .eq("tenant_id", tenantId)
+      .eq("employment_status", "Active")
       .order("full_name", { ascending: true }),
+    admin
+      .from("user_accounts")
+      .select(FINANCE_APPROVER_ACCOUNT_SELECT)
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true),
   ]);
+
+  const accountRows = (accounts as ActiveStaffAccount[] | null) ?? [];
+  const { allApprovers } = buildFinanceApproverFormLookups(
+    approvers ?? [],
+    accountRows,
+  );
+  const pickerChoices = buildActiveStaffChoices(
+    (employees as ActiveStaffEmployee[] | null) ?? [],
+    accountRows,
+  );
 
   return (
     <>
       <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">Approvers</h2>
       <Approvers
         tenantId={tenantId}
-        initialApprovers={mapApproverRows(approvers ?? []) as Approver[]}
-        initialEmployees={(employees as Employee[] | null) ?? []}
-        fetchError={approversError?.message ?? employeesError?.message ?? null}
+        initialApprovers={allApprovers as Approver[]}
+        pickerChoices={pickerChoices}
+        fetchError={
+          approversError?.message ??
+          employeesError?.message ??
+          accountsError?.message ??
+          null
+        }
       />
     </>
   );

@@ -197,6 +197,14 @@ export default function PayrollProcessing({
   const [maternityLeaves] = useState(initialMaternityLeaves);
   const [exemptStaffIds] = useState(() => new Set(initialExemptStaffIds));
   const [selectedPeriodKey, setSelectedPeriodKey] = useState(() => {
+    if (typeof window !== "undefined") {
+      const period = new URLSearchParams(window.location.search)
+        .get("period")
+        ?.trim();
+      if (period && parsePeriodKey(period)) {
+        return period;
+      }
+    }
     const { year, month } = getDefaultReportPeriod();
     return buildPeriodKey(year, month);
   });

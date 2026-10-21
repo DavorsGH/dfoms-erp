@@ -1,31 +1,16 @@
-import type { AppRole } from "@/app/dashboard/user-account-types";
+import {
+  activeStaffChoiceLabel,
+  buildActiveStaffChoices,
+  isEligibleActiveStaffWithLogin,
+  isStaffLoginRole,
+  staffLoginForEmployee,
+  type ActiveStaffAccount,
+  type ActiveStaffChoice,
+  type ActiveStaffEmployee,
+} from "@/lib/active-staff-options";
 
-const STAFF_LOGIN_ROLES = new Set<AppRole>([
-  "super_admin",
-  "finance",
-  "finance_admin",
-  "hr",
-  "director",
-  "operations_manager",
-  "supervisor",
-  "employee",
-  "sales_rep",
-]);
-
-export type LeaveApproverEmployee = {
-  employee_id: string;
-  staff_id: string | null;
-  full_name: string | null;
-  position: string | null;
-  employment_status: string | null;
-};
-
-export type LeaveApproverAccount = {
-  auth_uid: string;
-  employee_id: string | null;
-  is_active: boolean | null;
-  role: string | null;
-};
+export type LeaveApproverEmployee = ActiveStaffEmployee;
+export type LeaveApproverAccount = ActiveStaffAccount;
 
 export type LeaveApproverChoice = {
   key: string;
@@ -34,9 +19,10 @@ export type LeaveApproverChoice = {
   disabled: boolean;
 };
 
-export function isStaffLoginRole(role: string | null | undefined): boolean {
-  return STAFF_LOGIN_ROLES.has((role ?? "") as AppRole);
-}
+export {
+  isStaffLoginRole,
+  staffLoginForEmployee,
+};
 
 export function leaveApproverChoiceLabel(input: {
   fullName: string | null | undefined;
@@ -44,65 +30,41 @@ export function leaveApproverChoiceLabel(input: {
   position: string | null | undefined;
   hasStaffLogin: boolean;
 }): string {
-  const name = input.fullName?.trim() || "Unnamed employee";
-  const staffId = input.staffId?.trim() || "No staff ID";
-  const position = input.position?.trim() || "No position";
-  const base = `${name} (${staffId}) — ${position}`;
+  const base = activeStaffChoiceLabel({
+    fullName: input.fullName,
+    staffId: input.staffId,
+    position: input.position,
+    includePosition: true,
+  });
   return input.hasStaffLogin ? base : `${base} — No login yet`;
-}
-
-export function staffLoginForEmployee(
-  employeeId: string,
-  accounts: LeaveApproverAccount[],
-): LeaveApproverAccount | null {
-  const matches = accounts
-    .filter(
-      (account) =>
-        account.employee_id === employeeId &&
-        account.is_active !== false &&
-        isStaffLoginRole(account.role) &&
-        Boolean(account.auth_uid),
-    )
-    .sort((left, right) => left.auth_uid.localeCompare(right.auth_uid));
-  return matches[0] ?? null;
 }
 
 export function isEligibleLeaveApprover(input: {
   account: LeaveApproverAccount | null | undefined;
   employmentStatus: string | null | undefined;
 }): boolean {
-  if (!input.account?.auth_uid || !input.account.employee_id) {
-    return false;
-  }
-  if (input.account.is_active === false) {
-    return false;
-  }
-  if (!isStaffLoginRole(input.account.role)) {
-    return false;
-  }
-  return input.employmentStatus === "Active";
+  return isEligibleActiveStaffWithLogin(input);
 }
 
-/** Active employees, named and sorted. A row can be chosen only with an active staff login. */
+function toLeaveChoice(choice: ActiveStaffChoice): LeaveApproverChoice {
+  return {
+    key: choice.key,
+    authUid: choice.authUid,
+    label: choice.label,
+    disabled: !choice.selectable,
+  };
+}
+
+/**
+ * Active employees with a linked staff login only.
+ * Inactive / terminated / no-login staff are excluded from the picker.
+ */
 export function buildLeaveApproverChoices(
   employees: LeaveApproverEmployee[],
   accounts: LeaveApproverAccount[],
 ): LeaveApproverChoice[] {
-  return employees
-    .filter((employee) => employee.employment_status === "Active")
-    .map((employee) => {
-      const account = staffLoginForEmployee(employee.employee_id, accounts);
-      return {
-        key: employee.employee_id,
-        authUid: account?.auth_uid ?? null,
-        disabled: !account,
-        label: leaveApproverChoiceLabel({
-          fullName: employee.full_name,
-          staffId: employee.staff_id,
-          position: employee.position,
-          hasStaffLogin: Boolean(account),
-        }),
-      };
-    })
-    .sort((left, right) => left.label.localeCompare(right.label));
+  return buildActiveStaffChoices(employees, accounts, {
+    includePosition: true,
+    includeWithoutLogin: false,
+  }).map(toLeaveChoice);
 }

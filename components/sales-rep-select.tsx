@@ -1,5 +1,8 @@
 import { useEffect, useMemo } from "react";
-import type { HrEmployee } from "@/app/dashboard/hr-payroll/employee-utils";
+import {
+  filterActiveEmployees,
+  type HrEmployee,
+} from "@/app/dashboard/hr-payroll/employee-utils";
 
 type SalesRepSelectProps = {
   id?: string;
@@ -28,9 +31,14 @@ export default function SalesRepSelect({
   className,
   hint,
 }: SalesRepSelectProps) {
-  const optionIds = useMemo(
-    () => new Set(employees.map((employee) => employee.employee_id)),
+  const activeEmployees = useMemo(
+    () => filterActiveEmployees(employees),
     [employees],
+  );
+
+  const optionIds = useMemo(
+    () => new Set(activeEmployees.map((employee) => employee.employee_id)),
+    [activeEmployees],
   );
 
   const resolvedValue = useMemo(() => {
@@ -40,8 +48,8 @@ export default function SalesRepSelect({
     if (allowEmpty) {
       return "";
     }
-    return employees[0]?.employee_id ?? "";
-  }, [allowEmpty, employees, optionIds, value]);
+    return activeEmployees[0]?.employee_id ?? "";
+  }, [activeEmployees, allowEmpty, optionIds, value]);
 
   useEffect(() => {
     if (resolvedValue !== value) {
@@ -67,7 +75,7 @@ export default function SalesRepSelect({
         }
       >
         {allowEmpty ? <option value="">{emptyLabel}</option> : null}
-        {employees.map((employee) => (
+        {activeEmployees.map((employee) => (
           <option key={employee.employee_id} value={employee.employee_id}>
             {employee.staff_id} — {employee.full_name}
           </option>

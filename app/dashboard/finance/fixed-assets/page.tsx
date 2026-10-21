@@ -10,8 +10,8 @@ import {
 } from "@/utils/business-unit-view";
 import { createClient } from "@/utils/supabase/server";
 import { scopeTaxSettingsRead } from "@/utils/phase5e-key-structure";
-import { mapApproverRows } from "../../approver-utils";
-import type { Approver, NamedLookup } from "../../lookup-types";
+import type { NamedLookup } from "../../lookup-types";
+import { loadActiveFinanceApproversForForms } from "@/lib/finance-approver-lookups";
 import FixedAssets from "../fixed-assets";
 import type { FixedAssetEntry } from "../fixed-assets-utils";
 import FinanceNav from "../finance-nav";
@@ -43,7 +43,7 @@ export default async function FixedAssetsPage() {
     { data: assetCategories, error: assetCategoriesError },
     { data: depreciationMethods, error: depreciationMethodsError },
     { data: paymentMethods, error: paymentMethodsError },
-    { data: approvers, error: approversError },
+    approversLookup,
     { data: suppliers, error: suppliersError },
     { data: taxSettings, error: taxSettingsError },
     { data: taxRateCatalog, error: taxRateCatalogError },
@@ -61,10 +61,7 @@ export default async function FixedAssetsPage() {
       .select("name")
       .order("name", { ascending: true }),
     supabase.from("payment_methods").select("name").order("name", { ascending: true }),
-    supabase
-      .from("approvers")
-      .select("employee_id, employees!approvers_employee_id_fkey(full_name)")
-      .order("employee_id", { ascending: true }),
+    loadActiveFinanceApproversForForms(supabase, tenantId),
     tenantId
       ? supabase
           .from("suppliers")
@@ -89,7 +86,7 @@ export default async function FixedAssetsPage() {
     assetCategoriesError?.message ??
     depreciationMethodsError?.message ??
     paymentMethodsError?.message ??
-    approversError?.message ??
+    approversLookup.error ??
     suppliersError?.message ??
     taxSettingsError?.message ??
     taxRateCatalogError?.message ??
@@ -109,7 +106,7 @@ export default async function FixedAssetsPage() {
           (depreciationMethods as NamedLookup[] | null) ?? []
         }
         initialPaymentMethods={(paymentMethods as NamedLookup[] | null) ?? []}
-        initialApprovers={mapApproverRows(approvers ?? []) as Approver[]}
+        initialApprovers={approversLookup.activeApprovers}
         initialSuppliers={(suppliers as SupplierRow[] | null) ?? []}
         taxSettings={normalizeTaxSettings(taxSettings as TaxSettings | null)}
         taxRateCatalog={(taxRateCatalog ?? []).map((entry) =>

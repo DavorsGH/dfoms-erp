@@ -13,8 +13,7 @@ import {
   applyEmployeeIdScope,
   fetchScopedEmployeeIds,
 } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
-import { mapApproverRows } from "../../approver-utils";
-import type { Approver } from "../../lookup-types";
+import { loadActiveFinanceApproversForForms } from "@/lib/finance-approver-lookups";
 import OvertimeRegister from "../overtime-register";
 import type { OvertimeRegisterEntry } from "../overtime-register-utils";
 import {
@@ -50,7 +49,7 @@ export default async function OvertimePage() {
   const [
     { data, error },
     { data: employees, error: employeesError },
-    { data: approvers, error: approversError },
+    approversLookup,
   ] = await Promise.all([
     applyEmployeeIdScope(
       supabase.from("overtime_register").select("*"),
@@ -60,17 +59,14 @@ export default async function OvertimePage() {
       supabase.from("employees").select(HR_EMPLOYEE_SELECT),
       buScope,
     ).order("full_name"),
-    supabase
-      .from("approvers")
-      .select("employee_id, employees!approvers_employee_id_fkey(full_name)")
-      .order("employee_id", { ascending: true }),
+    loadActiveFinanceApproversForForms(supabase, tenantId),
   ]);
 
   const fetchError =
     employeeScopeError ??
     error?.message ??
     employeesError?.message ??
-    approversError?.message ??
+    approversLookup.error ??
     null;
 
   return (
@@ -80,7 +76,7 @@ export default async function OvertimePage() {
         initialEmployees={filterActiveEmployees(
           (employees as HrEmployee[] | null) ?? [],
         )}
-        initialApprovers={mapApproverRows(approvers ?? []) as Approver[]}
+        initialApprovers={approversLookup.activeApprovers}
         fetchError={fetchError}
       />
     </HrPayrollShell>

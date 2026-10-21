@@ -1,5 +1,5 @@
 /**
- * Leave approver choices come from active employees, not every user account.
+ * Leave approver choices come from active employees with a staff login.
  * Usage: npx tsx scripts/test-leave-approver-options.ts
  */
 import assert from "node:assert/strict";
@@ -33,6 +33,13 @@ const employees = [
     full_name: "Former Staff",
     position: "Cleaner",
     employment_status: "Inactive",
+  },
+  {
+    employee_id: "EMP0010",
+    staff_id: "DF0010",
+    full_name: "Terminated Staff",
+    position: "Cleaner",
+    employment_status: "Terminated",
   },
 ];
 
@@ -70,17 +77,20 @@ assert.equal(
 const choices = buildLeaveApproverChoices(employees, accounts);
 assert.deepEqual(
   choices.map((choice) => choice.label),
-  [
-    "Ama Cleaner (DF0009) — Cleaner — No login yet",
-    "Gifty Andy Avors (DF0002) — Director",
-  ],
+  ["Gifty Andy Avors (DF0002) — Director"],
 );
-assert.equal(choices[0]?.disabled, true);
-assert.equal(choices[0]?.authUid, null);
-assert.equal(choices[1]?.disabled, false);
-assert.equal(choices[1]?.authUid, "67e20016-8ad6-4234-b2c2-f3a76811c4aa");
+assert.equal(choices[0]?.disabled, false);
+assert.equal(choices[0]?.authUid, "67e20016-8ad6-4234-b2c2-f3a76811c4aa");
 assert.equal(
   choices.some((choice) => choice.label.includes("Former Staff")),
+  false,
+);
+assert.equal(
+  choices.some((choice) => choice.label.includes("Terminated Staff")),
+  false,
+);
+assert.equal(
+  choices.some((choice) => choice.label.includes("Ama Cleaner")),
   false,
 );
 assert.equal(

@@ -18,6 +18,10 @@ export type AttendanceRegisterEntry = {
   late_minutes?: number | null;
   early_leave_minutes?: number | null;
   exception_status?: string | null;
+  /** Site code from the device/remote clock when recorded. */
+  site_code?: string | null;
+  /** e.g. "remote" for remote clock-ins (status stays Present). */
+  source?: string | null;
 };
 
 export const ATTENDANCE_STATUS_OPTIONS = [

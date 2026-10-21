@@ -1,0 +1,210 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will error in a future major version of npm. See `npm help 
+npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Users\HP\AppData\Roaming\npm ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+npm notice run dfoms-erp-app@0.1.0 npx
+npm notice run tsx scripts/diff-384b-staging-readonly.ts --env-file .env.staging.local
+=== Functions (live vs 384b body after normalize) ===
+
+DIFF can_access_finance_income_data()
+--- live (stripped) ---
+create or replace function public.can_access_finance_income_data() returns boolean language sql stable security definer set search_path to 'public' as $function$ select current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'hr'::app_role, 'director'::app_role); $function$
+--- 384b (stripped) ---
+create or replace function public.can_access_finance_income_data() returns boolean language sql stable security definer set search_path = public as $$ select current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'hr'::app_role, 'director'::app_role); $$;
+
+DIFF can_access_client_record(text)
+--- live (stripped) ---
+create or replace function public.can_access_client_record(p_client_id text) returns boolean language sql stable security definer set search_path to 'public' as $function$ select case current_user_role() when 'super_admin'::app_role then true when 'finance'::app_role then true when then true when 'hr'::app_role then true when 'operations_manager'::app_role then true when 'director'::app_role then true when 'supervisor'::app_role then true when 'client'::app_role then p_client_id is not null and p_client_id = current_user_client_id() else false end; $function$
+--- 384b (stripped) ---
+create or replace function public.can_access_client_record(p_client_id text) returns boolean language sql stable security definer set search_path = public as $$ select case current_user_role() when 'super_admin'::app_role then true when 'finance'::app_role then true when then true when 'hr'::app_role then true when 'operations_manager'::app_role then true when 'director'::app_role then true when 'supervisor'::app_role then true when 'client'::app_role then p_client_id is not null and p_client_id = current_user_client_id() else false end; $$;
+
+DIFF can_access_employee_record(text)
+--- live (stripped) ---
+create or replace function public.can_access_employee_record(p_assigned_site_id text) returns boolean language sql stable security definer set search_path to 'public' as $function$ select case current_user_role() when 'super_admin'::app_role then true when 'finance'::app_role then true when then true when 'hr'::app_role then true when 'operations_manager'::app_role then true when 'director'::app_role then true when 'supervisor'::app_role then p_assigned_site_id is not null and exists (select 1 from user_account_supervisor_sites where auth_uid = auth.uid() and site_code = p_assigned_site_id) when 'client'::app_role then can_access_client_site(p_assigned_site_id) else false end; $function$
+--- 384b (stripped) ---
+create or replace function public.can_access_employee_record(p_assigned_site_id text) returns boolean language sql stable security definer set search_path = public as $$ select case current_user_role() when 'super_admin'::app_role then true when 'finance'::app_role then true when then true when 'hr'::app_role then true when 'operations_manager'::app_role then true when 'director'::app_role then true when 'supervisor'::app_role then p_assigned_site_id is not null and exists (select 1 from user_account_supervisor_sites where auth_uid = auth.uid() and site_code = p_assigned_site_id) when 'client'::app_role then can_access_client_site(p_assigned_site_id) else false end; $$;
+
+DIFF can_write_employee_records()
+--- live (stripped) ---
+create or replace function public.can_write_employee_records() returns boolean language sql stable security definer set search_path to 'public' as $function$ select current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'hr'::app_role, 'director'::app_role); $function$
+--- 384b (stripped) ---
+create or replace function public.can_write_employee_records() returns boolean language sql stable security definer set search_path = public as $$ select current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'hr'::app_role, 'director'::app_role); $$;
+
+DIFF can_access_hr_payroll_data()
+--- live (stripped) ---
+create or replace function public.can_access_hr_payroll_data() returns boolean language sql stable security definer set search_path to 'public' as $function$ select current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'hr'::app_role, 'director'::app_role); $function$
+--- 384b (stripped) ---
+create or replace function public.can_access_hr_payroll_data() returns boolean language sql stable security definer set search_path = public as $$ select current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'hr'::app_role, 'director'::app_role); $$;
+
+DIFF can_view_duty_roster_company_wide()
+--- live (stripped) ---
+create or replace function public.can_view_duty_roster_company_wide() returns boolean language sql stable security definer set search_path to 'public' as $function$ select current_user_role() in ('super_admin'::app_role, 'operations_manager'::app_role, 'hr'::app_role, 'director'::app_role, 'supervisor'::app_role,); $function$
+--- 384b (stripped) ---
+create or replace function public.can_view_duty_roster_company_wide() returns boolean language sql stable security definer set search_path = public as $$ select current_user_role() in ('super_admin'::app_role, 'operations_manager'::app_role, 'hr'::app_role, 'director'::app_role, 'supervisor'::app_role,); $$;
+
+DIFF can_access_pos_held_carts()
+--- live (stripped) ---
+create or replace function public.can_access_pos_held_carts() returns boolean language sql stable security definer set search_path to 'public' as $function$ select public.current_user_role() in ('super_admin'::public.app_role, 'finance'::public.app_role, 'hr'::public.app_role, 'director'::public.app_role, 'sales_rep'::public.app_role); $function$
+--- 384b (stripped) ---
+create or replace function public.can_access_pos_held_carts() returns boolean language sql stable security definer set search_path = public as $$ select public.current_user_role() in ('super_admin'::public.app_role, 'finance'::public.app_role, 'hr'::public.app_role, 'director'::public.app_role, 'sales_rep'::public.app_role); $$;
+
+DIFF update_sales_opportunity(uuid,text,text,numeric,integer,date,text,text,text)
+--- live (stripped) ---
+create or replace function public.update_sales_opportunity(p_opportunity_id uuid, p_client_id text, p_opportunity_name text, p_estimated_value numeric default null::numeric, p_probability integer default null::integer, p_expected_close_date date default null::date, p_source text default null::text, p_assigned_to text default null::text, p_notes text default null::text) returns uuid language plpgsql security definer set search_path to 'public' as $function$ declare v_tenant_id uuid; v_opportunity public.sales_opportunities%rowtype; begin if current_user_role() not in ('super_admin'::app_role, 'finance'::app_role, 'hr'::app_role, 'director'::app_role) then raise exception 'you do not have permission to edit sales opportunities'; end if; v_tenant_id := current_user_tenant_id(); if v_tenant_id
+--- 384b (stripped) ---
+create or replace function public.update_sales_opportunity(p_opportunity_id uuid, p_client_id text, p_opportunity_name text, p_estimated_value numeric default null, p_probability integer default null, p_expected_close_date date default null, p_source text default null, p_assigned_to text default null, p_notes text default null) returns uuid language plpgsql security definer set search_path = public as $$ declare v_tenant_id uuid; v_opportunity public.sales_opportunities%rowtype; begin if current_user_role() not in ('super_admin'::app_role, 'finance'::app_role, 'hr'::app_role, 'director'::app_role) then raise exception 'you do not have permission to edit sales opportunities'; end if; v_tenant_id := current_user_tenant_id(); if v_tenant_id is null then raise exception 'unable to resolve work
+
+DIFF delete_sales_opportunity(uuid)
+--- live (stripped) ---
+create or replace function public.delete_sales_opportunity(p_opportunity_id uuid) returns void language plpgsql security definer set search_path to 'public' as $function$ declare v_tenant_id uuid; v_quotation_count integer := 0; v_quote_count integer := 0; begin if current_user_role() not in ('super_admin'::app_role, 'finance'::app_role, 'hr'::app_role, 'director'::app_role) then raise exception 'you do not have permission to delete sales opportunities'; end if; v_tenant_id := current_user_tenant_id(); if v_tenant_id is null then raise exception 'unable to resolve workspace for current user'; end if; if not tenant_has_feature(v_tenant_id, 'crm_core') then raise exception 'crm is not enabled for this workspace'; end if; if not exists (select 1 from public.sales_opportunities where id = p_op
+--- 384b (stripped) ---
+create or replace function public.delete_sales_opportunity(p_opportunity_id uuid) returns void language plpgsql security definer set search_path = public as $$ declare v_tenant_id uuid; v_quotation_count integer := 0; v_quote_count integer := 0; begin if current_user_role() not in ('super_admin'::app_role, 'finance'::app_role, 'hr'::app_role, 'director'::app_role) then raise exception 'you do not have permission to delete sales opportunities'; end if; v_tenant_id := current_user_tenant_id(); if v_tenant_id is null then raise exception 'unable to resolve workspace for current user'; end if; if not tenant_has_feature(v_tenant_id, 'crm_core') then raise exception 'crm is not enabled for this workspace'; end if; if not exists (select 1 from public.sales_opportunities where id = p_opportunity_i
+
+DIFF set_commission_status(uuid,text)
+--- live (stripped) ---
+create or replace function public.set_commission_status(p_calc_id uuid, p_new_status text) returns void language plpgsql security definer set search_path to 'public' as $function$ declare v_tenant_id uuid; v_current_status text; begin if current_user_role() not in ('super_admin'::app_role, 'finance'::app_role, 'hr'::app_role, 'director'::app_role) then raise exception 'you do not have permission to update commission status'; end if; v_tenant_id := current_user_tenant_id(); if v_tenant_id is null then raise exception 'unable to resolve workspace for current user'; end if; if not tenant_has_feature(v_tenant_id, 'crm_core') then raise exception 'crm is not enabled for this workspace'; end if; select status into v_current_status from public.commission_calculations where id = p_calc_id and tena
+--- 384b (stripped) ---
+create or replace function public.set_commission_status(p_calc_id uuid, p_new_status text) returns void language plpgsql security definer set search_path = public as $$ declare v_tenant_id uuid; v_current_status text; begin if current_user_role() not in ('super_admin'::app_role, 'finance'::app_role, 'hr'::app_role, 'director'::app_role) then raise exception 'you do not have permission to update commission status'; end if; v_tenant_id := current_user_tenant_id(); if v_tenant_id is null then raise exception 'unable to resolve workspace for current user'; end if; if not tenant_has_feature(v_tenant_id, 'crm_core') then raise exception 'crm is not enabled for this workspace'; end if; select status into v_current_status from public.commission_calculations where id = p_calc_id and tenant_id = v_t
+
+
+=== Policies (live USING/WITH CHECK vs 384b) ===
+
+DIFF employees.employees_rbac_delete [DELETE]
+--- live ---
+(tenant_matches(tenant_id) and can_write_employee_records() and user_has_business_unit_access(business_unit_id)) |
+--- 384b fragment ---
+drop policy if exists employees_rbac_delete on public.employees; create policy employees_rbac_delete on public.employees for delete to authenticated using (tenant_matches(tenant_id) and can_write_employee_records() and user_has_business_unit_access(business_unit_id));
+
+DIFF sites.sites_rbac_select [SELECT]
+--- live ---
+(tenant_matches(tenant_id) and ((current_user_role() = any (array['super_admin'::app_role, 'operations_manager'::app_role, 'director'::app_role])) or ((current_user_role() = 'supervisor'::app_role) and (site_code in (select current_user_supervisor_site_codes() as current_user_supervisor_site_codes))) or (current_user_role() = any (array['finance'::app_role, 'hr'::app_role])) or ((current_user_role() = 'client'::app_role) and (client_id = current_user_client_id())))) |
+--- 384b fragment ---
+drop policy if exists sites_rbac_select on public.sites; create policy sites_rbac_select on public.sites for select to authenticated using (tenant_matches(tenant_id) and (current_user_role() in ('super_admin'::app_role, 'operations_manager'::app_role, 'director'::app_role) or (current_user_role() = 'supervisor'::app_role and site_code in (select current_user_supervisor_site_codes())) or current_user_role() in ('finance'::app_role, 'hr'::app_role) or (current_user_role() = 'client'::app_role and client_id = current_user_client_id())));
+
+OK sites.sites_rbac_write
+DIFF projects.projects_client_select [SELECT]
+--- live ---
+(tenant_matches(tenant_id) and (is_super_admin() or (current_user_role() = any (array['finance'::app_role, 'hr'::app_role, 'operations_manager'::app_role, 'supervisor'::app_role, 'director'::app_role])) or (exists (select 1 from sites s where ((s.project_id = projects.id) and tenant_matches(s.tenant_id) and (s.client_id = current_user_client_id()) and (current_user_role() = 'client'::app_role))))) and tenant_has_feature(tenant_id, 'operations'::text) and user_has_business_unit_access(business_unit_id)) |
+--- 384b fragment ---
+drop policy if exists projects_client_select on public.projects; create policy projects_client_select on public.projects for select to authenticated using (tenant_matches(tenant_id) and (is_super_admin() or current_user_role() in ('finance'::app_role, 'hr'::app_role, 'operations_manager'::app_role, 'supervisor'::app_role, 'director'::app_role) or exists (select 1 from sites s where s.project_id = projects.id and tenant_matches(s.tenant_id) and s.client_id = current_user_client_id() and current_user_role() = 'client'::app_role)) and tenant_has_feature(tenant_id, 'operations') and user_has_business_unit_access(business_unit_id));
+
+DIFF roster_config.roster_config_client_select [SELECT]
+--- live ---
+(tenant_matches(tenant_id) and (is_super_admin() or (current_user_role() = any (array['operations_manager'::app_role, 'supervisor'::app_role, ])) or can_access_client_record(client_id)) and tenant_has_feature(tenant_id, 'operations'::text) and user_has_business_unit_access(business_unit_id)) |
+--- 384b fragment ---
+drop policy if exists roster_config_client_select on public.roster_config; create policy roster_config_client_select on public.roster_config for select to authenticated using (tenant_matches(tenant_id) and (is_super_admin() or current_user_role() in ('operations_manager'::app_role, 'supervisor'::app_role,) or can_access_client_record(client_id)) and tenant_has_feature(tenant_id, 'operations') and user_has_business_unit_access(business_unit_id));
+
+DIFF roster_history.roster_history_rbac_select [SELECT]
+--- live ---
+(tenant_matches(tenant_id) and ((current_user_role() = any (array['super_admin'::app_role, 'operations_manager'::app_role, 'hr'::app_role, 'director'::app_role, ])) or (current_user_role() = 'supervisor'::app_role) or (employee_id = current_user_employee_id()))) |
+--- 384b fragment ---
+drop policy if exists roster_history_rbac_select on public.roster_history; create policy roster_history_rbac_select on public.roster_history for select to authenticated using (tenant_matches(tenant_id) and (current_user_role() in ('super_admin'::app_role, 'operations_manager'::app_role, 'hr'::app_role, 'director'::app_role,) or current_user_role() = 'supervisor'::app_role or employee_id = current_user_employee_id()));
+
+DIFF roster_rotation_metadata.roster_rotation_metadata_select [SELECT]
+--- live ---
+(tenant_matches(tenant_id) and (is_super_admin() or (current_user_role() = any (array['operations_manager'::app_role, 'supervisor'::app_role, 'director'::app_role, ])) or can_access_client_record(client_id)) and user_has_business_unit_access(business_unit_id)) |
+--- 384b fragment ---
+drop policy if exists roster_rotation_metadata_select on public.roster_rotation_metadata; create policy roster_rotation_metadata_select on public.roster_rotation_metadata for select to authenticated using (tenant_matches(tenant_id) and (is_super_admin() or current_user_role() in ('operations_manager'::app_role, 'supervisor'::app_role, 'director'::app_role,) or can_access_client_record(client_id)) and user_has_business_unit_access(business_unit_id));
+
+DIFF corrective_actions.corrective_actions_rbac_select [SELECT]
+--- live ---
+(tenant_matches(tenant_id) and ((current_user_role() = any (array['super_admin'::app_role, 'operations_manager'::app_role, 'director'::app_role, ])) or ((current_user_role() = 'supervisor'::app_role) and (((related_work_order is not null) and (exists (select 1 from work_orders wo where ((wo.work_order_no = corrective_actions.related_work_order) and tenant_matches(wo.tenant_id) and can_access_operations_site(wo.site_id))))) or ((related_issue_no is not null) and (exists (select 1 from failed_inspections fi where ((fi.issue_no = corrective_actions.related_issue_no) and tenant_matches(fi.tenant_id) and can_access_operations_site(fi.site_id)))))))) and user_has_business_unit_access(business_unit_id)) |
+--- 384b fragment ---
+drop policy if exists corrective_actions_rbac_select on public.corrective_actions; create policy corrective_actions_rbac_select on public.corrective_actions for select to authenticated using (tenant_matches(tenant_id) and (current_user_role() in ('super_admin'::app_role, 'operations_manager'::app_role, 'director'::app_role,) or (current_user_role() = 'supervisor'::app_role and ((related_work_order is not null and exists (select 1 from work_orders wo where wo.work_order_no = corrective_actions.related_work_order and tenant_matches(wo.tenant_id) and can_access_operations_site(wo.site_id))) or (related_issue_no is not null and exists (select 1 from failed_inspections fi where fi.issue_no = corrective_actions.related_issue_no and tenant_matches(fi.tenant_id) and can_access_operations_site(fi.site_id)))))) and user_has_business_unit_access(business_unit_id));
+
+DIFF work_orders.work_orders_rbac_select [SELECT]
+--- live ---
+(tenant_matches(tenant_id) and can_access_operations_site(site_id) and tenant_has_feature(tenant_id, 'operations'::text)) |
+--- 384b fragment ---
+drop policy if exists work_orders_rbac_select on public.work_orders; create policy work_orders_rbac_select on public.work_orders for select to authenticated using (tenant_matches(tenant_id) and can_access_operations_site(site_id) and tenant_has_feature(tenant_id, 'operations'));
+
+OK work_orders.work_orders_rbac_insert
+OK work_orders.work_orders_rbac_update
+OK work_orders.work_orders_rbac_delete
+DIFF complaint_register.complaint_register_rbac_select [SELECT]
+--- live ---
+(tenant_matches(tenant_id) and can_access_operations_site(site_id) and tenant_has_feature(tenant_id, 'operations'::text)) |
+--- 384b fragment ---
+drop policy if exists complaint_register_rbac_select on public.complaint_register; create policy complaint_register_rbac_select on public.complaint_register for select to authenticated using (tenant_matches(tenant_id) and can_access_operations_site(site_id) and tenant_has_feature(tenant_id, 'operations'));
+
+DIFF failed_inspections.failed_inspections_rbac_select [SELECT]
+--- live ---
+(tenant_matches(tenant_id) and can_access_operations_site(site_id) and tenant_has_feature(tenant_id, 'operations'::text)) |
+--- 384b fragment ---
+drop policy if exists failed_inspections_rbac_select on public.failed_inspections; create policy failed_inspections_rbac_select on public.failed_inspections for select to authenticated using (tenant_matches(tenant_id) and can_access_operations_site(site_id) and tenant_has_feature(tenant_id, 'operations'));
+
+DIFF incident_register.incident_register_rbac_select [SELECT]
+--- live ---
+(tenant_matches(tenant_id) and can_access_operations_site(site_id) and tenant_has_feature(tenant_id, 'operations'::text)) |
+--- 384b fragment ---
+drop policy if exists incident_register_rbac_select on public.incident_register; create policy incident_register_rbac_select on public.incident_register for select to authenticated using (tenant_matches(tenant_id) and can_access_operations_site(site_id) and tenant_has_feature(tenant_id, 'operations'));
+
+DIFF inspection_summary.inspection_summary_rbac_select [SELECT]
+--- live ---
+(tenant_matches(tenant_id) and can_access_operations_site(site_id) and tenant_has_feature(tenant_id, 'operations'::text)) |
+--- 384b fragment ---
+drop policy if exists inspection_summary_rbac_select on public.inspection_summary; create policy inspection_summary_rbac_select on public.inspection_summary for select to authenticated using (tenant_matches(tenant_id) and can_access_operations_site(site_id) and tenant_has_feature(tenant_id, 'operations'));
+
+DIFF manual_financial_entries.manual_financial_entries_tenant_write [ALL]
+--- live ---
+(tenant_matches(tenant_id) and (current_user_role() = any (array['super_admin'::app_role, 'finance'::app_role, 'director'::app_role])) and user_has_business_unit_access(business_unit_id)) | (tenant_matches(tenant_id) and (current_user_role() = any (array['super_admin'::app_role, 'finance'::app_role, 'director'::app_role])) and user_has_business_unit_access(business_unit_id))
+--- 384b fragment ---
+drop policy if exists manual_financial_entries_tenant_write on public.manual_financial_entries; create policy manual_financial_entries_tenant_write on public.manual_financial_entries for all to authenticated using (tenant_matches(tenant_id) and current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'director'::app_role) and user_has_business_unit_access(business_unit_id)) with check (tenant_matches(tenant_id) and current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'director'::app_role) and user_has_business_unit_access(business_unit_id));
+
+DIFF accounts_payable_payments.accounts_payable_payments_tenant_insert [INSERT]
+--- live ---
+| (tenant_matches(tenant_id) and (current_user_role() = any (array['super_admin'::app_role, 'finance'::app_role, 'director'::app_role])) and user_has_business_unit_access(business_unit_id))
+--- 384b fragment ---
+drop policy if exists accounts_payable_payments_tenant_insert on public.accounts_payable_payments; create policy accounts_payable_payments_tenant_insert on public.accounts_payable_payments for insert to authenticated with check (tenant_matches(tenant_id) and current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'director'::app_role) and user_has_business_unit_access(business_unit_id));
+
+DIFF accounts_payable_payments.accounts_payable_payments_tenant_update [UPDATE]
+--- live ---
+(tenant_matches(tenant_id) and (current_user_role() = any (array['super_admin'::app_role, 'finance'::app_role, 'director'::app_role])) and user_has_business_unit_access(business_unit_id)) | (tenant_matches(tenant_id) and (current_user_role() = any (array['super_admin'::app_role, 'finance'::app_role, 'director'::app_role])) and user_has_business_unit_access(business_unit_id))
+--- 384b fragment ---
+drop policy if exists accounts_payable_payments_tenant_update on public.accounts_payable_payments; create policy accounts_payable_payments_tenant_update on public.accounts_payable_payments for update to authenticated using (tenant_matches(tenant_id) and current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'director'::app_role) and user_has_business_unit_access(business_unit_id)) with check (tenant_matches(tenant_id) and current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'director'::app_role) and user_has_business_unit_access(business_unit_id));
+
+DIFF accounts_payable_payments.accounts_payable_payments_tenant_delete [DELETE]
+--- live ---
+(tenant_matches(tenant_id) and (current_user_role() = any (array['super_admin'::app_role, 'finance'::app_role, 'director'::app_role])) and user_has_business_unit_access(business_unit_id)) |
+--- 384b fragment ---
+drop policy if exists accounts_payable_payments_tenant_delete on public.accounts_payable_payments; create policy accounts_payable_payments_tenant_delete on public.accounts_payable_payments for delete to authenticated using (tenant_matches(tenant_id) and current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'director'::app_role) and user_has_business_unit_access(business_unit_id));
+
+DIFF client_invoice_payments.client_invoice_payments_finance_write [INSERT]
+--- live ---
+| (tenant_matches(tenant_id) and (current_user_role() = any (array['super_admin'::app_role, 'finance'::app_role, 'director'::app_role])) and user_has_business_unit_access(business_unit_id))
+--- 384b fragment ---
+drop policy if exists client_invoice_payments_finance_write on public.client_invoice_payments; create policy client_invoice_payments_finance_write on public.client_invoice_payments for insert to authenticated with check (tenant_matches(tenant_id) and current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'director'::app_role) and user_has_business_unit_access(business_unit_id));
+
+DIFF client_invoice_payments.client_invoice_payments_finance_update [UPDATE]
+--- live ---
+(tenant_matches(tenant_id) and (current_user_role() = any (array['super_admin'::app_role, 'finance'::app_role, 'director'::app_role])) and user_has_business_unit_access(business_unit_id)) | (tenant_matches(tenant_id) and (current_user_role() = any (array['super_admin'::app_role, 'finance'::app_role, 'director'::app_role])) and user_has_business_unit_access(business_unit_id))
+--- 384b fragment ---
+drop policy if exists client_invoice_payments_finance_update on public.client_invoice_payments; create policy client_invoice_payments_finance_update on public.client_invoice_payments for update to authenticated using (tenant_matches(tenant_id) and current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'director'::app_role) and user_has_business_unit_access(business_unit_id)) with check (tenant_matches(tenant_id) and current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'director'::app_role) and user_has_business_unit_access(business_unit_id));
+
+DIFF client_invoice_payments.client_invoice_payments_finance_delete [DELETE]
+--- live ---
+(tenant_matches(tenant_id) and (current_user_role() = any (array['super_admin'::app_role, 'finance'::app_role, 'director'::app_role])) and user_has_business_unit_access(business_unit_id)) |
+--- 384b fragment ---
+drop policy if exists client_invoice_payments_finance_delete on public.client_invoice_payments; create policy client_invoice_payments_finance_delete on public.client_invoice_payments for delete to authenticated using (tenant_matches(tenant_id) and current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'director'::app_role) and user_has_business_unit_access(business_unit_id));
+
+DIFF directors_loan_entries.directors_loan_entries_tenant_insert [INSERT]
+--- live ---
+| (tenant_matches(tenant_id) and (current_user_role() = any (array['super_admin'::app_role, 'finance'::app_role, 'director'::app_role])))
+--- 384b fragment ---
+drop policy if exists directors_loan_entries_tenant_insert on public.directors_loan_entries; create policy directors_loan_entries_tenant_insert on public.directors_loan_entries for insert to authenticated with check (tenant_matches(tenant_id) and current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'director'::app_role));
+
+DIFF directors_loan_entries.directors_loan_entries_tenant_update [UPDATE]
+--- live ---
+(tenant_matches(tenant_id) and (current_user_role() = any (array['super_admin'::app_role, 'finance'::app_role, 'director'::app_role]))) | (tenant_matches(tenant_id) and (current_user_role() = any (array['super_admin'::app_role, 'finance'::app_role, 'director'::app_role])))
+--- 384b fragment ---
+drop policy if exists directors_loan_entries_tenant_update on public.directors_loan_entries; create policy directors_loan_entries_tenant_update on public.directors_loan_entries for update to authenticated using (tenant_matches(tenant_id) and current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'director'::app_role)) with check (tenant_matches(tenant_id) and current_user_role() in ('super_admin'::app_role, 'finance'::app_role, 'director'::app_role));
+
+OK directors_loan_entries.directors_loan_entries_tenant_select
+OK suppliers.suppliers_tenant_select
+OK purchase_orders.purchase_orders_tenant_select
+OK product_purchases.product_purchases_tenant_select
+OK internal_consumption.internal_consumption_tenant_select

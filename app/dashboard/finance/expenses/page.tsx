@@ -10,8 +10,8 @@ import {
 } from "@/utils/business-unit-view";
 import { createClient } from "@/utils/supabase/server";
 import { scopeTaxSettingsRead } from "@/utils/phase5e-key-structure";
-import { mapApproverRows } from "../../approver-utils";
-import type { Approver, NamedLookup } from "../../lookup-types";
+import type { NamedLookup } from "../../lookup-types";
+import { loadActiveFinanceApproversForForms } from "@/lib/finance-approver-lookups";
 import ExpenseRegister from "../expense-register";
 import {
   normalizeExpenseRegisterEntry,
@@ -52,7 +52,7 @@ export default async function ExpensesPage() {
     { data: expenseCategories, error: expenseCategoriesError },
     { data: expenseSubcategories, error: expenseSubcategoriesError },
     { data: paymentMethods, error: paymentMethodsError },
-    { data: approvers, error: approversError },
+    approversLookup,
     { data: suppliers, error: suppliersError },
     { data: taxSettings, error: taxSettingsError },
     { data: taxRateCatalog, error: taxRateCatalogError },
@@ -68,10 +68,7 @@ export default async function ExpensesPage() {
       .order("name", { ascending: true }),
     queryExpenseSubcategoryLookups(supabase),
     supabase.from("payment_methods").select("name").order("name", { ascending: true }),
-    supabase
-      .from("approvers")
-      .select("employee_id, employees!approvers_employee_id_fkey(full_name)")
-      .order("employee_id", { ascending: true }),
+    loadActiveFinanceApproversForForms(supabase, tenantId),
     tenantId
       ? supabase
           .from("suppliers")
@@ -105,7 +102,7 @@ export default async function ExpensesPage() {
     expenseCategoriesError?.message ??
     expenseSubcategoriesError?.message ??
     paymentMethodsError?.message ??
-    approversError?.message ??
+    approversLookup.error ??
     suppliersError?.message ??
     taxSettingsError?.message ??
     taxRateCatalogError?.message ??
@@ -132,7 +129,7 @@ export default async function ExpensesPage() {
           )
         }
         initialPaymentMethods={(paymentMethods as NamedLookup[] | null) ?? []}
-        initialApprovers={mapApproverRows(approvers ?? []) as Approver[]}
+        initialApprovers={approversLookup.activeApprovers}
         initialSuppliers={(suppliers as SupplierRow[] | null) ?? []}
         taxSettings={normalizeTaxSettings(taxSettings as TaxSettings | null)}
         taxRateCatalog={

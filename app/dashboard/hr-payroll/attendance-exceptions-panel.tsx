@@ -21,6 +21,7 @@ import {
   leftEarlyLabel,
 } from "@/lib/shift-attendance";
 import { formatDate } from "@/app/dashboard/finance/income-register-utils";
+import { matchesAttendanceTextQuery } from "./attendance-register-filters";
 
 type ExceptionView = "pending" | "decided" | "all";
 
@@ -120,21 +121,15 @@ export default function AttendanceExceptionsPanel() {
   }, []);
 
   const visibleRows = useMemo(() => {
-    const query = filter.trim().toLowerCase();
-    const filtered = rows.filter((row) => {
-      if (!query) {
-        return true;
-      }
-      const haystack = [
+    const filtered = rows.filter((row) =>
+      matchesAttendanceTextQuery(
+        filter,
         row.date,
         row.employee_name,
         row.staff_id,
-        row.scheduled_shift ?? "",
-      ]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(query);
-    });
+        row.scheduled_shift,
+      ),
+    );
     const sorted = [...filtered].sort((left, right) => {
       const leftValue =
         sortKey === "employee"

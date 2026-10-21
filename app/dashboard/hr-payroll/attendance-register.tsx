@@ -1,22 +1,38 @@
 "use client";
 
+import Link from "next/link";
 import Tooltip from "@/components/ui/tooltip";
 import TimePickerField from "@/components/time-picker-field";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
   toDateInputValue,
 } from "../finance/register-row-actions";
+import {
+  RegisterColumnFilterHeader,
+  RegisterDateRangeFilterHeader,
+  collectDistinctColumnValues,
+  registerColumnSortConfig,
+  type RegisterColumnFilterValue,
+  type RegisterColumnSortState,
+  type RegisterColumnSortValueType,
+  type RegisterDateRangeFilterValue,
+} from "../finance/register-column-filter";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
-import FilteredListCount from "../filtered-list-count";
+import FilteredListCount, {
+  anyRegisterColumnFiltersActive,
+} from "../filtered-list-count";
+import { downloadCsv } from "../reports/report-ui";
 import {
+  filterActiveEmployees,
   getEmployeeByStaffId,
   type HrEmployee,
 } from "./employee-utils";
@@ -29,6 +45,23 @@ import {
   getAttendanceMonthBounds,
   type AttendanceRegisterEntry,
 } from "./attendance-register-utils";
+import {
+  ATTENDANCE_REGISTER_CSV_HEADERS,
+  FORMER_STAFF_FILTER_SEPARATOR,
+  attendanceFiltersFromSearchParams,
+  attendanceFiltersToSearchParams,
+  attendanceRegisterFiltersActive,
+  buildAttendanceEmployeeFilterOptions,
+  buildAttendancePersonMonthSummary,
+  buildAttendanceRegisterCsvRows,
+  defaultAttendanceRegisterSort,
+  enrichAttendanceRegisterRows,
+  filterAttendanceRegisterRows,
+  payrollProcessingHrefForMonth,
+  sortAttendanceRegisterRows,
+  type AttendanceRegisterDisplayRow,
+  type AttendanceRegisterFilters,
+} from "./attendance-register-filters";
 import AttendanceBulkImport from "./attendance-bulk-import";
 import {
   calculateHoursFromClock,
@@ -60,6 +93,7 @@ import {
 type AttendanceRegisterProps = {
   initialEntries: AttendanceRegisterEntry[];
   initialEmployees: HrEmployee[];
+  initialSiteNameByCode?: Record<string, string>;
   initialYear: number;
   initialMonth: number;
   fetchError: string | null;
@@ -73,6 +107,18 @@ type DisplayAttendanceEntry = AttendanceRegisterEntry & {
   queueFailed?: boolean;
   queueError?: string | null;
 };
+
+function stripFormerStaffSeparator(
+  next: RegisterColumnFilterValue,
+): RegisterColumnFilterValue {
+  if (!next) {
+    return null;
+  }
+  const cleaned = new Set(
+    [...next].filter((value) => value !== FORMER_STAFF_FILTER_SEPARATOR),
+  );
+  return cleaned.size > 0 ? cleaned : null;
+}
 
 const emptyForm = {
   date: "",
@@ -90,6 +136,7 @@ const emptyForm = {
 export default function AttendanceRegister({
   initialEntries,
   initialEmployees,
+  initialSiteNameByCode = {},
   initialYear,
   initialMonth,
   fetchError,
@@ -102,10 +149,30 @@ export default function AttendanceRegister({
   const writeQueue = useWriteQueueOptional();
   const { alertError } = useAlert();
   const { toast } = useToast();
-  const [selectedYear, setSelectedYear] = useState(initialYear);
-  const [selectedMonth, setSelectedMonth] = useState(initialMonth);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const urlBootstrap = useMemo(
+    () => attendanceFiltersFromSearchParams(searchParams),
+    // Only seed from the first URL read; later edits push their own params.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const [selectedYear, setSelectedYear] = useState(
+    urlBootstrap.year ?? initialYear,
+  );
+  const [selectedMonth, setSelectedMonth] = useState(
+    urlBootstrap.month ?? initialMonth,
+  );
   const [entries, setEntries] = useState(initialEntries);
   const [employees, setEmployees] = useState(initialEmployees);
+  const [siteNameByCode, setSiteNameByCode] = useState(initialSiteNameByCode);
+  const [filters, setFilters] = useState<AttendanceRegisterFilters>(
+    urlBootstrap.filters,
+  );
+  const [sort, setSort] = useState<RegisterColumnSortState | null>(
+    urlBootstrap.sort ?? defaultAttendanceRegisterSort(),
+  );
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -122,19 +189,33 @@ export default function AttendanceRegister({
   );
   const [decisionNote, setDecisionNote] = useState("");
   const [decisionSaving, setDecisionSaving] = useState(false);
+  const urlSyncReady = useRef(false);
 
   const yearOptions = useMemo(() => buildAttendanceYearOptions(), []);
+  const activeEmployeesForForm = useMemo(
+    () => filterActiveEmployees(employees),
+    [employees],
+  );
+
+  const employeesByStaffId = useMemo(() => {
+    return new Map(employees.map((employee) => [employee.staff_id, employee]));
+  }, [employees]);
 
   const employeeNameByStaffId = useMemo(() => {
     return new Map(employees.map((employee) => [employee.staff_id, employee.full_name]));
   }, [employees]);
+
+  const siteNameMap = useMemo(
+    () => new Map(Object.entries(siteNameByCode)),
+    [siteNameByCode],
+  );
 
   const pendingAttendance = useMemo(() => {
     const items = writeQueue?.items ?? [];
     return items.filter((item) => item.type === "attendance");
   }, [writeQueue?.items]);
 
-  const displayEntries = useMemo((): DisplayAttendanceEntry[] => {
+  const monthEntries = useMemo((): DisplayAttendanceEntry[] => {
     const { start, end } = getAttendanceMonthBounds(selectedYear, selectedMonth);
     const queued: DisplayAttendanceEntry[] = pendingAttendance
       .filter((item) => {
@@ -162,6 +243,124 @@ export default function AttendanceRegister({
     return [...queued, ...entries];
   }, [entries, pendingAttendance, selectedYear, selectedMonth]);
 
+  const enrichedRows = useMemo(
+    () =>
+      enrichAttendanceRegisterRows({
+        entries: monthEntries,
+        employeesByStaffId,
+        siteNameByCode: siteNameMap,
+      }),
+    [employeesByStaffId, monthEntries, siteNameMap],
+  );
+
+  const filteredRows = useMemo(
+    () => filterAttendanceRegisterRows(enrichedRows, filters),
+    [enrichedRows, filters],
+  );
+
+  const displayEntries = useMemo(
+    () => sortAttendanceRegisterRows(filteredRows, sort),
+    [filteredRows, sort],
+  );
+
+  const personSummary = useMemo(
+    () =>
+      buildAttendancePersonMonthSummary(
+        displayEntries,
+        selectedYear,
+        selectedMonth,
+      ),
+    [displayEntries, selectedMonth, selectedYear],
+  );
+
+  const hasActiveFilters = attendanceRegisterFiltersActive(filters);
+
+  const employeeFilterOptions = useMemo(() => {
+    const staffIds = new Set(enrichedRows.map((row) => row.staff_id));
+    const present = employees.filter((employee) =>
+      staffIds.has(employee.staff_id),
+    );
+    return buildAttendanceEmployeeFilterOptions(present);
+  }, [employees, enrichedRows]);
+
+  const contractOptions = useMemo(
+    () => collectDistinctColumnValues(enrichedRows.map((row) => row.contractLabel)),
+    [enrichedRows],
+  );
+  const siteOptions = useMemo(
+    () => collectDistinctColumnValues(enrichedRows.map((row) => row.siteLabel)),
+    [enrichedRows],
+  );
+  const shiftOptions = useMemo(
+    () => collectDistinctColumnValues(enrichedRows.map((row) => row.shiftLabel)),
+    [enrichedRows],
+  );
+  const employmentTypeOptions = useMemo(
+    () =>
+      collectDistinctColumnValues(
+        enrichedRows.map((row) => row.employmentTypeLabel),
+      ),
+    [enrichedRows],
+  );
+  const statusOptions = useMemo(
+    () => collectDistinctColumnValues(enrichedRows.map((row) => row.statusLabel)),
+    [enrichedRows],
+  );
+  const decisionOptions = useMemo(
+    () =>
+      collectDistinctColumnValues(enrichedRows.map((row) => row.decisionLabel)),
+    [enrichedRows],
+  );
+
+  function columnSortConfig(
+    columnId: string,
+    valueType: RegisterColumnSortValueType,
+  ) {
+    return registerColumnSortConfig(columnId, valueType, sort, setSort);
+  }
+
+  function patchFilters(patch: Partial<AttendanceRegisterFilters>) {
+    setFilters((current) => ({ ...current, ...patch }));
+  }
+
+  function syncUrl(
+    year: number,
+    month: number,
+    nextFilters: AttendanceRegisterFilters,
+    nextSort: RegisterColumnSortState | null,
+  ) {
+    const params = attendanceFiltersToSearchParams(
+      year,
+      month,
+      nextFilters,
+      nextSort,
+    );
+    // Preserve unrelated query keys (e.g. exceptions=pending).
+    for (const [key, value] of searchParams.entries()) {
+      if (
+        ![
+          "year",
+          "month",
+          "q",
+          "employee",
+          "contract",
+          "site",
+          "shift",
+          "empType",
+          "status",
+          "decision",
+          "dateFrom",
+          "dateTo",
+          "sort",
+        ].includes(key)
+      ) {
+        params.set(key, value);
+      }
+    }
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
+
   useEffect(() => {
     setEntries(initialEntries);
   }, [initialEntries]);
@@ -169,6 +368,10 @@ export default function AttendanceRegister({
   useEffect(() => {
     setEmployees(initialEmployees);
   }, [initialEmployees]);
+
+  useEffect(() => {
+    setSiteNameByCode(initialSiteNameByCode);
+  }, [initialSiteNameByCode]);
 
   async function loadEntriesForPeriod(year: number, month: number) {
     if (!isOnline) {
@@ -226,6 +429,23 @@ export default function AttendanceRegister({
     return () => window.removeEventListener(ATTENDANCE_CHANGED_EVENT, onChanged);
   }, []);
 
+  useEffect(() => {
+    if (!urlSyncReady.current) {
+      urlSyncReady.current = true;
+      if (
+        urlBootstrap.year != null &&
+        urlBootstrap.month != null &&
+        (urlBootstrap.year !== initialYear ||
+          urlBootstrap.month !== initialMonth)
+      ) {
+        void loadEntriesForPeriod(urlBootstrap.year, urlBootstrap.month);
+      }
+      return;
+    }
+    syncUrl(selectedYear, selectedMonth, filters, sort);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedYear, selectedMonth, filters, sort]);
+
   function handleMonthChange(month: number) {
     setSelectedMonth(month);
     void loadEntriesForPeriod(selectedYear, month);
@@ -234,6 +454,25 @@ export default function AttendanceRegister({
   function handleYearChange(year: number) {
     setSelectedYear(year);
     void loadEntriesForPeriod(year, selectedMonth);
+  }
+
+  function handleExportCsv() {
+    const monthName =
+      ATTENDANCE_MONTH_OPTIONS.find((option) => option.value === selectedMonth)
+        ?.label ?? String(selectedMonth);
+    const fileName = `attendance-${monthName}-${selectedYear}.csv`.replace(
+      /\s+/g,
+      "-",
+    );
+    const body = buildAttendanceRegisterCsvRows(displayEntries);
+    const rows: Array<Array<string | number | null>> = personSummary
+      ? [[personSummary.summaryLine, ...Array(12).fill("")], ...body]
+      : body;
+    downloadCsv(fileName, [...ATTENDANCE_REGISTER_CSV_HEADERS], rows);
+  }
+
+  function handlePrint() {
+    window.print();
   }
 
   function openAddForm() {
@@ -665,7 +904,7 @@ export default function AttendanceRegister({
 
       {showBulkImport ? (
         <AttendanceBulkImport
-          employees={employees}
+          employees={activeEmployeesForForm}
           existingEntries={bulkImportExisting}
           onClose={closeBulkImport}
           onImported={refreshEntries}
@@ -707,7 +946,7 @@ export default function AttendanceRegister({
                   className={inputClassName}
                 >
                   <option value="">Select staff member</option>
-                  {employees.map((employee) => (
+                  {activeEmployeesForForm.map((employee) => (
                     <option key={employee.staff_id} value={employee.staff_id}>
                       {employee.staff_id} — {employee.full_name}
                     </option>
@@ -933,137 +1172,422 @@ export default function AttendanceRegister({
         </section>
       ) : null}
 
+      <div className="no-print flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-[220px] flex-1">
+          <label
+            htmlFor="attendance-register-search"
+            className="mb-1 block text-sm font-medium text-slate-700"
+          >
+            Search
+          </label>
+          <input
+            id="attendance-register-search"
+            type="search"
+            value={filters.search}
+            onChange={(event) => patchFilters({ search: event.target.value })}
+            placeholder="Employee name or staff ID"
+            className={inputClassName}
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            disabled={displayEntries.length === 0}
+            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Export CSV
+          </button>
+          <button
+            type="button"
+            onClick={handlePrint}
+            disabled={displayEntries.length === 0}
+            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Print
+          </button>
+        </div>
+      </div>
+
+      {personSummary ? (
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+          <p className="font-medium">{personSummary.summaryLine}</p>
+          <Link
+            href={payrollProcessingHrefForMonth(selectedYear, selectedMonth)}
+            className="mt-1 inline-block font-medium text-sky-800 underline"
+          >
+            View payroll for {personSummary.monthLabel}
+          </Link>
+        </div>
+      ) : null}
+
       <FilteredListCount
         filteredCount={displayEntries.length}
-        totalCount={displayEntries.length}
+        totalCount={enrichedRows.length}
         itemSingular="entry"
+        hasActiveFilters={
+          hasActiveFilters ||
+          anyRegisterColumnFiltersActive(
+            filters.employee,
+            filters.contract,
+            filters.site,
+            filters.shift,
+            filters.employmentType,
+            filters.status,
+            filters.decision,
+            filters.dateRange,
+          )
+        }
       />
 
-      <ScrollableTable>
-        <table className={scrollableTableClassName}>
-          <thead className={scrollableTableHeadClassName}>
-            <tr>
-              <th className={scrollableTableThClassName}>Date</th>
-              <th className={scrollableTableThClassName}>Employee Name</th>
-              <th className={scrollableTableThClassName}>Staff ID</th>
-              <th className={scrollableTableThClassName}>Employment Type</th>
-              <th className={scrollableTableThClassName}>Project</th>
-              <th className={scrollableTableThClassName}>Clock In</th>
-              <th className={scrollableTableThClassName}>Clock Out</th>
-              <th className={scrollableTableThClassName}>Hours Worked</th>
-              <th className={scrollableTableThClassName}>Overtime Hours</th>
-              <th className={scrollableTableThClassName}>Status</th>
-              <th className={scrollableTableThClassName}>Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-200">
-            {displayEntries.length === 0 ? (
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #attendance-register-print-area,
+          #attendance-register-print-area * { visibility: visible; }
+          #attendance-register-print-area {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            padding: 16px;
+            background: white;
+          }
+          .no-print { display: none !important; }
+        }
+      `}</style>
+
+      <div id="attendance-register-print-area">
+        {personSummary ? (
+          <p className="mb-3 hidden text-sm font-medium text-slate-900 print:block">
+            {personSummary.summaryLine}
+          </p>
+        ) : null}
+        <ScrollableTable>
+          <table className={scrollableTableClassName}>
+            <thead className={scrollableTableHeadClassName}>
               <tr>
-                <td
-                  colSpan={11}
-                  className="px-4 py-8 text-center text-slate-500"
-                >
-                  {loadingEntries
-                    ? "Loading attendance entries…"
-                    : "No attendance entries for this month."}
-                </td>
-              </tr>
-            ) : (
-              displayEntries.map((entry, index) => (
-                <tr key={entry.id} className={getStripedRowClassName(index)}>
-                  <td className="px-4 py-3">{formatDate(entry.date)}</td>
-                  <td className="px-4 py-3">
-                    {employeeNameByStaffId.get(entry.staff_id) ?? "—"}
-                  </td>
-                  <td className="px-4 py-3">{entry.staff_id}</td>
-                  <td className="px-4 py-3">{entry.employment_type ?? "—"}</td>
-                  <td className="px-4 py-3">{entry.project_assignment ?? "—"}</td>
-                  <td className="px-4 py-3">{formatTime(entry.clock_in)}</td>
-                  <td className="px-4 py-3">{formatTime(entry.clock_out)}</td>
-                  <td className="px-4 py-3">{entry.hours_worked ?? "—"}</td>
-                  <td className="px-4 py-3">{entry.overtime_hours ?? "—"}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-1">
-                      <span>{entry.attendance_status}</span>
-                      {entry.scheduled_day_type === "weekend" ? (
-                        <span className="inline-flex w-fit items-center gap-1 text-xs text-slate-700">
-                          {entry.scheduled_shift ? (
-                            <span>{entry.scheduled_shift}</span>
-                          ) : null}
-                          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-medium">
-                            Weekend
-                          </span>
-                        </span>
-                      ) : null}
-                      {attendanceExceptionBadges(entry).map((badge) => (
-                        <span
-                          key={badge}
-                          className="inline-flex w-fit rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900"
-                        >
-                          {badge}
-                        </span>
-                      ))}
-                      {canDecide &&
-                      !entry.pendingSync &&
-                      isReviewedException(entry.exception_status) ? (
-                        <button
-                          type="button"
-                          className="w-fit text-left text-xs font-medium text-sky-800 underline"
-                          onClick={() => {
-                            setDecisionTarget(entry);
-                            setDecisionNote("");
-                          }}
-                        >
-                          Change decision
-                        </button>
-                      ) : null}
-                      {entry.pendingSync ? (
-                        entry.queueError?.trim() ? (
-                          <Tooltip content={entry.queueError.trim()}>
-                            <span
-                              className={`inline-flex w-fit rounded px-1.5 py-0.5 text-xs font-medium ${
-                                entry.queueFailed
-                                  ? "bg-red-100 text-red-800"
-                                  : "bg-amber-100 text-amber-900"
-                              }`}
-                            >
-                              {entry.queueFailed ? "Sync failed" : "Pending sync"}
-                            </span>
-                          </Tooltip>
-                        ) : (
-                          <span
-                            className={`inline-flex w-fit rounded px-1.5 py-0.5 text-xs font-medium ${
-                              entry.queueFailed
-                                ? "bg-red-100 text-red-800"
-                                : "bg-amber-100 text-amber-900"
-                            }`}
-                          >
-                            {entry.queueFailed ? "Sync failed" : "Pending sync"}
-                          </span>
-                        )
-                      ) : null}
-                      {entry.queueFailed && writeQueue ? (
-                        <button
-                          type="button"
-                          className="text-left text-xs font-medium text-sky-800 underline"
-                          onClick={() => void writeQueue.retryItem(entry.id)}
-                        >
-                          Retry
-                        </button>
-                      ) : null}
-                    </div>
-                  </td>
-                  <RegisterRowActions
-                    onEdit={() => openEditForm(entry)}
-                    onDelete={() => handleDelete(entry)}
-                    deleting={deletingId === entry.id}
+                <th className={scrollableTableThClassName}>
+                  <RegisterDateRangeFilterHeader
+                    label="Date"
+                    applied={filters.dateRange}
+                    onApply={(next: RegisterDateRangeFilterValue) =>
+                      patchFilters({ dateRange: next })
+                    }
+                    sort={columnSortConfig("date", "date")}
                   />
+                </th>
+                <th className={scrollableTableThClassName}>
+                  <RegisterColumnFilterHeader
+                    label="Employee"
+                    options={employeeFilterOptions}
+                    applied={filters.employee}
+                    onApply={(next) =>
+                      patchFilters({
+                        employee: stripFormerStaffSeparator(next),
+                      })
+                    }
+                    sort={columnSortConfig("employee", "text")}
+                  />
+                </th>
+                <th className={scrollableTableThClassName}>
+                  <AttendanceSortableHeader
+                    label="Staff ID"
+                    columnId="staff_id"
+                    valueType="text"
+                    sort={sort}
+                    onSortChange={setSort}
+                  />
+                </th>
+                <th className={scrollableTableThClassName}>
+                  <RegisterColumnFilterHeader
+                    label="Employment Type"
+                    options={employmentTypeOptions}
+                    applied={filters.employmentType}
+                    onApply={(next) =>
+                      patchFilters({ employmentType: next })
+                    }
+                    sort={columnSortConfig("employment_type", "text")}
+                  />
+                </th>
+                <th className={scrollableTableThClassName}>
+                  <RegisterColumnFilterHeader
+                    label="Contract"
+                    options={contractOptions}
+                    applied={filters.contract}
+                    onApply={(next) => patchFilters({ contract: next })}
+                    sort={columnSortConfig("contract", "text")}
+                  />
+                </th>
+                <th className={scrollableTableThClassName}>
+                  <RegisterColumnFilterHeader
+                    label="Site"
+                    options={siteOptions}
+                    applied={filters.site}
+                    onApply={(next) => patchFilters({ site: next })}
+                    sort={columnSortConfig("site", "text")}
+                  />
+                </th>
+                <th className={scrollableTableThClassName}>
+                  <RegisterColumnFilterHeader
+                    label="Shift"
+                    options={shiftOptions}
+                    applied={filters.shift}
+                    onApply={(next) => patchFilters({ shift: next })}
+                    sort={columnSortConfig("shift", "text")}
+                  />
+                </th>
+                <th className={scrollableTableThClassName}>
+                  <AttendanceSortableHeader
+                    label="Clock In"
+                    columnId="clock_in"
+                    valueType="text"
+                    sort={sort}
+                    onSortChange={setSort}
+                  />
+                </th>
+                <th className={scrollableTableThClassName}>
+                  <AttendanceSortableHeader
+                    label="Clock Out"
+                    columnId="clock_out"
+                    valueType="text"
+                    sort={sort}
+                    onSortChange={setSort}
+                  />
+                </th>
+                <th className={scrollableTableThClassName}>
+                  <AttendanceSortableHeader
+                    label="Hours"
+                    columnId="hours_worked"
+                    valueType="number"
+                    sort={sort}
+                    onSortChange={setSort}
+                  />
+                </th>
+                <th className={scrollableTableThClassName}>
+                  <AttendanceSortableHeader
+                    label="OT Hours"
+                    columnId="overtime_hours"
+                    valueType="number"
+                    sort={sort}
+                    onSortChange={setSort}
+                  />
+                </th>
+                <th className={scrollableTableThClassName}>
+                  <RegisterColumnFilterHeader
+                    label="Status"
+                    options={statusOptions}
+                    applied={filters.status}
+                    onApply={(next) => patchFilters({ status: next })}
+                    sort={columnSortConfig("status", "text")}
+                  />
+                </th>
+                <th className={scrollableTableThClassName}>
+                  <RegisterColumnFilterHeader
+                    label="Decision"
+                    options={decisionOptions}
+                    applied={filters.decision}
+                    onApply={(next) => patchFilters({ decision: next })}
+                    sort={columnSortConfig("decision", "text")}
+                  />
+                </th>
+                <th className={`${scrollableTableThClassName} no-print`}>
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {displayEntries.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={14}
+                    className="px-4 py-8 text-center text-slate-500"
+                  >
+                    {loadingEntries
+                      ? "Loading attendance entries…"
+                      : hasActiveFilters
+                        ? "No attendance entries match the current filters."
+                        : "No attendance entries for this month."}
+                  </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </ScrollableTable>
+              ) : (
+                displayEntries.map((entry, index) => (
+                  <AttendanceRegisterRow
+                    key={entry.id}
+                    entry={entry}
+                    index={index}
+                    canDecide={canDecide}
+                    deleting={deletingId === entry.id}
+                    writeQueue={writeQueue}
+                    onEdit={() => openEditForm(entry)}
+                    onDelete={() => void handleDelete(entry)}
+                    onChangeDecision={() => {
+                      setDecisionTarget(entry);
+                      setDecisionNote("");
+                    }}
+                  />
+                ))
+              )}
+            </tbody>
+          </table>
+        </ScrollableTable>
+      </div>
     </div>
+  );
+}
+
+function AttendanceSortableHeader({
+  label,
+  columnId,
+  valueType,
+  sort,
+  onSortChange,
+}: {
+  label: string;
+  columnId: string;
+  valueType: RegisterColumnSortValueType;
+  sort: RegisterColumnSortState | null;
+  onSortChange: (next: RegisterColumnSortState) => void;
+}) {
+  const active = sort?.columnId === columnId;
+  return (
+    <button
+      type="button"
+      className="inline-flex items-center gap-1 font-semibold text-[#0f2744]"
+      onClick={() =>
+        onSortChange({
+          columnId,
+          valueType,
+          direction:
+            active && sort?.direction === "desc" ? "asc" : "desc",
+        })
+      }
+    >
+      {label}
+      {active ? (
+        <span className="text-[10px] leading-none" aria-hidden>
+          {sort?.direction === "asc" ? "▲" : "▼"}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function AttendanceRegisterRow({
+  entry,
+  index,
+  canDecide,
+  deleting,
+  writeQueue,
+  onEdit,
+  onDelete,
+  onChangeDecision,
+}: {
+  entry: AttendanceRegisterDisplayRow;
+  index: number;
+  canDecide: boolean;
+  deleting: boolean;
+  writeQueue: ReturnType<typeof useWriteQueueOptional>;
+  onEdit: () => void;
+  onDelete: () => void;
+  onChangeDecision: () => void;
+}) {
+  return (
+    <tr className={getStripedRowClassName(index)}>
+      <td className="px-4 py-3">{formatDate(entry.date)}</td>
+      <td className="px-4 py-3">
+        {entry.employeeName}
+        {entry.isFormerStaff ? (
+          <span className="ml-2 text-xs text-slate-500">Former</span>
+        ) : null}
+      </td>
+      <td className="px-4 py-3">{entry.staff_id}</td>
+      <td className="px-4 py-3">
+        {entry.employmentTypeLabel === "(Blank)"
+          ? "—"
+          : entry.employmentTypeLabel}
+      </td>
+      <td className="px-4 py-3">
+        {entry.contractLabel === "(Blank)" ? "—" : entry.contractLabel}
+      </td>
+      <td className="px-4 py-3">
+        {entry.siteLabel === "(Blank)" ? "—" : entry.siteLabel}
+      </td>
+      <td className="px-4 py-3">
+        {entry.shiftLabel === "(Blank)" ? "—" : entry.shiftLabel}
+      </td>
+      <td className="px-4 py-3">{formatTime(entry.clock_in)}</td>
+      <td className="px-4 py-3">{formatTime(entry.clock_out)}</td>
+      <td className="px-4 py-3">{entry.hours_worked ?? "—"}</td>
+      <td className="px-4 py-3">{entry.overtime_hours ?? "—"}</td>
+      <td className="px-4 py-3">
+        <div className="flex flex-col gap-1">
+          <span>{entry.statusLabel}</span>
+          {entry.scheduled_day_type === "weekend" ? (
+            <span className="inline-flex w-fit rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-700">
+              Weekend
+            </span>
+          ) : null}
+          {attendanceExceptionBadges(entry).map((badge) => (
+            <span
+              key={badge}
+              className="inline-flex w-fit rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900"
+            >
+              {badge}
+            </span>
+          ))}
+          {canDecide &&
+          !entry.pendingSync &&
+          isReviewedException(entry.exception_status) ? (
+            <button
+              type="button"
+              className="no-print w-fit text-left text-xs font-medium text-sky-800 underline"
+              onClick={onChangeDecision}
+            >
+              Change decision
+            </button>
+          ) : null}
+          {entry.pendingSync ? (
+            entry.queueError?.trim() ? (
+              <Tooltip content={entry.queueError.trim()}>
+                <span
+                  className={`inline-flex w-fit rounded px-1.5 py-0.5 text-xs font-medium ${
+                    entry.queueFailed
+                      ? "bg-red-100 text-red-800"
+                      : "bg-amber-100 text-amber-900"
+                  }`}
+                >
+                  {entry.queueFailed ? "Sync failed" : "Pending sync"}
+                </span>
+              </Tooltip>
+            ) : (
+              <span
+                className={`inline-flex w-fit rounded px-1.5 py-0.5 text-xs font-medium ${
+                  entry.queueFailed
+                    ? "bg-red-100 text-red-800"
+                    : "bg-amber-100 text-amber-900"
+                }`}
+              >
+                {entry.queueFailed ? "Sync failed" : "Pending sync"}
+              </span>
+            )
+          ) : null}
+          {entry.queueFailed && writeQueue ? (
+            <button
+              type="button"
+              className="no-print text-left text-xs font-medium text-sky-800 underline"
+              onClick={() => void writeQueue.retryItem(entry.id)}
+            >
+              Retry
+            </button>
+          ) : null}
+        </div>
+      </td>
+      <td className="px-4 py-3">{entry.decisionLabel}</td>
+      <RegisterRowActions
+        onEdit={onEdit}
+        onDelete={onDelete}
+        deleting={deleting}
+      />
+    </tr>
   );
 }

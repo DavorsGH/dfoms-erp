@@ -35,8 +35,9 @@ export default async function RemoteWorkArrangementsPage() {
   const [employeesResult, arrangementsResult] = await Promise.all([
     supabase
       .from("employees")
-      .select("staff_id, full_name")
+      .select("staff_id, full_name, employment_status")
       .eq("tenant_id", tenantId)
+      .eq("employment_status", "Active")
       .order("staff_id", { ascending: true }),
     supabase
       .from("remote_work_arrangements")
@@ -48,11 +49,17 @@ export default async function RemoteWorkArrangementsPage() {
   const loadError =
     employeesResult.error?.message ?? arrangementsResult.error?.message ?? null;
 
+  const staff: ArrangementStaffOption[] = (
+    (employeesResult.data as Array<
+      ArrangementStaffOption & { employment_status?: string | null }
+    > | null) ?? []
+  ).map(({ staff_id, full_name }) => ({ staff_id, full_name }));
+
   return (
     <HrPayrollShell sectionTitle="Remote Work Arrangements">
       <RemoteWorkArrangementsManager
         tenantId={tenantId}
-        staff={(employeesResult.data as ArrangementStaffOption[] | null) ?? []}
+        staff={staff}
         initialArrangements={
           (arrangementsResult.data as RemoteWorkArrangement[] | null) ?? []
         }

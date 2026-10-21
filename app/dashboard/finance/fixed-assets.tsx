@@ -5,8 +5,8 @@ import { useAlert, useToast } from "@/components/feedback";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
-import { mapApproverRows } from "../approver-utils";
 import type { Approver, NamedLookup } from "../lookup-types";
+import { loadActiveFinanceApproversForForms } from "@/lib/finance-approver-lookups";
 import {
   lookupOptionLabel,
   namedLookupSelectOptionsForCreate,
@@ -314,7 +314,7 @@ export default function FixedAssets({
         { data: categories, error: categoriesError },
         { data: methods, error: methodsError },
         { data: payments, error: paymentsError },
-        { data: approverRows, error: approversError },
+        approversLookup,
         suppliersResult,
       ] = await Promise.all([
         client
@@ -329,10 +329,7 @@ export default function FixedAssets({
           .from("payment_methods")
           .select("name")
           .order("name", { ascending: true }),
-        client
-          .from("approvers")
-          .select("employee_id, employees!approvers_employee_id_fkey(full_name)")
-          .order("employee_id", { ascending: true }),
+        loadActiveFinanceApproversForForms(client, tenantId),
         tenantId
           ? client
               .from("suppliers")
@@ -349,7 +346,7 @@ export default function FixedAssets({
         categoriesError?.message ??
         methodsError?.message ??
         paymentsError?.message ??
-        approversError?.message ??
+        approversLookup.error ??
         suppliersError ??
         null;
 
@@ -361,7 +358,7 @@ export default function FixedAssets({
       setAssetCategories(categories ?? []);
       setDepreciationMethods(methods ?? []);
       setPaymentMethods(payments ?? []);
-      setApprovers(mapApproverRows(approverRows ?? []) as Approver[]);
+      setApprovers(approversLookup.activeApprovers);
       setSuppliers((suppliersResult.data as SupplierRow[] | null) ?? []);
     }
 

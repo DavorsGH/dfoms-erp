@@ -467,8 +467,8 @@ export default function LeaveSettings({
                   ))}
                 </select>
                 <p className="mt-1 text-xs text-slate-500">
-                  Create a staff login for this person under User Accounts
-                  before making them the approver.
+                  Only active staff with a login are listed. Create a login
+                  under User Accounts first if someone is missing.
                 </p>
               </div>
 

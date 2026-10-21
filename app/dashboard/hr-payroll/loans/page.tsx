@@ -19,8 +19,7 @@ import {
   filterActiveEmployees,
   type HrEmployee,
 } from "../employee-utils";
-import { mapApproverRows } from "../../approver-utils";
-import type { Approver } from "../../lookup-types";
+import { loadActiveFinanceApproversForForms } from "@/lib/finance-approver-lookups";
 import HrPayrollShell from "../hr-payroll-shell";
 import { loadActivePaymentAccountsForTenant } from "@/utils/payment-accounts-server";
 import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
@@ -69,7 +68,7 @@ export default async function LoansPage() {
   const [
     loansAdvancesResult,
     { data: employees, error: employeesError },
-    { data: approvers, error: approversError },
+    approversLookup,
   ] = await Promise.all([
     tenantId
       ? fetchLoansAndAdvancesForRegister(supabase, tenantId, buScope)
@@ -78,10 +77,7 @@ export default async function LoansPage() {
       supabase.from("employees").select(LOANS_EMPLOYEE_SELECT),
       buScope,
     ).order("full_name"),
-    supabase
-      .from("approvers")
-      .select("employee_id, employees!approvers_employee_id_fkey(full_name)")
-      .order("employee_id", { ascending: true }),
+    loadActiveFinanceApproversForForms(supabase, tenantId),
   ]);
 
   const loans = loansAdvancesResult.loans;
@@ -96,7 +92,7 @@ export default async function LoansPage() {
     loansError?.message ??
     advancesError?.message ??
     employeesError?.message ??
-    approversError?.message ??
+    approversLookup.error ??
     (tenantId ? null : "Unable to resolve your workspace.");
 
   return (
@@ -110,7 +106,7 @@ export default async function LoansPage() {
             (employees as HrEmployee[] | null) ?? [],
           )}
           initialPaymentAccounts={paymentAccounts}
-          initialApprovers={mapApproverRows(approvers ?? []) as Approver[]}
+          initialApprovers={approversLookup.activeApprovers}
           activeBusinessUnitId={activeBusinessUnitId}
           viewAllBusinessUnits={viewAllBusinessUnits}
           fetchError={fetchError}
