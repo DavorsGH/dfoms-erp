@@ -4,6 +4,7 @@
  */
 import assert from "node:assert/strict";
 import {
+  ATTENDANCE_REGISTER_CSV_HEADERS,
   attendanceEmployeeLabel,
   attendanceFiltersFromSearchParams,
   attendanceFiltersToSearchParams,
@@ -13,11 +14,35 @@ import {
   classifyAttendanceRowBucket,
   enrichAttendanceRegisterRows,
   filterAttendanceRegisterRows,
+  formatAttendanceRegisterHours,
   matchesAttendanceTextQuery,
   sortAttendanceRegisterRows,
   type AttendanceRegisterDisplayRow,
 } from "../app/dashboard/hr-payroll/attendance-register-filters";
 import type { HrEmployee } from "../app/dashboard/hr-payroll/employee-utils";
+
+assert.equal(formatAttendanceRegisterHours(1.25), "1.25");
+assert.equal(formatAttendanceRegisterHours(1.249), "1.25");
+assert.equal(formatAttendanceRegisterHours(8.5), "8.5");
+assert.equal(formatAttendanceRegisterHours(142), "142");
+assert.deepEqual(
+  [...ATTENDANCE_REGISTER_CSV_HEADERS],
+  [
+    "Date",
+    "Employee",
+    "Staff ID",
+    "Employment Type",
+    "Contract",
+    "Site",
+    "Shift",
+    "Clock-in",
+    "Clock-out",
+    "Hours",
+    "Exception",
+    "Status",
+    "Decision",
+  ],
+);
 
 assert.equal(matchesAttendanceTextQuery("pat", "Patience Mensah", "DF0020"), true);
 assert.equal(matchesAttendanceTextQuery("DF0020", "Patience Mensah", "DF0020"), true);
@@ -188,6 +213,24 @@ assert.equal(summary!.remote, 1);
 assert.equal(summary!.absent, 1);
 assert.equal(summary!.hours, 8);
 assert.match(summary!.summaryLine, /Active One — October 2026/);
+assert.match(summary!.summaryLine, /8 hours/);
+
+const fractional = buildAttendancePersonMonthSummary(
+  [
+    {
+      ...enriched[0]!,
+      hours_worked: 1.25,
+      source: null,
+      attendance_status: "Present",
+      exception_status: "none",
+      statusLabel: "Present",
+    },
+  ] as AttendanceRegisterDisplayRow[],
+  2026,
+  10,
+);
+assert.ok(fractional);
+assert.match(fractional!.summaryLine, /1\.25 hours/);
 
 const params = attendanceFiltersToSearchParams(
   2026,

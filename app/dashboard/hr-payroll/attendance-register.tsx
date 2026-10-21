@@ -465,9 +465,9 @@ export default function AttendanceRegister({
       "-",
     );
     const body = buildAttendanceRegisterCsvRows(displayEntries);
-    const rows: Array<Array<string | number | null>> = personSummary
-      ? [[personSummary.summaryLine, ...Array(12).fill("")], ...body]
-      : body;
+    const rows: Array<Array<string | number | null>> =       personSummary
+        ? [[personSummary.summaryLine, ...Array(12).fill("")], ...body]
+        : body;
     downloadCsv(fileName, [...ATTENDANCE_REGISTER_CSV_HEADERS], rows);
   }
 
@@ -1338,7 +1338,7 @@ export default function AttendanceRegister({
                 </th>
                 <th className={scrollableTableThClassName}>
                   <AttendanceSortableHeader
-                    label="Clock In"
+                    label="Clock-in"
                     columnId="clock_in"
                     valueType="text"
                     sort={sort}
@@ -1347,7 +1347,7 @@ export default function AttendanceRegister({
                 </th>
                 <th className={scrollableTableThClassName}>
                   <AttendanceSortableHeader
-                    label="Clock Out"
+                    label="Clock-out"
                     columnId="clock_out"
                     valueType="text"
                     sort={sort}
@@ -1365,9 +1365,9 @@ export default function AttendanceRegister({
                 </th>
                 <th className={scrollableTableThClassName}>
                   <AttendanceSortableHeader
-                    label="OT Hours"
-                    columnId="overtime_hours"
-                    valueType="number"
+                    label="Exception"
+                    columnId="exception"
+                    valueType="text"
                     sort={sort}
                     onSortChange={setSort}
                   />
@@ -1452,7 +1452,7 @@ function AttendanceSortableHeader({
   return (
     <button
       type="button"
-      className="inline-flex items-center gap-1 font-semibold text-[#0f2744]"
+      className="inline-flex items-center gap-1 font-medium text-white"
       onClick={() =>
         onSortChange({
           columnId,
@@ -1464,7 +1464,7 @@ function AttendanceSortableHeader({
     >
       {label}
       {active ? (
-        <span className="text-[10px] leading-none" aria-hidden>
+        <span className="text-[10px] leading-none text-white/90" aria-hidden>
           {sort?.direction === "asc" ? "▲" : "▼"}
         </span>
       ) : null}
@@ -1518,23 +1518,20 @@ function AttendanceRegisterRow({
       <td className="px-4 py-3">{formatTime(entry.clock_in)}</td>
       <td className="px-4 py-3">{formatTime(entry.clock_out)}</td>
       <td className="px-4 py-3">{entry.hours_worked ?? "—"}</td>
-      <td className="px-4 py-3">{entry.overtime_hours ?? "—"}</td>
       <td className="px-4 py-3">
         <div className="flex flex-col gap-1">
-          <span>{entry.statusLabel}</span>
-          {entry.scheduled_day_type === "weekend" ? (
-            <span className="inline-flex w-fit rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-700">
-              Weekend
-            </span>
-          ) : null}
-          {attendanceExceptionBadges(entry).map((badge) => (
-            <span
-              key={badge}
-              className="inline-flex w-fit rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900"
-            >
-              {badge}
-            </span>
-          ))}
+          {entry.exceptionLabel === "(Blank)" ? (
+            <span>—</span>
+          ) : (
+            attendanceExceptionBadges(entry).map((badge) => (
+              <span
+                key={badge}
+                className="inline-flex w-fit rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900"
+              >
+                {badge}
+              </span>
+            ))
+          )}
           {canDecide &&
           !entry.pendingSync &&
           isReviewedException(entry.exception_status) ? (
@@ -1545,6 +1542,16 @@ function AttendanceRegisterRow({
             >
               Change decision
             </button>
+          ) : null}
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex flex-col gap-1">
+          <span>{entry.statusLabel}</span>
+          {entry.scheduled_day_type === "weekend" ? (
+            <span className="inline-flex w-fit rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-700">
+              Weekend
+            </span>
           ) : null}
           {entry.pendingSync ? (
             entry.queueError?.trim() ? (

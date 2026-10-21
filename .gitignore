@@ -53,6 +53,7 @@ scripts.zip
 
 # one-off local diagnostic / probe scripts (keep on disk, never commit)
 scripts/_*
+scripts/tmp/
 
 .worktrees/
 .cursor-*.txt

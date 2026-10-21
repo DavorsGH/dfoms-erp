@@ -1,4 +1,6 @@
 import { exceptionDecisionLabel } from "@/lib/attendance-exception-decision";
+import { attendanceExceptionBadges } from "@/lib/shift-attendance";
+import { pluraliseWord } from "@/utils/pluralise";
 import {
   absenceDaysForAttendanceRow,
 } from "./payroll-processing-utils";
@@ -60,6 +62,7 @@ export type AttendanceRegisterDisplayRow = AttendanceRegisterEntry & {
   shiftLabel: string;
   contractLabel: string;
   employmentTypeLabel: string;
+  exceptionLabel: string;
   statusLabel: string;
   decisionLabel: string;
   isFormerStaff: boolean;
@@ -67,6 +70,15 @@ export type AttendanceRegisterDisplayRow = AttendanceRegisterEntry & {
   queueFailed?: boolean;
   queueError?: string | null;
 };
+
+/** 2 d.p. max, trailing zeros trimmed (1.25, 8.5, 142). */
+export function formatAttendanceRegisterHours(value: number): string {
+  const rounded = Math.round(value * 100) / 100;
+  if (Number.isInteger(rounded)) {
+    return String(rounded);
+  }
+  return String(rounded);
+}
 
 export function buildAttendanceEmployeeFilterOptions(
   employees: HrEmployee[],
@@ -105,6 +117,7 @@ export function enrichAttendanceRegisterRows(input: {
       ? input.siteNameByCode.get(siteCode) ?? siteCode
       : "";
     const employeeName = employee?.full_name?.trim() || "";
+    const exceptionBadges = attendanceExceptionBadges(entry);
     return {
       ...entry,
       employeeName: employeeName || entry.staff_id,
@@ -116,6 +129,9 @@ export function enrichAttendanceRegisterRows(input: {
       shiftLabel: blankFilterLabel(entry.scheduled_shift),
       contractLabel: blankFilterLabel(entry.project_assignment),
       employmentTypeLabel: blankFilterLabel(entry.employment_type),
+      exceptionLabel: blankFilterLabel(
+        exceptionBadges.length > 0 ? exceptionBadges.join(" · ") : "",
+      ),
       statusLabel: attendanceRegisterStatusLabel(entry),
       decisionLabel: attendanceRegisterDecisionLabel(entry.exception_status),
       isFormerStaff: employee ? !isActiveEmployee(employee) : false,
@@ -283,8 +299,10 @@ export function sortAttendanceRegisterRows(
       case "hours_worked":
         cmp = (left.hours_worked ?? -1) - (right.hours_worked ?? -1);
         break;
-      case "overtime_hours":
-        cmp = (left.overtime_hours ?? -1) - (right.overtime_hours ?? -1);
+      case "exception":
+        cmp = left.exceptionLabel.localeCompare(right.exceptionLabel, undefined, {
+          sensitivity: "base",
+        });
         break;
       case "status":
         cmp = left.statusLabel.localeCompare(right.statusLabel, undefined, {
@@ -425,12 +443,11 @@ export function buildAttendancePersonMonthSummary(
     }
   }
 
-  const hoursText =
-    Math.round(hours * 10) / 10 === Math.trunc(hours)
-      ? String(Math.trunc(hours))
-      : (Math.round(hours * 10) / 10).toFixed(1);
+  const hoursRounded = Math.round(hours * 100) / 100;
+  const hoursText = formatAttendanceRegisterHours(hoursRounded);
+  const hoursUnit = hoursRounded === 1 ? "hour" : pluraliseWord("hour");
   const monthLabel = monthLabelForAttendance(year, month);
-  const summaryLine = `${fullName} — ${monthLabel}: ${present} present · ${late} late · ${halfDay} half day · ${absent} absent · ${remote} remote · ${hoursText} hours`;
+  const summaryLine = `${fullName} — ${monthLabel}: ${present} present · ${late} late · ${halfDay} half day · ${absent} absent · ${remote} remote · ${hoursText} ${hoursUnit}`;
 
   return {
     staffId,
@@ -441,7 +458,7 @@ export function buildAttendancePersonMonthSummary(
     halfDay,
     absent,
     remote,
-    hours: Math.round(hours * 100) / 100,
+    hours: hoursRounded,
     summaryLine,
   };
 }
@@ -584,12 +601,13 @@ export function buildAttendanceRegisterCsvRows(
     row.clock_in ?? "",
     row.clock_out ?? "",
     row.hours_worked,
-    row.overtime_hours,
+    row.exceptionLabel === "(Blank)" ? "" : row.exceptionLabel,
     row.statusLabel,
     row.decisionLabel,
   ]);
 }
 
+/** Same column titles as the on-screen / print table (without Actions). */
 export const ATTENDANCE_REGISTER_CSV_HEADERS = [
   "Date",
   "Employee",
@@ -598,10 +616,10 @@ export const ATTENDANCE_REGISTER_CSV_HEADERS = [
   "Contract",
   "Site",
   "Shift",
-  "Clock In",
-  "Clock Out",
-  "Hours Worked",
-  "Overtime Hours",
+  "Clock-in",
+  "Clock-out",
+  "Hours",
+  "Exception",
   "Status",
   "Decision",
 ] as const;
