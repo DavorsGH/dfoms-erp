@@ -4,8 +4,14 @@ import type { Client } from "pg";
 import { toPlainStaffId } from "@/app/dashboard/employees/employee-ids-api";
 import { normalizeTenantLookupKey } from "@/lib/bulk-import/tenant-name-lookup";
 
+import {
+  PROJECT_CODE_ENTITY_TYPE,
+  PROJECT_CODE_PADDING,
+  isAutoProjectCode,
+} from "@/lib/project-code";
+
 export const DEPARTMENT_CODE_ENTITY_TYPE = "DEPT";
-export const PROJECT_CODE_ENTITY_TYPE = "PROJ";
+export { PROJECT_CODE_ENTITY_TYPE };
 
 export type DepartmentCodeResolverCache = Map<string, string>;
 export type PositionTitleResolverCache = Map<string, string>;
@@ -17,10 +23,11 @@ async function generateNextCodeInTransaction(
   client: Client,
   tenantId: string,
   entityType: string,
+  padding = 4,
 ): Promise<string> {
   const result = await client.query(
-    `SELECT public.generate_next_code($1, $2, 4) AS code`,
-    [tenantId, entityType],
+    `SELECT public.generate_next_code($1, $2, $3) AS code`,
+    [tenantId, entityType, padding],
   );
 
   const code = String(result.rows[0]?.code ?? "").trim();
@@ -253,7 +260,13 @@ export async function resolveProjectCodeForCommit(input: {
     client,
     tenantId,
     PROJECT_CODE_ENTITY_TYPE,
+    PROJECT_CODE_PADDING,
   );
+  if (!isAutoProjectCode(projectCode)) {
+    throw new Error(
+      `generate_next_code returned "${projectCode}", which is not a PRJ code.`,
+    );
+  }
 
   await client.query(
     `

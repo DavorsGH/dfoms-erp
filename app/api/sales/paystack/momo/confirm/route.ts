@@ -1,23 +1,26 @@
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
-import { POS_SECTION_ROLES } from "@/utils/rbac-access";
+import { PRODUCT_SALE_PAYSTACK_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { verifyPaystackTransaction } from "@/utils/paystack";
+import { loadPaymentRequestForFulfillment } from "@/utils/pos-momo-fulfillment";
+import { processProductSalePaystackEvent } from "@/utils/paystack-product-sale-webhook";
 import {
-  fulfillPosCartSnapshotPaymentRequest,
-  loadPaymentRequestForFulfillment,
-} from "@/utils/pos-momo-fulfillment";
-import { roundGhs } from "@/utils/product-sale-paystack";
+  PRODUCT_SALE_PAYSTACK_CONTEXT,
+  roundGhs,
+} from "@/utils/product-sale-paystack";
 
 export const runtime = "nodejs";
 
 type ConfirmBody = {
   payment_request_id?: string;
   reference?: string;
+  /** Customer closed or failed the popup. No sale or payment is recorded. */
+  abandon?: boolean;
 };
 
 export async function POST(request: Request) {
-  const auth = await requireTenantRoleIn(POS_SECTION_ROLES);
+  const auth = await requireTenantRoleIn(PRODUCT_SALE_PAYSTACK_ROLES);
   if (!auth.ok) {
     return auth.response;
   }
@@ -60,6 +63,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  if (body.abandon === true) {
+    if (requestRow.status === "paid") {
+      return NextResponse.json(
+        { error: "This payment is already confirmed." },
+        { status: 409 },
+      );
+    }
+    const { error: abandonError } = await admin
+      .from("product_sale_payment_requests")
+      .update({
+        status: "cancelled",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", requestRow.id)
+      .eq("tenant_id", auth.tenantId)
+      .in("status", ["pending", "sent"]);
+    if (abandonError) {
+      return NextResponse.json({ error: abandonError.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, abandoned: true });
+  }
+
   const refToVerify =
     reference || (requestRow.paystack_reference ?? "").trim();
   if (!refToVerify) {
@@ -87,21 +112,34 @@ export async function POST(request: Request) {
     verified.amount != null ? roundGhs(verified.amount / 100) : null;
 
   try {
-    const result = await fulfillPosCartSnapshotPaymentRequest(admin, requestRow, {
+    const processed = await processProductSalePaystackEvent({
       reference: verified.reference,
-      paidAmountGhs,
-      paidAt: verified.paidAt,
-      skipVerify: true,
-      paystackChannel: verified.channel,
+      amount: verified.amount,
+      channel: verified.channel,
+      paid_at: verified.paidAt,
+      metadata: {
+        context: PRODUCT_SALE_PAYSTACK_CONTEXT,
+        tenant_id: requestRow.tenant_id,
+        invoice_no: requestRow.invoice_no,
+        payment_request_id: requestRow.id,
+      },
+    });
+    if (processed.ignored || processed.needsAttention) {
+      return NextResponse.json({ error: processed.detail }, { status: 409 });
+    }
+
+    const latest = await loadPaymentRequestForFulfillment(admin, {
+      paymentRequestId: requestRow.id,
     });
 
     return NextResponse.json({
       ok: true,
-      invoice_no: result.invoiceNo,
-      income_ids: result.incomeIds,
-      already_fulfilled: result.alreadyFulfilled,
-      payment_method: result.paymentMethod,
+      invoice_no: latest?.invoice_no ?? requestRow.invoice_no,
+      income_ids: latest?.income_ids ?? requestRow.income_ids ?? [],
+      already_fulfilled: latest?.status === "paid" && requestRow.status === "paid",
+      payment_method: latest?.payment_method ?? requestRow.payment_method,
       reference: verified.reference,
+      amount_ghs: paidAmountGhs,
     });
   } catch (error) {
     return NextResponse.json(
@@ -109,7 +147,7 @@ export async function POST(request: Request) {
         error:
           error instanceof Error
             ? error.message
-            : "Failed to create sale after payment.",
+            : "Failed to record the sale after payment.",
       },
       { status: 500 },
     );

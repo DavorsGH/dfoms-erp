@@ -6,7 +6,10 @@ import {
   parsePeriodKey,
   payrollMonthToPeriodKey,
 } from "./payroll-period-utils";
-import type { PayrollProcessingRow } from "./payroll-processing-utils";
+import {
+  absenceReducesGrossBeforeTax,
+  type PayrollProcessingRow,
+} from "./payroll-processing-utils";
 import {
   salaryAdvancePortionForDedsav,
   sumSalaryAdvancesForEmployeeInMonth,
@@ -178,9 +181,17 @@ export function calculatePayrollDeductionSavingsTotal(
             )
           : Number(row.salary_advance) || 0;
 
+      // From October 2026, gross pay is already earned gross, so absence is not
+      // income. Earlier months, and callers that omit the month, still book it.
+      const absenceIncome =
+        context?.payrollMonth &&
+        absenceReducesGrossBeforeTax(context.payrollMonth)
+          ? 0
+          : Number(row.absence_deduction) || 0;
+
       return (
         sum +
-        (Number(row.absence_deduction) || 0) +
+        absenceIncome +
         (Number(row.loan_repayment) || 0) +
         (Number(row.other_deductions) || 0) +
         manualAdvance

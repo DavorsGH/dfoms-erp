@@ -197,6 +197,7 @@ export type BalanceSheetIncomeEntry = {
   service_category: string;
   entry_type?: "service" | "product_sale" | null;
   sale_status?: "active" | "voided" | null;
+  notes?: string | null;
   net_of_tax_amount?: number | null;
   output_vat_amount?: number | null;
 };

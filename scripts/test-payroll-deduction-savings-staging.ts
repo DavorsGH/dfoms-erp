@@ -269,8 +269,13 @@ async function main() {
   if (!period) throw new Error("Unable to resolve test period");
 
   const results: Result[] = [];
-  const expectedSavings = calculatePayrollDeductionSavingsTotal(buildTestRows());
-  assert(expectedSavings === 111.44, `unexpected savings total ${expectedSavings}`);
+  const legacySavings = calculatePayrollDeductionSavingsTotal(buildTestRows());
+  assert(legacySavings === 111.44, `unexpected savings total ${legacySavings}`);
+  // 2099 is after October 2026: absence is already in gross, so it is not income.
+  const expectedSavings = calculatePayrollDeductionSavingsTotal(buildTestRows(), {
+    payrollMonth: period.payrollMonth,
+  });
+  assert(expectedSavings === 90, `unexpected posted savings ${expectedSavings}`);
 
   console.log("Cleaning prior test artifacts…");
   await cleanupTestArtifacts(admin, period);
@@ -539,11 +544,11 @@ async function main() {
         employee_id: "UNKNOWN-CAANTA",
         gross_pay: 200,
         net_only_adjustment: 0,
-        absence_deduction: 7.5,
+        absence_deduction: 0,
         loan_repayment: 0,
         salary_advance: 0,
         welfare_deduction: 0,
-        other_deductions: 0,
+        other_deductions: 7.5,
         employee_ssnit: 0,
         employer_ssnit: 0,
         tier2: 0,

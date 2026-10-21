@@ -1,11 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  BARCODE_SCAN_INTER_KEY_MS,
-  BARCODE_SCAN_MIN_LENGTH,
-  BARCODE_WEDGE_INPUT_ATTR,
-} from "@/utils/barcode-scan-utils";
+import { BARCODE_WEDGE_INPUT_ATTR } from "@/utils/barcode-scan-utils";
+import { useTenantDeviceSettings } from "@/hooks/use-tenant-device-settings";
 
 export type ScannerProbeSample = {
   rawValue: string;
@@ -18,7 +15,11 @@ export type ScannerProbeVerdict =
   | { status: "ready"; message: string }
   | { status: "fix"; message: string };
 
-function computeVerdict(sample: ScannerProbeSample | null): ScannerProbeVerdict {
+function computeVerdict(
+  sample: ScannerProbeSample | null,
+  minLength: number,
+  interKeyMs: number,
+): ScannerProbeVerdict {
   if (!sample || sample.charCount === 0) {
     return {
       status: "fix",
@@ -34,16 +35,16 @@ function computeVerdict(sample: ScannerProbeSample | null): ScannerProbeVerdict 
     };
   }
 
-  if (sample.charCount < BARCODE_SCAN_MIN_LENGTH) {
+  if (sample.charCount < minLength) {
     return {
       status: "fix",
-      message: `Scan was too short (minimum ${BARCODE_SCAN_MIN_LENGTH} characters).`,
+      message: `Scan was too short (minimum ${minLength} characters).`,
     };
   }
 
   if (
     sample.averageInterKeyMs != null &&
-    sample.averageInterKeyMs > BARCODE_SCAN_INTER_KEY_MS
+    sample.averageInterKeyMs > interKeyMs
   ) {
     return {
       status: "fix",
@@ -62,8 +63,9 @@ export function useScannerSetupProbe(options?: {
   interKeyMs?: number;
   minLength?: number;
 }) {
-  const interKeyMs = options?.interKeyMs ?? BARCODE_SCAN_INTER_KEY_MS;
-  const minLength = options?.minLength ?? BARCODE_SCAN_MIN_LENGTH;
+  const deviceSettings = useTenantDeviceSettings();
+  const interKeyMs = options?.interKeyMs ?? deviceSettings.scanner_max_gap_ms;
+  const minLength = options?.minLength ?? deviceSettings.scanner_min_length;
 
   const [sample, setSample] = useState<ScannerProbeSample | null>(null);
   const bufferRef = useRef("");
@@ -143,7 +145,7 @@ export function useScannerSetupProbe(options?: {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [interKeyMs]);
 
-  const verdict = computeVerdict(sample);
+  const verdict = computeVerdict(sample, minLength, interKeyMs);
 
   return {
     sample,

@@ -206,6 +206,11 @@ export type PayrollAttendanceSource = {
   staff_id: string;
   date: string;
   attendance_status: string;
+  /**
+   * One deduction per row: 1 when status is Absent or the decision is absent,
+   * otherwise 0.5 for half_day, otherwise 0.
+   */
+  exception_status?: string | null;
 };
 
 export type PayrollOvertimeSource = {
@@ -517,6 +522,23 @@ function isApprovedMaternityAbsenceExclusion(
   );
 }
 
+/** A row is counted once. Absent status and an absent decision are the same day. */
+export function absenceDaysForAttendanceRow(row: {
+  attendance_status?: string | null;
+  exception_status?: string | null;
+}): number {
+  if (
+    row.attendance_status === "Absent" ||
+    row.exception_status === "absent"
+  ) {
+    return 1;
+  }
+  if (row.exception_status === "half_day") {
+    return 0.5;
+  }
+  return 0;
+}
+
 export function countAbsencesForStaff(
   attendanceRows: PayrollAttendanceSource[],
   staffId: string,
@@ -524,13 +546,20 @@ export function countAbsencesForStaff(
   month: number,
   maternityLeaves: MaternityLeaveAbsenceExclusion[] = [],
 ): number {
-  return attendanceRows.filter(
-    (row) =>
-      row.staff_id === staffId &&
-      row.attendance_status === "Absent" &&
-      isDateInPayrollMonth(row.date, year, month) &&
-      !isApprovedMaternityAbsenceExclusion(row, maternityLeaves),
-  ).length;
+  let count = 0;
+  for (const row of attendanceRows) {
+    if (row.staff_id !== staffId) {
+      continue;
+    }
+    if (!isDateInPayrollMonth(row.date, year, month)) {
+      continue;
+    }
+    if (isApprovedMaternityAbsenceExclusion(row, maternityLeaves)) {
+      continue;
+    }
+    count += absenceDaysForAttendanceRow(row);
+  }
+  return count;
 }
 
 export function sumOvertimeForEmployee(
@@ -621,10 +650,18 @@ export type WelfareDeductionCalculationOptions = {
   includeOvertimeInWelfare?: boolean;
 };
 
+/** Open periods from this date take unpaid absence off gross before SSNIT and PAYE. */
+export const ABSENCE_REDUCES_GROSS_FROM = "2026-10-01";
+
+export function absenceReducesGrossBeforeTax(asOf: string): boolean {
+  return asOf.slice(0, 10) >= ABSENCE_REDUCES_GROSS_FROM;
+}
+
 /**
  * Auto welfare from employee rate × welfare base.
- * Base is period gross (basic + allowances + overtime + bonuses + arrears) unless
- * include_overtime_in_welfare is off for periods on/after 2026-10-01 — then OT is excluded.
+ * Base is period gross before any absence reduction (basic + allowances + overtime + bonuses + arrears)
+ * unless include_overtime_in_welfare is off for periods on/after 2026-10-01 — then OT is excluded.
+ * Welfare stays after tax and is not an allowable PAYE deduction.
  * Rate is percent points (2.5 → 2.5% of base). Same ROUND(..., 2) as other money.
  */
 export function calculateWelfareDeductionForEmployee(
@@ -660,6 +697,10 @@ export function calculatePayrollRow(
   manual: Partial<PayrollManualInputs> = {},
   policyCompensation: PayrollPolicyCompensation | null = null,
   welfareConfig: PayrollWelfareConfig | null = null,
+  options?: {
+    /** Omit to follow the October 2026 date rule. Tests pass this to compare both formulas. */
+    absenceBeforeTax?: boolean;
+  },
 ): PayrollCalculatedRow {
   const basicSalary = policyCompensation
     ? Number(policyCompensation.basic_salary) || 0
@@ -697,8 +738,9 @@ export function calculatePayrollRow(
       )
     : housingAllowance + transportAllowance + otherAllowances;
 
-  // Gross is finalized before percentage deductions (welfare, PAYE base).
-  const grossPay = roundMoney(
+  // Pre-absence gross. Welfare still uses this. From October 2026 the displayed
+  // Gross Pay is this amount minus the rounded absence deduction.
+  const preAbsenceGross = roundMoney(
     periodPayBasic +
       allowanceTotal +
       overtimeAmount +
@@ -707,10 +749,17 @@ export function calculatePayrollRow(
   );
 
   const asOf = getPeriodEndDate(period.year, period.month);
+  const absenceBeforeTax =
+    options?.absenceBeforeTax ?? absenceReducesGrossBeforeTax(asOf);
+  const absenceRounded = roundMoney(absenceDeduction);
+  const grossPay =
+    absenceBeforeTax && absenceRounded > 0
+      ? roundMoney(Math.max(preAbsenceGross - absenceRounded, 0))
+      : preAbsenceGross;
 
   const welfareDeduction = calculateWelfareDeductionForEmployee(
     employee,
-    grossPay,
+    preAbsenceGross,
     {
       overtimeAmount,
       asOfDate: asOf,
@@ -720,6 +769,10 @@ export function calculatePayrollRow(
   );
   const employmentType = employee.employment_type?.trim() ?? "";
   const proratedBasicPay = periodPayBasic;
+  const earnedBasic =
+    absenceBeforeTax && absenceRounded > 0
+      ? Math.max(proratedBasicPay - absenceRounded, 0)
+      : proratedBasicPay;
 
   let employeeSsnit = 0;
   let employerSsnit = 0;
@@ -738,9 +791,12 @@ export function calculatePayrollRow(
 
   if (employmentType === "Casual") {
     const casualConfig = pickLatestByEffectiveDate(taxConfigs.casualRows, asOf);
+    // Flat rate stays on basic pay (prorated), minus absence from October 2026.
+    // Allowances, bonuses, arrears, and overtime stay outside this base, same as
+    // today, so a casual with no absence is unchanged and overtime is not taxed
+    // twice. With no allowances or overtime this equals earned gross.
     payeTax = roundMoney(
-      proratedBasicPay *
-        normalizeRate(Number(casualConfig?.flat_rate) || 0),
+      earnedBasic * normalizeRate(Number(casualConfig?.flat_rate) || 0),
     );
     if (graOvertimeActive && overtimeAmount > 0) {
       overtimeTax = calculateCasualOvertimeTax(
@@ -755,8 +811,8 @@ export function calculatePayrollRow(
   ) {
     const ssnitConfig = pickLatestByEffectiveDate(taxConfigs.ssnitRows, asOf);
     const insurableBase = Math.min(
-      proratedBasicPay,
-      Number(ssnitConfig?.insurable_earnings_ceiling) || proratedBasicPay,
+      earnedBasic,
+      Number(ssnitConfig?.insurable_earnings_ceiling) || earnedBasic,
     );
 
     employeeSsnit = roundMoney(
@@ -802,7 +858,7 @@ export function calculatePayrollRow(
       salaryAdvance +
       welfareDeduction +
       otherDeductions +
-      absenceDeduction,
+      (absenceBeforeTax ? 0 : absenceDeduction),
   );
 
   const netPay = roundMoney(

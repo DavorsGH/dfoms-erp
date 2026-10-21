@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useQueryTab } from "@/hooks/use-query-tab";
 import { useRouter } from "next/navigation";
 import {
   LESSEE_COMPLAINT_STATUS_OPTIONS,
@@ -137,7 +138,10 @@ export default function FacilityComplaintsClient({
   leases,
 }: FacilityComplaintsClientProps) {
   const router = useRouter();
-  const [tab, setTab] = useState<TabId>("list");
+  const { tab, setTab } = useQueryTab<TabId>({
+    values: ["list", "file"],
+    defaultTab: "list",
+  });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [leaseId, setLeaseId] = useState(leases[0]?.leaseId ?? "");
   const [subject, setSubject] = useState("");

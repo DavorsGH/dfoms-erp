@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
-import { POS_SECTION_ROLES } from "@/utils/rbac-access";
+import { PRODUCT_SALE_PAYSTACK_ROLES } from "@/utils/rbac-access";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
@@ -31,6 +31,8 @@ import { sendResendEmail } from "@/utils/resend-email";
 import { sendHubtelSms } from "@/utils/hubtel-sms";
 import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
 import { createShortLinkUrl } from "@/utils/short-links";
+import { paystackChannelsForMethod } from "@/utils/manual-sale-paystack";
+import { manualSaleStockBlockReason } from "@/utils/manual-sale-stock-check";
 
 export const runtime = "nodejs";
 
@@ -51,6 +53,11 @@ type InitializeBody = {
   notes?: string | null;
   due_date?: string;
   business_unit_id?: string | null;
+  /** Open Paystack Inline instead of emailing or texting a link. */
+  inline?: boolean;
+  /** Manual sale: charge amount_ghs (may be below the line total) and fulfill as PSI. */
+  manual_sale?: boolean;
+  sales_rep_id?: string | null;
 };
 
 type IncomeRow = ProductSaleIncomeLine & {
@@ -140,7 +147,7 @@ async function deliverPaymentLink(options: {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireTenantRoleIn(POS_SECTION_ROLES);
+  const auth = await requireTenantRoleIn(PRODUCT_SALE_PAYSTACK_ROLES);
   if (!auth.ok) {
     return auth.response;
   }
@@ -155,9 +162,11 @@ export async function POST(request: Request) {
   const cartLines = Array.isArray(body.cart_lines) ? body.cart_lines : [];
   const hasCart = cartLines.length > 0;
 
+  const inline = body.inline === true;
+  const manualSale = body.manual_sale === true;
   const sendEmail = Boolean(body.send_email);
   const sendSms = Boolean(body.send_sms);
-  if (!sendEmail && !sendSms) {
+  if (!inline && !sendEmail && !sendSms) {
     return NextResponse.json(
       { error: "Select at least one delivery channel (email or SMS)." },
       { status: 400 },
@@ -283,12 +292,50 @@ export async function POST(request: Request) {
       businessUnitId: writeBu.businessUnitId,
       cartLines,
     });
-    const amountGhs = cartSnapshotTotal(snapshot);
-    if (amountGhs <= 0) {
+    const saleTotal = cartSnapshotTotal(snapshot);
+    if (saleTotal <= 0) {
       return NextResponse.json(
         { error: "Cart total must be greater than zero." },
         { status: 400 },
       );
+    }
+
+    let amountGhs = saleTotal;
+    if (manualSale) {
+      const requested = roundGhs(Number(body.amount_ghs));
+      if (!Number.isFinite(requested) || requested <= 0) {
+        return NextResponse.json(
+          { error: "amount_ghs must be greater than zero." },
+          { status: 400 },
+        );
+      }
+      if (requested > saleTotal + 0.001) {
+        return NextResponse.json(
+          {
+            error: `amount_ghs cannot exceed the sale total (GHS ${saleTotal.toFixed(2)}).`,
+          },
+          { status: 400 },
+        );
+      }
+      amountGhs = requested;
+      const salesRepId =
+        typeof body.sales_rep_id === "string" && body.sales_rep_id.trim()
+          ? body.sales_rep_id.trim()
+          : null;
+      snapshot.salesRepId = salesRepId;
+      const stockReason = await manualSaleStockBlockReason(
+        admin,
+        auth.tenantId,
+        snapshot.businessUnitId ?? null,
+        snapshot.lines.map((line) => ({
+          productId: line.productId,
+          quantity: line.quantity,
+          productName: line.productName,
+        })),
+      );
+      if (stockReason) {
+        return NextResponse.json({ error: stockReason }, { status: 409 });
+      }
     }
 
     const paymentMethod =
@@ -304,7 +351,29 @@ export async function POST(request: Request) {
       );
     }
 
-    const provisionalInvoice = `LINK-PENDING-${crypto.randomUUID().slice(0, 8)}`;
+    let provisionalInvoice = `LINK-PENDING-${crypto.randomUUID().slice(0, 8)}`;
+    if (manualSale) {
+      const { data: reserved, error: reserveError } = await admin.rpc(
+        "generate_next_code",
+        {
+          p_tenant_id: auth.tenantId,
+          p_entity_type: "PSI",
+          p_padding: 4,
+        },
+      );
+      const invoiceNo = typeof reserved === "string" ? reserved.trim() : "";
+      if (reserveError || !invoiceNo) {
+        return NextResponse.json(
+          {
+            error:
+              reserveError?.message ??
+              "Could not reserve an invoice number for this sale.",
+          },
+          { status: 500 },
+        );
+      }
+      provisionalInvoice = invoiceNo;
+    }
 
     const { data: inserted, error: insertError } = await admin
       .from("product_sale_payment_requests")
@@ -345,7 +414,10 @@ export async function POST(request: Request) {
       amountPesewas: ghsToPesewas(amountGhs),
       callbackUrl,
       currency: "GHS",
-      channels: [...REQUEST_PAYMENT_CHANNELS],
+      channels:
+        manualSale || inline
+          ? paystackChannelsForMethod(paymentMethod)
+          : [...REQUEST_PAYMENT_CHANNELS],
       // Route this charge to the tenant's settlement account (guarded above).
       subaccountCode: settlement.subaccountCode,
       metadata: {
@@ -371,18 +443,43 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: initialized.error }, { status: 502 });
     }
 
+    if (inline && !initialized.accessCode?.trim()) {
+      await admin
+        .from("product_sale_payment_requests")
+        .update({
+          status: "failed",
+          updated_at: new Date().toISOString(),
+          email_error: "Paystack initialize response missing access_code.",
+        })
+        .eq("id", paymentRequestId)
+        .eq("tenant_id", auth.tenantId);
+      return NextResponse.json(
+        { error: "Paystack initialize response missing access_code." },
+        { status: 502 },
+      );
+    }
+
     const amountLabel = amountGhs.toFixed(2);
-    const delivery = await deliverPaymentLink({
-      sendEmail,
-      sendSms,
-      deliveryEmail,
-      deliveryPhone,
-      link: initialized.authorizationUrl,
-      amountLabel,
-      invoiceLabel: "your POS order",
-      tenantName,
-      recipientName: customerName ?? "Customer",
-    });
+    const delivery = inline
+      ? {
+          emailSent: false,
+          smsSent: false,
+          emailError: null,
+          smsError: null,
+          emailSentAt: null,
+          smsSentAt: null,
+        }
+      : await deliverPaymentLink({
+          sendEmail,
+          sendSms,
+          deliveryEmail,
+          deliveryPhone,
+          link: initialized.authorizationUrl,
+          amountLabel,
+          invoiceLabel: manualSale ? "your sale" : "your POS order",
+          tenantName,
+          recipientName: customerName ?? "Customer",
+        });
 
     const { error: updateError } = await admin
       .from("product_sale_payment_requests")
@@ -423,6 +520,7 @@ export async function POST(request: Request) {
       email_error: delivery.emailError,
       sms_error: delivery.smsError,
       charge_first: true,
+      ...(inline ? { access_code: initialized.accessCode } : {}),
     });
   }
 
@@ -545,7 +643,10 @@ export async function POST(request: Request) {
     amountPesewas: ghsToPesewas(requestedAmount),
     callbackUrl,
     currency: "GHS",
-    channels: [...REQUEST_PAYMENT_CHANNELS],
+    channels:
+      manualSale || inline
+        ? paystackChannelsForMethod(paymentMethod)
+        : [...REQUEST_PAYMENT_CHANNELS],
     // Route this charge to the tenant's settlement account (guarded above).
     subaccountCode: settlement.subaccountCode,
     metadata: {
@@ -572,18 +673,43 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: initialized.error }, { status: 502 });
   }
 
+  if (inline && !initialized.accessCode?.trim()) {
+    await admin
+      .from("product_sale_payment_requests")
+      .update({
+        status: "failed",
+        updated_at: new Date().toISOString(),
+        email_error: "Paystack initialize response missing access_code.",
+      })
+      .eq("id", paymentRequestId)
+      .eq("tenant_id", auth.tenantId);
+    return NextResponse.json(
+      { error: "Paystack initialize response missing access_code." },
+      { status: 502 },
+    );
+  }
+
   const amountLabel = requestedAmount.toFixed(2);
-  const delivery = await deliverPaymentLink({
-    sendEmail,
-    sendSms,
-    deliveryEmail,
-    deliveryPhone,
-    link: initialized.authorizationUrl,
-    amountLabel,
-    invoiceLabel: `invoice ${invoiceNo}`,
-    tenantName,
-    recipientName: "Customer",
-  });
+  const delivery = inline
+    ? {
+        emailSent: false,
+        smsSent: false,
+        emailError: null,
+        smsError: null,
+        emailSentAt: null,
+        smsSentAt: null,
+      }
+    : await deliverPaymentLink({
+        sendEmail,
+        sendSms,
+        deliveryEmail,
+        deliveryPhone,
+        link: initialized.authorizationUrl,
+        amountLabel,
+        invoiceLabel: `invoice ${invoiceNo}`,
+        tenantName,
+        recipientName: "Customer",
+      });
 
   const { error: updateError } = await admin
     .from("product_sale_payment_requests")
@@ -624,5 +750,6 @@ export async function POST(request: Request) {
     email_error: delivery.emailError,
     sms_error: delivery.smsError,
     charge_first: false,
+    ...(inline ? { access_code: initialized.accessCode } : {}),
   });
 }

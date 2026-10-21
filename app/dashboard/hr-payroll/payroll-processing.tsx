@@ -1,6 +1,8 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
+import { useAlert } from "@/components/feedback/feedback-context";
+import { PendingAttendanceExceptionsError } from "@/lib/shift-attendance";
 import Tooltip from "@/components/ui/tooltip";
 import { LoadingState } from "@/components/loading-indicator";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -166,6 +168,7 @@ export default function PayrollProcessing({
   hrPayrollSettingsRows = [],
 }: PayrollProcessingProps) {
   const supabase = createClient();
+  const { alert } = useAlert();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const workspaceLoadGenerationRef = useRef(0);
@@ -874,7 +877,7 @@ export default function PayrollProcessing({
       ] = await Promise.all([
         supabase
           .from("attendance_register")
-          .select("staff_id, date, attendance_status")
+          .select("staff_id, date, attendance_status, exception_status")
           .gte("date", attendanceStart)
           .lte("date", attendanceEnd),
         supabase
@@ -1148,7 +1151,21 @@ export default function PayrollProcessing({
       error?: string;
       closeRecord?: MonthEndCloseRecord;
       payrollLocked?: boolean;
+      pendingExceptionCount?: number;
+      exceptionsHref?: string;
     };
+
+    if (
+      !response.ok &&
+      payload.pendingExceptionCount &&
+      payload.exceptionsHref
+    ) {
+      throw new PendingAttendanceExceptionsError({
+        error: payload.error ?? "Attendance exceptions are still pending.",
+        pendingExceptionCount: payload.pendingExceptionCount,
+        exceptionsHref: payload.exceptionsHref,
+      });
+    }
 
     if (!response.ok && !(payload.payrollLocked && payload.closeRecord)) {
       throw new Error(payload.error ?? "Failed to lock payroll period.");
@@ -1467,14 +1484,24 @@ export default function PayrollProcessing({
       const rowsToLock = await prepareRowsToLock();
       await executeLockPeriod(rowsToLock, PAYROLL_STATUS_LOCKED, null);
     } catch (lockError) {
-      setError(
-        lockError instanceof Error
-          ? lockError.message
-          : "Failed to lock payroll period.",
-      );
+      reportLockFailure(lockError, "Failed to lock payroll period.");
     } finally {
       setLocking(false);
     }
+  }
+
+  function reportLockFailure(lockError: unknown, fallback: string) {
+    if (lockError instanceof PendingAttendanceExceptionsError) {
+      void alert({
+        title: "Attendance exceptions still pending",
+        message: lockError.message,
+        href: lockError.href,
+        hrefLabel: "Open Attendance exceptions",
+        variant: "error",
+      });
+      return;
+    }
+    setError(lockError instanceof Error ? lockError.message : fallback);
   }
 
   async function handleFullLockFromPartial() {
@@ -1499,11 +1526,7 @@ export default function PayrollProcessing({
       // Promote path loads history server-side; rows satisfy the client contract.
       await executeLockPeriod(rows, PAYROLL_STATUS_LOCKED, null);
     } catch (lockError) {
-      setError(
-        lockError instanceof Error
-          ? lockError.message
-          : "Failed to fully lock payroll period.",
-      );
+      reportLockFailure(lockError, "Failed to fully lock payroll period.");
     } finally {
       setLocking(false);
     }
@@ -1550,11 +1573,7 @@ export default function PayrollProcessing({
       setPendingLockRows([]);
       setPartialLockNote("");
     } catch (lockError) {
-      setError(
-        lockError instanceof Error
-          ? lockError.message
-          : "Failed to lock payroll period.",
-      );
+      reportLockFailure(lockError, "Failed to lock payroll period.");
     } finally {
       setLocking(false);
     }

@@ -2378,8 +2378,8 @@ organized into the following groups:
                      roster configuration. Ghana PAYE/SSNIT/casual rates
                      are platform-wide (Section 8.2a), not set here.
 
-  Operations         Service Categories, Contract/Project Assignments,
-  Settings           Roster Settings
+  Operations         Service Categories, Contract & Project Assignments,
+  Settings           Roster & Shift Settings
 
   User Accounts      Create, edit, deactivate, reset passwords for, or
                      delete users in your workspace

@@ -9,6 +9,7 @@ import {
 } from "@/utils/tenant-scoped-supabase";
 import type { ServiceType } from "../service-types";
 import FilteredListCount from "../filtered-list-count";
+import { useLookupSettingsFeedback } from "./lookup-settings-feedback";
 
 type ServiceCategoriesProps = {
   tenantId: string;
@@ -25,11 +26,12 @@ export default function ServiceCategories({
   fetchError,
 }: ServiceCategoriesProps) {
   const supabase = createClient();
+  const { showActionError, showActionSuccess } =
+    useLookupSettingsFeedback(fetchError);
   const [categories, setCategories] = useState(initialCategories);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [deletingName, setDeletingName] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(fetchError);
 
   async function refreshCategories() {
     const { data, error: refreshError } = await supabase
@@ -38,18 +40,16 @@ export default function ServiceCategories({
       .order("name", { ascending: true });
 
     if (refreshError) {
-      setError(refreshError.message);
+      showActionError(refreshError);
       return;
     }
 
     setCategories(data ?? []);
-    setError(null);
   }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setError(null);
 
     const scopedTenantId = assertTenantIdForMutation(tenantId);
     const { error: insertError } = await supabase
@@ -57,19 +57,19 @@ export default function ServiceCategories({
       .insert({ tenant_id: scopedTenantId, name: name.trim() });
 
     if (insertError) {
-      setError(insertError.message);
       setLoading(false);
+      showActionError(insertError);
       return;
     }
 
     setName("");
     await refreshCategories();
     setLoading(false);
+    showActionSuccess("Service category added.");
   }
 
   async function handleDelete(categoryName: string) {
     setDeletingName(categoryName);
-    setError(null);
 
     const { error: deleteError } = await tenantScopedDelete(
       supabase,
@@ -79,13 +79,16 @@ export default function ServiceCategories({
     );
 
     if (deleteError) {
-      setError(getNamedLookupDeleteErrorMessage(deleteError, "service category"));
       setDeletingName(null);
+      showActionError(
+        getNamedLookupDeleteErrorMessage(deleteError, "service category"),
+      );
       return;
     }
 
     await refreshCategories();
     setDeletingName(null);
+    showActionSuccess("Service category deleted.");
   }
 
   return (
@@ -93,12 +96,6 @@ export default function ServiceCategories({
       <h2 className="mb-4 text-lg font-semibold text-[#0f2744]">
         Service Categories
       </h2>
-
-      {error && (
-        <p className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       <form onSubmit={handleAdd} className="mb-6 flex flex-col gap-3 sm:flex-row">
         <input

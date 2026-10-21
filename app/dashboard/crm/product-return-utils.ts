@@ -7,6 +7,7 @@ import {
   type ProductSaleEntry,
 } from "./product-sales-utils";
 import { todayIsoDate } from "@/utils/product-sale-payments-types";
+import { mapNegativeWacUserMessage } from "@/lib/inventory/finished-product-wac";
 
 export type ProductReturnDisposition = "restock" | "writeoff";
 
@@ -172,6 +173,11 @@ export function formatProductReturnRpcError(raw: string | undefined | null): str
   const message = (raw ?? "").trim();
   if (!message) {
     return "Unable to complete the return. Check quantities and try again.";
+  }
+
+  const negativeWac = mapNegativeWacUserMessage(message);
+  if (negativeWac) {
+    return negativeWac;
   }
 
   const lower = message.toLowerCase();

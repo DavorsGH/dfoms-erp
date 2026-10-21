@@ -21,6 +21,7 @@ import {
   getSpreadsheetExtension,
   validateSpreadsheetFileSelection,
 } from "@/lib/spreadsheet/spreadsheet-upload-validation";
+import { keepScientificBarcodeCellsAsText } from "@/lib/spreadsheet/excel-scientific-barcode-cells";
 
 export type SpreadsheetSheetSummary = {
   name: string;
@@ -79,6 +80,7 @@ function sheetToRowMatrix(
   useRawCells: boolean,
 ): unknown[][] {
   try {
+    keepScientificBarcodeCellsAsText(sheet);
     return XLSX.utils.sheet_to_json(sheet, {
       header: 1,
       defval: "",

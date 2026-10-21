@@ -65,7 +65,7 @@ function productSaleReportToProductSaleEntry(
     outstanding_balance: null,
     payment_status: "",
     due_date: sale.date,
-    notes: null,
+    notes: sale.notes ?? null,
     product_id: sale.product_id,
     sale_quantity: sale.sale_quantity,
     unit_price: sale.unit_price,

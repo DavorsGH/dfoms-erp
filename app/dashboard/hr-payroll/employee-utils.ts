@@ -9,13 +9,14 @@ export type HrEmployee = {
   full_name: string;
   employment_type: string | null;
   contract_project: string | null;
+  assigned_site_id?: string | null;
   employment_status?: string | null;
   date_hired?: string | null;
   appointment_end_date?: string | null;
 };
 
 export const HR_EMPLOYEE_SELECT =
-  "employee_id, staff_id, full_name, employment_type, contract_project, employment_status, date_hired, appointment_end_date";
+  "employee_id, staff_id, full_name, employment_type, contract_project, assigned_site_id, employment_status, date_hired, appointment_end_date";
 
 export type PeriodEmployableEmployee = {
   date_hired: string | null;

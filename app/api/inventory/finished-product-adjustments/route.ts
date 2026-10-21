@@ -87,9 +87,10 @@ function validateBody(body: AdjustmentWriteBody): string | null {
     if (
       body.cost_per_unit == null ||
       typeof body.cost_per_unit !== "number" ||
-      !Number.isFinite(body.cost_per_unit)
+      !Number.isFinite(body.cost_per_unit) ||
+      body.cost_per_unit <= 0
     ) {
-      return "Cost per unit is required for Opening Balance and Found Stock.";
+      return "Enter a cost per unit greater than zero for Opening Balance and Found Stock.";
     }
   } else if ("cost_per_unit" in body && body.cost_per_unit != null) {
     // RPC rejects non-null cost for correction/write_off — fail early.

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryTab } from "@/hooks/use-query-tab";
 import { useRouter } from "next/navigation";
 import type { ActiveLeaseOption } from "@/app/dashboard/real-estate/maintenance-utils";
 import {
@@ -42,7 +43,10 @@ export default function FacilityInspectionsClient({
   conductedByDefault,
 }: FacilityInspectionsClientProps) {
   const router = useRouter();
-  const [tab, setTab] = useState<TabId>("list");
+  const { tab, setTab } = useQueryTab<TabId>({
+    values: ["list", "create"],
+    defaultTab: "list",
+  });
   const [leaseId, setLeaseId] = useState(leases[0]?.leaseId ?? "");
   const [inspectionType, setInspectionType] = useState("move_in");
   const [inspectionDate, setInspectionDate] = useState(todayInputValue());

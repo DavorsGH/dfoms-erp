@@ -1,7 +1,7 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
-import { useAlert } from "@/components/feedback/feedback-context";
+import { useAlert, useToast } from "@/components/feedback/feedback-context";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   SALES_CRM_ALERT_TITLE,
@@ -12,6 +12,21 @@ import { createClient } from "@/utils/supabase/client";
 import DashboardButton from "@/components/dashboard-button";
 import FinishedProductPhoto from "@/components/finished-product-photo";
 import { syncProductSaleVfrsTax } from "@/utils/product-sale-tax-sync";
+import {
+  isManualSalePaymentMethod,
+  MANUAL_SALE_PAYMENT_METHODS,
+  notesWithPaymentMethod,
+} from "@/utils/product-sale-payments-types";
+import {
+  isPaystackCollectMethod,
+  manualSalePaystackChargeAmount,
+  type ManualSaleCollectionMode,
+} from "@/utils/manual-sale-paystack";
+import { notesWithTransactionReference } from "@/utils/manual-sale-paystack";
+import ManualSaleCollectionFields from "./manual-sale-collection-fields";
+import { openManualSalePaystackInline } from "./manual-sale-paystack-client";
+import RequestPaymentModal from "@/app/dashboard/pos/request-payment-modal";
+import type { PosCartLine } from "@/app/dashboard/pos/pos-utils";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import { deleteTaxLedgerEntriesForSource } from "../finance/tax-ledger-sync";
 import {
@@ -83,8 +98,11 @@ import RecordProductSalePaymentDialog from "./record-product-sale-payment-dialog
 import {
   buildProductSaleReceiptData,
   ProductSaleReceiptPanel,
+  withReceiptPaymentLines,
   type ProductSaleReceiptData,
 } from "./product-sale-receipt";
+import { listedPaymentsFromRows } from "../pos/receipt-settlement";
+import { PRODUCT_SALE_PAYMENT_SELECT } from "@/utils/product-sale-payments-types";
 import ProductReturnModal from "./product-return-modal";
 import { ProductSaleReturnBadge } from "./product-return-badge";
 import {
@@ -140,6 +158,7 @@ const emptyForm = {
   unit_price: "",
   amount_received: "0",
   due_date: "",
+  payment_method: "",
   notes: "",
 };
 
@@ -188,6 +207,7 @@ export default function ProductSales({
   }, [fetchError, alertError]);
 
   const router = useRouter();
+  const { toast } = useToast();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const skipFirstStockScopeRefresh = useRef(true);
@@ -220,6 +240,25 @@ export default function ProductSales({
   const [form, setForm] = useState(emptyForm);
   const [salesRepId, setSalesRepId] = useState(defaultSalesRepId);
   const [loading, setLoading] = useState(false);
+  const [collectionMode, setCollectionMode] =
+    useState<ManualSaleCollectionMode>("received");
+  const [transactionReference, setTransactionReference] = useState("");
+  const [payerEmail, setPayerEmail] = useState("");
+  const [payerPhone, setPayerPhone] = useState("");
+  const [paymentLinkDraft, setPaymentLinkDraft] = useState<{
+    cartLines: PosCartLine[];
+    saleDate: string;
+    clientId: string | null;
+    customerName: string | null;
+    notes: string | null;
+    dueDate: string;
+    paymentMethod: string;
+    amountGhs: number;
+    email: string;
+    phone: string;
+    salesRepId: string | null;
+    businessUnitId: string | null;
+  } | null>(null);
   const [voidingId, setVoidingId] = useState<string | null>(null);
   const [internalReturnInvoiceNo, setInternalReturnInvoiceNo] = useState<
     string | null
@@ -554,9 +593,18 @@ export default function ProductSales({
     setShowForm(true);
   }
 
+  function resetCollection() {
+    setCollectionMode("received");
+    setTransactionReference("");
+    setPayerEmail("");
+    setPayerPhone("");
+    setPaymentLinkDraft(null);
+  }
+
   function closeForm() {
     setLoading(false);
     setForm(emptyForm);
+    resetCollection();
     setShowForm(false);
   }
 
@@ -570,8 +618,173 @@ export default function ProductSales({
     setShowBulkImport(false);
   }
 
+  async function buildPaystackCart(contact: "email" | "either" = "email"): Promise<{
+    cartLine: PosCartLine;
+    saleDate: string;
+    clientId: string | null;
+    customerName: string | null;
+    notes: string | null;
+    dueDate: string;
+    amountGhs: number;
+    businessUnitId: string | null;
+  } | null> {
+    const amountReceived = Number(form.amount_received);
+    if (!isPaystackCollectMethod(form.payment_method)) {
+      showActionError("Choose Mobile Money or Card to collect with Paystack.");
+      return null;
+    }
+    const quantity = Number.parseFloat(form.sale_quantity);
+    const unitPrice = Number.parseFloat(form.unit_price);
+    const amount = Math.round(quantity * unitPrice * 100) / 100;
+    const charge = manualSalePaystackChargeAmount(amount, amountReceived);
+    if (charge == null) {
+      showActionError("Amount paid now must be greater than zero and not above the sale total.");
+      return null;
+    }
+    const clientId = form.client_id.trim() || null;
+    const customerName = form.customer_name.trim() || null;
+    if (!clientId && !customerName) {
+      showActionError("Select a contract client or enter an other payer name.");
+      return null;
+    }
+    if (!form.product_id || Number.isNaN(quantity) || quantity <= 0) {
+      showActionError("Select a product and a quantity greater than zero.");
+      return null;
+    }
+    if (charge + 0.001 < amount && !form.due_date.trim()) {
+      showActionError("Enter a due date for the remaining balance.");
+      return null;
+    }
+    const product = finishedProducts.find((item) => item.id === form.product_id);
+    if (!product) {
+      showActionError("Select a finished product.");
+      return null;
+    }
+    if (product.current_stock < quantity) {
+      showActionError(
+        `Only ${formatInventoryQuantity(product.current_stock)} ${product.unit_of_measure} of ${product.product_name} in stock, cannot sell ${formatInventoryQuantity(quantity)}.`,
+      );
+      return null;
+    }
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      showActionError(buContext.error);
+      return null;
+    }
+    const stampResult = resolveWriteBusinessUnitIdForCreate({
+      allowedUnits: buContext.allowedUnits,
+      stamp: stampBusinessUnit,
+    });
+    if (!stampResult.ok) {
+      showActionError(stampResult.error);
+      return null;
+    }
+    const emailReady = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payerEmail.trim());
+    if (contact === "email" && !emailReady) {
+      showActionError("Enter the payer's email address.");
+      return null;
+    }
+    if (contact === "either" && !emailReady && !payerPhone.trim()) {
+      showActionError("Enter the payer's email or phone number.");
+      return null;
+    }
+    return {
+      cartLine: {
+        id: product.id,
+        productId: product.id,
+        productCode: product.product_code,
+        productName: product.product_name,
+        unitOfMeasure: product.unit_of_measure,
+        quantity,
+        unitPrice,
+        availableStock: product.current_stock,
+      },
+      saleDate: form.date,
+      clientId,
+      customerName: clientId ? null : customerName,
+      notes: form.notes.trim() || null,
+      dueDate: form.due_date.trim() || form.date,
+      amountGhs: charge,
+      businessUnitId: stampResult.businessUnitId,
+    };
+  }
+
+  async function payNowWithPaystack() {
+    setLoading(true);
+    const draft = await buildPaystackCart();
+    if (!draft) {
+      setLoading(false);
+      return;
+    }
+    const result = await openManualSalePaystackInline({
+      manual_sale: true,
+      cart_lines: [draft.cartLine],
+      sale_date: draft.saleDate,
+      client_id: draft.clientId,
+      customer_name: draft.customerName,
+      notes: draft.notes,
+      due_date: draft.dueDate,
+      amount_ghs: draft.amountGhs,
+      payment_method: form.payment_method,
+      sales_rep_id: salesRepId.trim() || null,
+      delivery_email: payerEmail.trim(),
+      business_unit_id: draft.businessUnitId,
+    });
+    setLoading(false);
+    if (!result.ok) {
+      await alertError(clientFacingSalesCrmError(result.error), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+      return;
+    }
+    closeForm();
+    await refreshEntries();
+    onRegisterMutationComplete?.();
+    toast(`Sale saved — ${result.invoiceNo}`);
+  }
+
+  async function openPaymentLink() {
+    setLoading(true);
+    const draft = await buildPaystackCart("either");
+    setLoading(false);
+    if (!draft) {
+      return;
+    }
+    setPaymentLinkDraft({
+      cartLines: [draft.cartLine],
+      saleDate: draft.saleDate,
+      clientId: draft.clientId,
+      customerName: draft.customerName,
+      notes: draft.notes,
+      dueDate: draft.dueDate,
+      paymentMethod: form.payment_method,
+      amountGhs: draft.amountGhs,
+      email: payerEmail.trim(),
+      phone: payerPhone.trim(),
+      salesRepId: salesRepId.trim() || null,
+      businessUnitId: draft.businessUnitId,
+    });
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const amountReceivedNow = Number(form.amount_received);
+    if (
+      amountReceivedNow > 0 &&
+      isPaystackCollectMethod(form.payment_method) &&
+      collectionMode === "paystack"
+    ) {
+      showActionError("Use Pay now or Send payment link. The sale is recorded after Paystack confirms.");
+      return;
+    }
+    if (amountReceivedNow > 0 && !isManualSalePaymentMethod(form.payment_method)) {
+      const methodField = document.getElementById("manual_sale_payment_method");
+      if (methodField instanceof HTMLSelectElement) {
+        methodField.setCustomValidity("Choose a payment method.");
+        methodField.reportValidity();
+      }
+      return;
+    }
     setLoading(true);
     try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
@@ -589,7 +802,7 @@ export default function ProductSales({
       return;
     }
 
-    const amountReceived = Number(form.amount_received);
+    const amountReceived = amountReceivedNow;
     const clientId = form.client_id.trim() || null;
     const otherPayerName = form.customer_name.trim() || null;
 
@@ -676,7 +889,13 @@ export default function ProductSales({
         p_payment_status: paymentStatus,
         p_due_date: outstanding > 0 ? form.due_date : form.due_date || form.date,
         p_description: null,
-        p_notes: form.notes || null,
+        p_notes:
+          amountReceived > 0 && isManualSalePaymentMethod(form.payment_method)
+            ? notesWithTransactionReference(
+                notesWithPaymentMethod(form.notes, form.payment_method),
+                collectionMode === "received" ? transactionReference : null,
+              )
+            : form.notes || null,
         p_sales_rep_id: salesRepId.trim() || null,
         p_business_unit_id: stampResult.businessUnitId,
       },
@@ -704,6 +923,7 @@ export default function ProductSales({
     closeForm();
     await refreshEntries();
     onRegisterMutationComplete?.();
+    toast("Sale saved");
 
     if (taxError) {
       showActionError(
@@ -799,7 +1019,7 @@ export default function ProductSales({
   }
 
   return (
-    <div className="min-w-0 space-y-6">
+    <div className={embeddedInSalesRegister ? "empty:hidden" : "min-w-0 space-y-6"}>
       {!embeddedInSalesRegister ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-slate-600">
@@ -828,7 +1048,6 @@ export default function ProductSales({
       {receipt ? (
         <ProductSaleReceiptPanel
           receipt={receipt}
-          onPrint={() => window.print()}
           onClose={() => setReceipt(null)}
         />
       ) : null}
@@ -847,6 +1066,32 @@ export default function ProductSales({
         />
       ) : null}
 
+      {paymentLinkDraft ? (
+        <RequestPaymentModal
+          mode="cart"
+          manualSale
+          cartLines={paymentLinkDraft.cartLines}
+          saleDate={paymentLinkDraft.saleDate}
+          clientId={paymentLinkDraft.clientId}
+          customerName={paymentLinkDraft.customerName}
+          notes={paymentLinkDraft.notes}
+          dueDate={paymentLinkDraft.dueDate}
+          paymentMethod={paymentLinkDraft.paymentMethod}
+          defaultAmountGhs={paymentLinkDraft.amountGhs}
+          defaultEmail={paymentLinkDraft.email}
+          defaultPhone={paymentLinkDraft.phone}
+          salesRepId={paymentLinkDraft.salesRepId}
+          businessUnitId={paymentLinkDraft.businessUnitId}
+          onClose={() => setPaymentLinkDraft(null)}
+          onLinkSent={() => {
+            setPaymentLinkDraft(null);
+            closeForm();
+            onRegisterMutationComplete?.();
+            toast("Payment link sent — the sale shows as Awaiting payment until Paystack confirms.");
+          }}
+        />
+      ) : null}
+
       {recordPaymentEntry ? (
         <RecordProductSalePaymentDialog
           incomeId={recordPaymentEntry.id}
@@ -857,6 +1102,16 @@ export default function ProductSales({
             outstanding_balance: recordPaymentEntry.outstanding_balance,
           })}
           paymentMethods={initialPaymentMethods}
+          defaultEmail={
+            initialClients.find(
+              (client) => client.client_id === recordPaymentEntry.client_id,
+            )?.email ?? ""
+          }
+          defaultPhone={
+            initialClients.find(
+              (client) => client.client_id === recordPaymentEntry.client_id,
+            )?.phone ?? ""
+          }
           onClose={() => setRecordPaymentEntry(null)}
           onSuccess={() => {
             setRecordingPaymentId(recordPaymentEntry.id);
@@ -919,7 +1174,19 @@ export default function ProductSales({
                 </label>
                 <select
                   value={form.client_id}
-                  onChange={(e) => updateField("client_id", e.target.value)}
+                  onChange={(e) => {
+                    const clientId = e.target.value;
+                    const client = initialClients.find(
+                      (item) => item.client_id === clientId,
+                    );
+                    updateField("client_id", clientId);
+                    if (client && !payerEmail) {
+                      setPayerEmail(client.email ?? "");
+                    }
+                    if (client && !payerPhone) {
+                      setPayerPhone(client.phone ?? "");
+                    }
+                  }}
                   className={inputClassName}
                 >
                   <option value="">Select contract client</option>
@@ -1019,7 +1286,14 @@ export default function ProductSales({
                   step="0.01"
                   required
                   value={form.amount_received}
-                  onChange={(e) => updateField("amount_received", e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    updateField("amount_received", next);
+                    if (!(Number(next) > 0)) {
+                      updateField("payment_method", "");
+                      setCollectionMode("received");
+                    }
+                  }}
                   className={inputClassName}
                 />
                 <p className="mt-1 text-xs text-slate-500">
@@ -1027,6 +1301,35 @@ export default function ProductSales({
                   full total to mark paid.
                 </p>
               </div>
+              {Number(form.amount_received) > 0 ? (
+              <div>
+                <label
+                  htmlFor="manual_sale_payment_method"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  Payment method
+                </label>
+                <select
+                  id="manual_sale_payment_method"
+                  value={form.payment_method}
+                  onChange={(e) => {
+                    e.target.setCustomValidity("");
+                    updateField("payment_method", e.target.value);
+                    if (!isPaystackCollectMethod(e.target.value)) {
+                      setCollectionMode("received");
+                    }
+                  }}
+                  className={inputClassName}
+                >
+                  <option value="">Choose how the customer paid</option>
+                  {MANUAL_SALE_PAYMENT_METHODS.map((method) => (
+                    <option key={method} value={method}>
+                      {method}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Payment Status
@@ -1089,7 +1392,42 @@ export default function ProductSales({
               ) : null}
             </p>
 
-            <div className="flex gap-3">
+            <ManualSaleCollectionFields
+              method={form.payment_method}
+              amount={Number(form.amount_received) || 0}
+              mode={collectionMode}
+              onMode={setCollectionMode}
+              reference={transactionReference}
+              onReference={setTransactionReference}
+              email={payerEmail}
+              onEmail={setPayerEmail}
+              phone={payerPhone}
+              onPhone={setPayerPhone}
+            />
+
+            <div className="flex flex-wrap gap-3">
+              {Number(form.amount_received) > 0 &&
+              isPaystackCollectMethod(form.payment_method) &&
+              collectionMode === "paystack" ? (
+                <>
+                  <DashboardButton
+                    type="button"
+                    variant="success"
+                    disabled={loading}
+                    onClick={() => void payNowWithPaystack()}
+                  >
+                    {loading ? "Opening Paystack…" : "Pay now"}
+                  </DashboardButton>
+                  <DashboardButton
+                    type="button"
+                    variant="secondary"
+                    disabled={loading}
+                    onClick={() => void openPaymentLink()}
+                  >
+                    Send payment link
+                  </DashboardButton>
+                </>
+              ) : (
               <DashboardButton
                 type="submit"
                 variant="success"
@@ -1097,6 +1435,7 @@ export default function ProductSales({
               >
                 {loading ? "Saving…" : "Save Sale"}
               </DashboardButton>
+              )}
               <DashboardButton
                 type="button"
                 variant="secondary"
@@ -1273,11 +1612,28 @@ export default function ProductSales({
                     <td className="px-4 py-3 text-sm text-slate-400">—</td>
                   ) : (
                     <RegisterRowActions
-                      onPrint={() =>
-                        setReceipt(
-                          buildProductSaleReceiptData(entry, initialClients),
-                        )
-                      }
+                      onPrint={() => {
+                        void (async () => {
+                          const { data, error } = await supabase
+                            .from("product_sale_payments")
+                            .select(PRODUCT_SALE_PAYMENT_SELECT)
+                            .eq("income_id", entry.id)
+                            .order("payment_date", { ascending: true });
+                          if (error) {
+                            await alertError(clientFacingSalesCrmError(error.message), {
+                              title: "Couldn't print the receipt",
+                            });
+                            return;
+                          }
+                          setReceipt(
+                            withReceiptPaymentLines(
+                              buildProductSaleReceiptData(entry, initialClients),
+                              listedPaymentsFromRows(data ?? []),
+                              entry.notes,
+                            ),
+                          );
+                        })();
+                      }}
                       onRecordPayment={
                         canRecordPayment
                           ? () => setRecordPaymentEntry(entry)

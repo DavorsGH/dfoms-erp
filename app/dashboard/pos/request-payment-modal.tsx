@@ -32,6 +32,10 @@ type CartModeProps = {
   onClose: () => void;
   /** Called after a payment link is created successfully (clear cart, etc.). */
   onLinkSent?: () => void;
+  /** Charge defaultAmountGhs and create a manual PSI sale after Paystack confirms. */
+  manualSale?: boolean;
+  salesRepId?: string | null;
+  businessUnitId?: string | null;
 };
 
 type InvoiceModeProps = {
@@ -170,6 +174,13 @@ export default function RequestPaymentModal(props: RequestPaymentModalProps) {
             send_email: sendEmail,
             send_sms: sendSms,
             payment_method: paymentMethod,
+            ...(props.manualSale
+              ? {
+                  manual_sale: true,
+                  sales_rep_id: props.salesRepId ?? null,
+                  business_unit_id: props.businessUnitId ?? null,
+                }
+              : {}),
           }
         : {
             invoice_no: invoiceNo,

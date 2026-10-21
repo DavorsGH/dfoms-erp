@@ -308,7 +308,7 @@ export async function buildPayrollWorkspaceSnapshot(input: {
     ),
     supabase
       .from("attendance_register")
-      .select("staff_id, date, attendance_status")
+      .select("staff_id, date, attendance_status, exception_status")
       .gte("date", attendanceStart)
       .lte("date", attendanceEnd),
     supabase

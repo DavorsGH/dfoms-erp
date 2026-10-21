@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
-import { POS_SECTION_ROLES } from "@/utils/rbac-access";
+import { PRODUCT_SALE_PAYSTACK_ROLES } from "@/utils/rbac-access";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
@@ -40,7 +40,7 @@ type MomoInitializeBody = {
 };
 
 export async function POST(request: Request) {
-  const auth = await requireTenantRoleIn(POS_SECTION_ROLES);
+  const auth = await requireTenantRoleIn(PRODUCT_SALE_PAYSTACK_ROLES);
   if (!auth.ok) {
     return auth.response;
   }

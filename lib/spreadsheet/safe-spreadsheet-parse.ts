@@ -31,6 +31,7 @@ import {
   validateSpreadsheetUpload,
 
 } from "@/lib/spreadsheet/spreadsheet-upload-validation";
+import { keepScientificBarcodeCellsAsText } from "@/lib/spreadsheet/excel-scientific-barcode-cells";
 
 
 
@@ -172,6 +173,9 @@ export function parseSpreadsheetSheetRows(
 
 
   const sheet = workbook.Sheets[sheetName];
+  if (sheet) {
+    keepScientificBarcodeCellsAsText(sheet);
+  }
 
   let rows: unknown[][];
 
@@ -335,6 +339,8 @@ function sheetMatrixFromWorkbookClient(
     throw spreadsheetNoWorksheetsError();
 
   }
+
+  keepScientificBarcodeCellsAsText(sheet);
 
 
 

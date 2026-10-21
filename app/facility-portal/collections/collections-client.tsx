@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryTab } from "@/hooks/use-query-tab";
 import { useRouter } from "next/navigation";
 import { formatRentMoney } from "@/app/dashboard/real-estate/rent-ledger-utils";
 import type {
@@ -40,7 +41,10 @@ export default function FacilityCollectionsClient({
   canCollectCharges,
 }: FacilityCollectionsClientProps) {
   const router = useRouter();
-  const [tab, setTab] = useState<TabId>("outstanding");
+  const { tab, setTab } = useQueryTab<TabId>({
+    values: ["outstanding", "history"],
+    defaultTab: "outstanding",
+  });
   const [selectedEntryId, setSelectedEntryId] = useState(
     outstanding.find((r) => !r.hasPendingCollection)?.entryId ?? "",
   );

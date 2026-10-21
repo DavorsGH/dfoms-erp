@@ -10,7 +10,7 @@ import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-b
 import type { HrEmployee } from "../../hr-payroll/employee-utils";
 import OperationsShell from "../operations-shell";
 import IncidentRegister from "../incident-register";
-import type { ClientEntry } from "../clients-utils";
+import type { RosterContractProject } from "@/lib/roster-contract-choices";
 import {
   INCIDENT_REGISTER_SELECT,
   type IncidentRegisterEntry,
@@ -33,7 +33,7 @@ export default async function IncidentRegisterPage() {
 
   const [
     { data: entries, error: entriesError },
-    { data: clients, error: clientsError },
+    { data: projects, error: projectsError },
     { data: sites, error: sitesError },
     scopedEmployees,
   ] = await Promise.all([
@@ -42,12 +42,16 @@ export default async function IncidentRegisterPage() {
       .select(INCIDENT_REGISTER_SELECT)
       .order("date", { ascending: false }),
     supabase
-      .from("customers")
-      .select("client_id, client_name")
-      .order("client_name", { ascending: true }),
+      .from("projects")
+      .select(
+        "project_code, project_name, service_contract_id, contract_type, is_archived",
+      )
+      .order("project_name", { ascending: true }),
     supabase
       .from("sites")
-      .select("site_code, site_name, client_id")
+      .select(
+        "site_code, site_name, client_id, project:projects!sites_project_id_fkey(project_code)",
+      )
       .order("site_name", { ascending: true }),
     tenantId
       ? fetchScopedActiveEmployees(supabase, tenantId, buScope)
@@ -60,7 +64,7 @@ export default async function IncidentRegisterPage() {
   const fetchError =
     scopedEmployees.error ??
     entriesError?.message ??
-    clientsError?.message ??
+    projectsError?.message ??
     sitesError?.message ??
     null;
 
@@ -68,7 +72,7 @@ export default async function IncidentRegisterPage() {
     <OperationsShell sectionTitle="Incident Register">
       <IncidentRegister
         initialEntries={(entries as IncidentRegisterEntry[] | null) ?? []}
-        initialClients={(clients as ClientEntry[] | null) ?? []}
+        initialProjects={(projects as RosterContractProject[] | null) ?? []}
         initialSites={(sites as SiteEntry[] | null) ?? []}
         initialEmployees={scopedEmployees.employees}
         fetchError={fetchError}

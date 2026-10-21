@@ -149,6 +149,93 @@ export const CRM_SALES_REP_ALLOWED_PATH_PREFIXES: readonly string[] = [
   "/dashboard/crm/credit-notes",
 ];
 
+export const DEVICES_HUB_ROLES: readonly AppRole[] = [
+  "super_admin",
+  "director",
+  "hr",
+  "operations_manager",
+  "finance_admin",
+];
+
+/** Add, edit, disable devices, PIN mapping, and device settings. */
+export const ATTENDANCE_DEVICE_WRITE_ROLES: readonly AppRole[] = [
+  "super_admin",
+  "director",
+  "hr",
+  "operations_manager",
+];
+
+/** Delete a device and manage attendance API keys. */
+export const ATTENDANCE_DEVICE_ADMIN_ROLES: readonly AppRole[] = [
+  "super_admin",
+  "director",
+];
+
+/** Payment accounts and leave-approver changes. finance_admin and hr stay out. */
+export const PAYMENT_AND_LEAVE_APPROVER_ROLES: readonly AppRole[] = [
+  "super_admin",
+  "director",
+];
+
+/** Actions that write attendance_register (set clock-out). */
+export const ATTENDANCE_REGISTER_ACTION_ROLES: readonly AppRole[] = [
+  "super_admin",
+  "director",
+  "hr",
+];
+
+/** Record a full day, half day, or absent decision on a late or early-leave row. */
+export const ATTENDANCE_EXCEPTION_DECIDE_ROLES: readonly AppRole[] = [
+  "super_admin",
+  "director",
+  "hr",
+];
+
+/** Open the attendance exceptions list. Operations manager can view only. */
+export const ATTENDANCE_EXCEPTION_VIEW_ROLES: readonly AppRole[] = [
+  "super_admin",
+  "director",
+  "hr",
+  "operations_manager",
+  "finance_admin",
+];
+
+export function canAccessDevicesHub(role: AppRole | null): boolean {
+  return roleIn(role, DEVICES_HUB_ROLES);
+}
+
+export function canWriteAttendanceDevices(role: string | null | undefined): boolean {
+  return (ATTENDANCE_DEVICE_WRITE_ROLES as readonly string[]).includes(role ?? "");
+}
+
+export function canAdministerAttendanceDevices(
+  role: string | null | undefined,
+): boolean {
+  return (ATTENDANCE_DEVICE_ADMIN_ROLES as readonly string[]).includes(role ?? "");
+}
+
+export function canSetAttendanceClockOut(role: string | null | undefined): boolean {
+  return (ATTENDANCE_REGISTER_ACTION_ROLES as readonly string[]).includes(
+    role ?? "",
+  );
+}
+
+export function canDecideAttendanceException(
+  role: string | null | undefined,
+): boolean {
+  return (ATTENDANCE_EXCEPTION_DECIDE_ROLES as readonly string[]).includes(
+    role ?? "",
+  );
+}
+
+export function canViewAttendanceExceptions(
+  role: string | null | undefined,
+): boolean {
+  return (ATTENDANCE_EXCEPTION_VIEW_ROLES as readonly string[]).includes(
+    role ?? "",
+  );
+}
+
 export const POS_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
@@ -157,6 +244,30 @@ export const POS_SECTION_ROLES: readonly AppRole[] = [
   "director",
   "sales_rep",
 ];
+
+/** POS Paystack routes also serve manual-sale collection (includes operations managers). */
+export const PRODUCT_SALE_PAYSTACK_ROLES: readonly AppRole[] = [
+  ...POS_SECTION_ROLES,
+  "operations_manager",
+];
+
+/**
+ * Resolve a charged Paystack payment that was not recorded as a sale.
+ * operations_manager may collect, and may not resolve these rows.
+ */
+export const PAYSTACK_ATTENTION_RESOLVE_ROLES: readonly AppRole[] = [
+  "super_admin",
+  "director",
+  "finance_admin",
+];
+
+export function canResolvePaystackAttention(
+  role: string | null | undefined,
+): boolean {
+  return (PAYSTACK_ATTENTION_RESOLVE_ROLES as readonly string[]).includes(
+    role ?? "",
+  );
+}
 
 /** Credit Notes register (Finance tab + Sales & CRM tab — same page). */
 export const CREDIT_NOTES_PAGE_ROLES: readonly AppRole[] = [
@@ -446,6 +557,18 @@ export function canAdjustInventoryStock(role: AppRole | null): boolean {
   return roleIn(role, INVENTORY_EDIT_ROLES);
 }
 
+/** Set a missing finished-product opening cost. Finance can do this; stock adjustments stay with inventory editors. */
+export const FINISHED_PRODUCT_OPENING_COST_ROLES: readonly AppRole[] = [
+  "super_admin",
+  "director",
+  "finance",
+  "finance_admin",
+];
+
+export function canSetFinishedProductOpeningCost(role: AppRole | null): boolean {
+  return roleIn(role, FINISHED_PRODUCT_OPENING_COST_ROLES);
+}
+
 export function canConfigureInventoryGoLive(role: AppRole | null): boolean {
   return roleIn(role, INVENTORY_GO_LIVE_ROLES);
 }
@@ -566,9 +689,39 @@ export function getSidebarNavItems(
     items.push({ label: "Directors", href: "/dashboard/directors" });
   }
 
-  if (role === "super_admin") {
+  if (canAccessDevicesHub(role)) {
+    items.push({ label: "Scanners & Devices", href: "/dashboard/devices" });
+  }
+
+  if (role === "super_admin" || role === "director") {
     items.push({ label: "Administration", href: "/dashboard/administration" });
   }
 
   return items;
+}
+
+/** Approvers who cannot open HR still need the Leave / Attendance Approvals links. */
+export function withApproverInboxNav(
+  items: SidebarNavItem[],
+  options: {
+    showLeaveApprovals?: boolean;
+    showAttendanceApprovals?: boolean;
+  },
+): SidebarNavItem[] {
+  if (!options.showLeaveApprovals && !options.showAttendanceApprovals) {
+    return items;
+  }
+  if (items.some((item) => item.href === "/dashboard/hr-payroll")) {
+    return items;
+  }
+
+  const next = [...items];
+  const selfServiceIndex = next.findIndex(
+    (item) => item.href === "/dashboard/self-service",
+  );
+  next.splice(selfServiceIndex >= 0 ? selfServiceIndex : next.length, 0, {
+    label: "HR Management",
+    href: "/dashboard/hr-payroll",
+  });
+  return next;
 }

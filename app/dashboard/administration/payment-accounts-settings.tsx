@@ -1,7 +1,8 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
-import { useMemo, useState } from "react";
+import { useAlert, useToast } from "@/components/feedback";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import PaymentAccountFormFields from "@/components/payment-account-form-fields";
 import type { BusinessUnitRow } from "@/utils/business-units-types";
@@ -52,14 +53,20 @@ export default function PaymentAccountsSettings({
   fetchError,
 }: PaymentAccountsSettingsProps) {
   const router = useRouter();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
   const [accounts, setAccounts] = useState(initialAccounts);
   const [formOpen, setFormOpen] = useState<"new" | string | null>(null);
   const [form, setForm] = useState<FormState>(() => emptyPaymentAccountForm());
-  const [error, setError] = useState<string | null>(fetchError);
   const [warning, setWarning] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError);
+    }
+  }, [alertError, fetchError]);
 
   const unitNameById = useMemo(
     () => new Map(businessUnits.map((unit) => [unit.id, unit.name])),
@@ -77,17 +84,13 @@ export default function PaymentAccountsSettings({
   function openCreateForm() {
     setForm(emptyPaymentAccountForm());
     setFormOpen("new");
-    setError(null);
     setWarning(null);
-    setSuccess(null);
   }
 
   function openEditForm(account: PaymentAccountRow) {
     setForm(paymentAccountToForm(account));
     setFormOpen(account.id);
-    setError(null);
     setWarning(null);
-    setSuccess(null);
   }
 
   function closeForm() {
@@ -103,24 +106,21 @@ export default function PaymentAccountsSettings({
       | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to refresh payment accounts.");
+      await alertError(payload?.error ?? "Unable to refresh payment accounts.");
       return;
     }
 
     setAccounts(payload?.payment_accounts ?? []);
-    setError(null);
   }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setSaving(true);
-    setError(null);
-    setSuccess(null);
 
     const validationError = validatePaymentAccountInput(form);
     if (validationError) {
-      setError(validationError);
       setSaving(false);
+      await alertError(validationError);
       return;
     }
 
@@ -152,8 +152,8 @@ export default function PaymentAccountsSettings({
       | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to save payment account.");
       setSaving(false);
+      await alertError(payload?.error ?? "Unable to save payment account.");
       return;
     }
 
@@ -175,9 +175,7 @@ export default function PaymentAccountsSettings({
       await refreshAccounts();
     }
 
-    setSuccess(
-      isEditing ? "Payment account updated." : "Payment account created.",
-    );
+    toast(isEditing ? "Payment account updated." : "Payment account created.");
     closeForm();
     setSaving(false);
     router.refresh();
@@ -195,8 +193,6 @@ export default function PaymentAccountsSettings({
     }
 
     setDeletingId(account.id);
-    setError(null);
-    setSuccess(null);
 
     const response = await fetch("/api/payment-accounts", {
       method: "DELETE",
@@ -209,8 +205,8 @@ export default function PaymentAccountsSettings({
       | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to delete payment account.");
       setDeletingId(null);
+      await alertError(payload?.error ?? "Unable to delete payment account.");
       return;
     }
 
@@ -220,25 +216,13 @@ export default function PaymentAccountsSettings({
       closeForm();
     }
 
-    setSuccess("Payment account deleted.");
+    toast("Payment account deleted.");
     setDeletingId(null);
     router.refresh();
   }
 
   return (
     <div className="space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
-      {success ? (
-        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          {success}
-        </p>
-      ) : null}
-
       <section className={cardClassName}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>

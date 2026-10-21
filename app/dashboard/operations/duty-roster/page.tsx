@@ -41,6 +41,7 @@ import {
   normalizeRosterRotationMetadataRecord,
   type RosterRotationMetadataRecord,
 } from "../roster-rotation-metadata-utils";
+import type { ShiftTimeRecord } from "@/lib/shift-attendance";
 
 export default async function DutyRosterPage() {
   const cookieStore = await cookies();
@@ -64,6 +65,7 @@ export default async function DutyRosterPage() {
     { data: sites, error: sitesError },
     { data: history, error: historyError },
     { data: metadataRows, error: metadataError },
+    { data: shiftRows, error: shiftError },
     preparedByName,
     authorizedSignersResult,
   ] = await Promise.all([
@@ -94,6 +96,11 @@ export default async function DutyRosterPage() {
       supabase.from("roster_rotation_metadata").select(ROSTER_ROTATION_METADATA_SELECT),
       buScope,
     ),
+    supabase
+      .from("contract_shift_times")
+      .select(
+        "client_id, shift, day_type, start_time, end_time, late_grace_minutes, early_leave_grace_minutes",
+      ),
     getCurrentUserFullName(),
     tenantId
       ? loadAuthorizedSignerOptions(supabase, tenantId)
@@ -113,6 +120,7 @@ export default async function DutyRosterPage() {
     sitesError?.message ??
     historyError?.message ??
     metadataError?.message ??
+    shiftError?.message ??
     authorizedSignersResult.error ??
     null;
 
@@ -137,6 +145,7 @@ export default async function DutyRosterPage() {
           ) ?? []
         }
         initialHistory={(history as RosterHistoryRecord[] | null) ?? []}
+        initialShiftTimes={(shiftRows as ShiftTimeRecord[] | null) ?? []}
         initialRotationMetadata={rotationMetadata}
         initialAuthorizedSigners={authorizedSignersResult.signers}
         fetchError={fetchError}

@@ -1,6 +1,8 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
+import { useToast } from "@/components/feedback/feedback-context";
+import { listRosterContractChoices } from "@/lib/roster-contract-choices";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -26,8 +28,12 @@ import {
   buildClientAssignmentProjectCodes,
   buildDutyRosterViewModel,
   filterHistoryForClient,
+  formatAttendanceMode,
   formatDutyRosterEffectiveLabel,
   getUnassignedRosterSites,
+  listContractShiftTimeLines,
+  listStandingContractStaff,
+  listUnassignedRosterEmployees,
   resolveDutyRosterBusinessUnitId,
   type DutyRosterEmployee,
   type DutyRosterProject,
@@ -60,6 +66,16 @@ import {
   type DutyRosterPdfPayload,
 } from "./duty-roster-document-utils";
 import DutyRosterPdfDocument from "./duty-roster-pdf-document";
+import RotationPlanPanel from "./rotation-plan-panel";
+import UnassignedStaffPanel from "./unassigned-staff-panel";
+import {
+  listRotationPlanEmployees,
+  listRotationPlanSites,
+  rotationPlanIsDirty,
+} from "./rotation-plan";
+import { useRosterContractSelection } from "./use-roster-contract-selection";
+import type { ShiftTimeRecord } from "@/lib/shift-attendance";
+import DutyRosterShiftHeaderLines from "./duty-roster-shift-header";
 
 type DutyRosterProps = {
   initialClients: ClientEntry[];
@@ -68,6 +84,7 @@ type DutyRosterProps = {
   initialProjects: DutyRosterProject[];
   initialSites: DutyRosterSite[];
   initialHistory: RosterHistoryRecord[];
+  initialShiftTimes: ShiftTimeRecord[];
   initialRotationMetadata: RosterRotationMetadataRecord[];
   initialAuthorizedSigners: ClientInvoiceAuthorizedSignerOption[];
   fetchError: string | null;
@@ -81,6 +98,105 @@ function formatTodayLabel(): string {
     month: "long",
     year: "numeric",
   });
+}
+
+function StandingContractStaff({
+  contractLabel,
+  groupKey,
+  employees,
+  projects,
+  sites,
+  clientId,
+  shiftTimes,
+}: {
+  contractLabel: string;
+  groupKey: string;
+  employees: DutyRosterEmployee[];
+  projects: DutyRosterProject[];
+  sites: DutyRosterSite[];
+  clientId: string;
+  shiftTimes: ShiftTimeRecord[];
+}) {
+  const staff = listStandingContractStaff({ groupKey, employees, projects });
+  const timeLines = listContractShiftTimeLines(clientId, shiftTimes);
+  const siteName = new Map(sites.map((site) => [site.site_code, site.site_name]));
+
+  return (
+    <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-[#0f2744]">{contractLabel}</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            This contract doesn&apos;t rotate staff between sites.
+          </p>
+        </div>
+        <Link
+          href="/dashboard/administration/roster-settings"
+          className="rounded-md border border-[#0f2744] px-3 py-2 text-sm font-medium text-[#0f2744] hover:bg-slate-50"
+        >
+          Set up rotation
+        </Link>
+      </div>
+
+      {timeLines.length > 0 ? (
+        <div className="space-y-1 text-sm text-slate-700">
+          {timeLines.map((line) => (
+            <p key={line.primary}>
+              {line.primary}
+              {line.weekend ? (
+                <span className="mt-0.5 block text-slate-500">{line.weekend}</span>
+              ) : null}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-slate-500">
+          No shift times are saved for this contract yet.
+        </p>
+      )}
+
+      <ScrollableTable>
+        <table className={scrollableTableClassName}>
+          <thead className={scrollableTableHeadClassName}>
+            <tr>
+              <th className={scrollableTableThClassName}>Staff ID</th>
+              <th className={scrollableTableThClassName}>Name</th>
+              <th className={scrollableTableThClassName}>Position</th>
+              <th className={scrollableTableThClassName}>Shift</th>
+              <th className={scrollableTableThClassName}>Site</th>
+              <th className={scrollableTableThClassName}>Attendance mode</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200">
+            {staff.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">
+                  No active staff are assigned to this contract.
+                </td>
+              </tr>
+            ) : (
+              staff.map((employee) => (
+                <tr key={employee.employee_id}>
+                  <td className="px-4 py-3">{employee.staff_id}</td>
+                  <td className="px-4 py-3">{employee.full_name}</td>
+                  <td className="px-4 py-3">{employee.position?.trim() || "—"}</td>
+                  <td className="px-4 py-3">{employee.shift?.trim() || "—"}</td>
+                  <td className="px-4 py-3">
+                    {employee.assigned_site_id
+                      ? siteName.get(employee.assigned_site_id) || employee.assigned_site_id
+                      : "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    {formatAttendanceMode(employee.remote_attendance_allowed)}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </ScrollableTable>
+    </section>
+  );
 }
 
 function formatShortDate(value: string): string {
@@ -100,7 +216,7 @@ function renderRosterRows(rows: DutyRosterViewModel["rows"]) {
           colSpan={6}
           className="px-4 py-8 text-center text-sm text-slate-500"
         >
-          No active employees are assigned to this customer&apos;s facilities yet.
+          No active employees are assigned to this contract&apos;s facilities yet.
         </td>
       </tr>
     );
@@ -201,6 +317,7 @@ export default function DutyRoster({
   initialProjects,
   initialSites,
   initialHistory,
+  initialShiftTimes,
   initialRotationMetadata,
   initialAuthorizedSigners,
   fetchError,
@@ -208,11 +325,29 @@ export default function DutyRoster({
   canStartRotation,
 }: DutyRosterProps) {
   const operationsReadOnly = useOperationsReadOnly();
+  const { toast } = useToast();
   const router = useRouter();
   const branding = useTenantBranding();
   const { units } = useBusinessUnitView();
   const { signatureImageUrl } = branding;
-  const [selectedClientId, setSelectedClientId] = useState("");
+  const contractChoices = useMemo(
+    () =>
+      listRosterContractChoices({
+        projects: initialProjects,
+        sites: initialSites.map((site) => ({
+          client_id: site.client_id,
+          project_code: site.project?.project_code ?? null,
+        })),
+        employees: initialEmployees,
+      }),
+    [initialProjects, initialSites, initialEmployees],
+  );
+  const {
+    groupKey: selectedContractKey,
+    selected: selectedContract,
+    selectContract,
+  } = useRosterContractSelection(contractChoices);
+  const selectedClientId = selectedContract?.clientId ?? "";
   const [selectedRotationNumber, setSelectedRotationNumber] = useState<
     number | null
   >(null);
@@ -229,6 +364,9 @@ export default function DutyRoster({
   );
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [nextSiteByEmployee, setNextSiteByEmployee] = useState<
+    Record<string, string>
+  >({});
 
   const selectedClient = useMemo(
     () =>
@@ -260,21 +398,24 @@ export default function DutyRoster({
 
     return buildDutyRosterViewModel({
       clientId: selectedClient.client_id,
-      clientName: selectedClient.client_name,
+      clientName: selectedContract?.label ?? selectedClient.client_name,
       config: selectedConfig,
       employees: initialEmployees,
       projects: initialProjects,
       sites: initialSites,
       history: initialHistory,
       viewRotationNumber: selectedRotationNumber,
+      shiftTimes: initialShiftTimes,
     });
   }, [
     selectedClient,
+    selectedContract,
     selectedConfig,
     initialEmployees,
     initialProjects,
     initialSites,
     initialHistory,
+    initialShiftTimes,
     selectedRotationNumber,
   ]);
 
@@ -419,8 +560,80 @@ export default function DutyRoster({
     };
   }, [resolvedSignatureImageUrl, isRotationApprovedState]);
 
-  function handleClientChange(clientId: string) {
-    setSelectedClientId(clientId);
+  const planSites = useMemo(
+    () =>
+      selectedClientId
+        ? listRotationPlanSites(selectedClientId, initialSites, initialProjects)
+        : [],
+    [selectedClientId, initialSites, initialProjects],
+  );
+  const unassignedEmployees = useMemo(
+    () =>
+      selectedClientId
+        ? listUnassignedRosterEmployees({
+            clientId: selectedClientId,
+            employees: initialEmployees,
+            projects: initialProjects,
+            sites: initialSites,
+          })
+        : [],
+    [selectedClientId, initialEmployees, initialProjects, initialSites],
+  );
+  const planEmployees = useMemo(
+    () =>
+      selectedClientId
+        ? listRotationPlanEmployees({
+            clientId: selectedClientId,
+            employees: initialEmployees,
+            projects: initialProjects,
+            sites: initialSites,
+          })
+        : [],
+    [selectedClientId, initialEmployees, initialProjects, initialSites],
+  );
+  const planDirty = rotationPlanIsDirty(planEmployees, nextSiteByEmployee);
+  const showRotationPlanner = Boolean(
+    canStartRotation &&
+      data &&
+      !data.isHistoricalView &&
+      !isRotationApprovedState,
+  );
+
+  useEffect(() => {
+    setNextSiteByEmployee(
+      Object.fromEntries(
+        planEmployees.map((employee) => [
+          employee.employeeId,
+          employee.currentSiteCode ?? "",
+        ]),
+      ),
+    );
+  }, [planEmployees]);
+
+  useEffect(() => {
+    if (!planDirty) {
+      return;
+    }
+    const warnBeforeLeave = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeave);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeave);
+  }, [planDirty]);
+
+  async function handleClientChange(contractKey: string) {
+    if (planDirty) {
+      const leave = await confirmDialog({
+        message: "Leave this rotation plan?",
+        detail: "The next-site choices have not been started yet and will be discarded.",
+      });
+      if (!leave) {
+        return;
+      }
+    }
+    setNextSiteByEmployee({});
+    selectContract(contractKey);
     setSelectedRotationNumber(null);
   }
 
@@ -543,7 +756,13 @@ export default function DutyRoster({
       const response = await fetch("/api/operations/start-rotation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ client_id: selectedClientId }),
+        body: JSON.stringify({
+          client_id: selectedClientId,
+          assignments: planEmployees.map((employee) => ({
+            employee_id: employee.employeeId,
+            next_site_code: nextSiteByEmployee[employee.employeeId] ?? "",
+          })),
+        }),
       });
       const payload = (await response.json()) as {
         error?: string;
@@ -556,10 +775,11 @@ export default function DutyRoster({
         return;
       }
 
-      setActionMessage(
+      const started =
         payload.message ??
-          `Rotation started. ${payload.insertedCount ?? 0} change(s) recorded.`,
-      );
+        `Rotation started. ${payload.insertedCount ?? 0} change(s) recorded.`;
+      setActionMessage(started);
+      toast("Rotation started");
       router.refresh();
     } catch {
       setActionError("Failed to start new rotation.");
@@ -612,6 +832,7 @@ export default function DutyRoster({
       }
 
       setActionMessage(payload.message ?? "Duty roster approved.");
+      toast("Roster approved");
       router.refresh();
     } catch {
       setActionError("Failed to approve duty roster.");
@@ -711,17 +932,17 @@ export default function DutyRoster({
         <div className="flex flex-wrap items-end gap-4">
           <div className="min-w-[240px]">
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Customer
+              Contract
             </label>
               <select
-              value={selectedClientId}
+              value={selectedContractKey}
               onChange={(event) => handleClientChange(event.target.value)}
               className={inputClassName}
             >
-              <option value="">Select customer</option>
-              {initialClients.map((client) => (
-                <option key={client.client_id} value={client.client_id}>
-                  {client.client_name}
+              <option value="">Select contract</option>
+              {contractChoices.map((choice) => (
+                <option key={choice.groupKey} value={choice.groupKey}>
+                  {choice.label}
                 </option>
               ))}
             </select>
@@ -730,18 +951,28 @@ export default function DutyRoster({
 
         <UnassignedSitesNotice sites={unassignedSites} />
 
-        {!selectedClientId ? (
-          <p className="rounded-md border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
-            Select a customer to view their roster.
+        {selectedContract?.dataIssue ? (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {selectedContract.dataIssue}
           </p>
         ) : null}
 
-        {selectedClientId && !selectedConfig ? (
-          <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            No roster configuration exists for {selectedClient?.client_name}.
-            Add shift pattern and cycle settings in Administration &gt; Roster
-            Settings before viewing this customer&apos;s roster.
+        {!selectedContractKey ? (
+          <p className="rounded-md border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+            Select a contract to view its roster.
           </p>
+        ) : null}
+
+        {selectedClientId && !selectedConfig && !selectedContract?.dataIssue ? (
+          <StandingContractStaff
+            contractLabel={selectedContract?.label ?? "This contract"}
+            groupKey={selectedContractKey}
+            employees={initialEmployees}
+            projects={initialProjects}
+            sites={initialSites}
+            clientId={selectedClientId}
+            shiftTimes={initialShiftTimes}
+          />
         ) : null}
 
         {data ? (
@@ -867,6 +1098,24 @@ export default function DutyRoster({
               </div>
             </section>
 
+            {canStartRotation && selectedClientId && data && !data.isHistoricalView ? (
+              <UnassignedStaffPanel
+                clientId={selectedClientId}
+                employees={unassignedEmployees}
+                sites={planSites}
+                onAssigned={() => router.refresh()}
+              />
+            ) : null}
+
+            {showRotationPlanner ? (
+              <RotationPlanPanel
+                employees={planEmployees}
+                sites={planSites}
+                nextSiteByEmployee={nextSiteByEmployee}
+                onChange={setNextSiteByEmployee}
+              />
+            ) : null}
+
             <div className="flex flex-wrap items-center gap-3">
               {canStartRotation && !data.isHistoricalView ? (
               <button
@@ -908,21 +1157,15 @@ export default function DutyRoster({
                     <th className={scrollableTableThClassName}>Facility</th>
                     <th className={scrollableTableThClassName}>
                       Morning Shift
-                      <span className="mt-1 block text-xs font-normal text-slate-500">
-                        {data.summary.morningTime}
-                      </span>
+                      <DutyRosterShiftHeaderLines header={data.summary.morningTime} />
                     </th>
                     <th className={scrollableTableThClassName}>
                       Afternoon Shift
-                      <span className="mt-1 block text-xs font-normal text-slate-500">
-                        {data.summary.afternoonTime}
-                      </span>
+                      <DutyRosterShiftHeaderLines header={data.summary.afternoonTime} />
                     </th>
                     <th className={scrollableTableThClassName}>
                       Supervisor(s)
-                      <span className="mt-1 block text-xs font-normal text-slate-500">
-                        {data.summary.supervisorTime}
-                      </span>
+                      <DutyRosterShiftHeaderLines header={data.summary.supervisorTime} />
                     </th>
                     <th className={scrollableTableThClassName}>Required Staff</th>
                     <th className={scrollableTableThClassName}>Actual Staff</th>
@@ -1081,20 +1324,29 @@ export default function DutyRoster({
                 </th>
                 <th className="border border-slate-400 px-2 py-2 text-left">
                   Morning Shift
-                  <div className="font-normal text-slate-600">
-                    {data.summary.morningTime}
+                  <div>
+                    <DutyRosterShiftHeaderLines
+                      header={data.summary.morningTime}
+                      variant="print"
+                    />
                   </div>
                 </th>
                 <th className="border border-slate-400 px-2 py-2 text-left">
                   Afternoon Shift
-                  <div className="font-normal text-slate-600">
-                    {data.summary.afternoonTime}
+                  <div>
+                    <DutyRosterShiftHeaderLines
+                      header={data.summary.afternoonTime}
+                      variant="print"
+                    />
                   </div>
                 </th>
                 <th className="border border-slate-400 px-2 py-2 text-left">
                   Supervisor(s)
-                  <div className="font-normal text-slate-600">
-                    {data.summary.supervisorTime}
+                  <div>
+                    <DutyRosterShiftHeaderLines
+                      header={data.summary.supervisorTime}
+                      variant="print"
+                    />
                   </div>
                 </th>
                 <th className="border border-slate-400 px-2 py-2 text-right">

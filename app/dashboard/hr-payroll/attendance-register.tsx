@@ -1,8 +1,9 @@
 "use client";
 
 import Tooltip from "@/components/ui/tooltip";
+import TimePickerField from "@/components/time-picker-field";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import RegisterRowActions, {
   confirmDeleteEntry,
@@ -42,6 +43,15 @@ import { enqueueWriteQueueItem } from "@/lib/offline-write-queue/store";
 import type { AttendanceQueuePayload } from "@/lib/offline-write-queue/types";
 import { resolveClientCacheSession } from "@/lib/client-cache/session-context";
 import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import { useAlert, useToast } from "@/components/feedback/feedback-context";
+import { ATTENDANCE_CHANGED_EVENT, notifyAttendanceChanged } from "@/lib/attendance-changed";
+import {
+  decisionRequiredForStatusEdit,
+  decisionSavedToast,
+  exceptionDecisionLabel,
+  type AttendanceExceptionDecision,
+} from "@/lib/attendance-exception-decision";
+import { attendanceExceptionBadges, isReviewedException } from "@/lib/shift-attendance";
 import {
   applyStaffIdScope,
   fetchScopedStaffIds,
@@ -55,6 +65,7 @@ type AttendanceRegisterProps = {
   fetchError: string | null;
   /** Workspace id for staff-linked BU scoping on refresh. */
   tenantId?: string | null;
+  canDecide?: boolean;
 };
 
 type DisplayAttendanceEntry = AttendanceRegisterEntry & {
@@ -73,6 +84,7 @@ const emptyForm = {
   hours_worked: "",
   overtime_hours: "",
   attendance_status: DEFAULT_ATTENDANCE_STATUS,
+  exception_status: "none",
 };
 
 export default function AttendanceRegister({
@@ -82,11 +94,14 @@ export default function AttendanceRegister({
   initialMonth,
   fetchError,
   tenantId = null,
+  canDecide = false,
 }: AttendanceRegisterProps) {
   const supabase = createClient();
   const buReadScope = useBusinessUnitReadScope();
   const isOnline = useOnlineStatus();
   const writeQueue = useWriteQueueOptional();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
   const [selectedYear, setSelectedYear] = useState(initialYear);
   const [selectedMonth, setSelectedMonth] = useState(initialMonth);
   const [entries, setEntries] = useState(initialEntries);
@@ -102,6 +117,11 @@ export default function AttendanceRegister({
     Pick<AttendanceRegisterEntry, "date" | "staff_id">[]
   >([]);
   const [error, setError] = useState<string | null>(fetchError);
+  const [decisionTarget, setDecisionTarget] = useState<DisplayAttendanceEntry | null>(
+    null,
+  );
+  const [decisionNote, setDecisionNote] = useState("");
+  const [decisionSaving, setDecisionSaving] = useState(false);
 
   const yearOptions = useMemo(() => buildAttendanceYearOptions(), []);
 
@@ -195,6 +215,16 @@ export default function AttendanceRegister({
     await loadEntriesForPeriod(selectedYear, selectedMonth);
     await writeQueue?.refresh();
   }
+
+  const refreshRef = useRef(refreshEntries);
+  refreshRef.current = refreshEntries;
+  useEffect(() => {
+    const onChanged = () => {
+      void refreshRef.current();
+    };
+    window.addEventListener(ATTENDANCE_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(ATTENDANCE_CHANGED_EVENT, onChanged);
+  }, []);
 
   function handleMonthChange(month: number) {
     setSelectedMonth(month);
@@ -291,6 +321,7 @@ export default function AttendanceRegister({
       overtime_hours:
         entry.overtime_hours === null ? "" : String(entry.overtime_hours),
       attendance_status: entry.attendance_status || DEFAULT_ATTENDANCE_STATUS,
+      exception_status: entry.exception_status || "none",
     });
     setShowForm(true);
   }
@@ -357,10 +388,91 @@ export default function AttendanceRegister({
     }
 
     await refreshEntries();
+    toast("Attendance entry removed.");
+    notifyAttendanceChanged();
     setDeletingId(null);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function refuseIfPayrollLocked(date: string): Promise<boolean> {
+    const response = await fetch("/api/attendance/payroll-lock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date }),
+    });
+    const payload = (await response.json()) as {
+      error?: string;
+      locked?: boolean;
+      message?: string | null;
+    };
+    if (!response.ok) {
+      setLoading(false);
+      await alertError(new Error(payload.error ?? "Could not check payroll lock."));
+      return true;
+    }
+    if (payload.locked) {
+      setLoading(false);
+      await alertError({
+        message:
+          payload.message ??
+          "Payroll for this month is locked — unlock it first to change attendance.",
+      });
+      return true;
+    }
+    return false;
+  }
+
+  async function postDecision(
+    id: string,
+    decision: AttendanceExceptionDecision,
+    note: string,
+    attendanceStatus: string | null,
+  ): Promise<boolean> {
+    const response = await fetch("/api/attendance/exceptions/decide", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id,
+        decision,
+        note,
+        attendanceStatus,
+      }),
+    });
+    const payload = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      setLoading(false);
+      setDecisionSaving(false);
+      await alertError(new Error(payload.error ?? "Could not save the decision."));
+      return false;
+    }
+    toast(decisionSavedToast(decision));
+    return true;
+  }
+
+  async function saveDecisionChange(decision: AttendanceExceptionDecision) {
+    if (!decisionTarget) {
+      return;
+    }
+    setDecisionSaving(true);
+    setError(null);
+    const saved = await postDecision(
+      decisionTarget.id,
+      decision,
+      decisionNote,
+      decision === "absent" ? "Absent" : decisionTarget.attendance_status,
+    );
+    setDecisionSaving(false);
+    if (!saved) {
+      return;
+    }
+    setDecisionTarget(null);
+    setDecisionNote("");
+    notifyAttendanceChanged();
+  }
+
+  async function handleSubmit(
+    e: React.FormEvent,
+    decisionOverride?: AttendanceExceptionDecision,
+  ) {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -402,7 +514,38 @@ export default function AttendanceRegister({
         // Queued row saved; queue badge refresh is non-blocking.
       }
       closeForm();
+      toast("Attendance entry queued.");
       return;
+    }
+
+    if (await refuseIfPayrollLocked(payload.date)) {
+      return;
+    }
+
+    let decisionToasted = false;
+    if (editingId) {
+      const needed = decisionRequiredForStatusEdit(
+        form.exception_status,
+        payload.attendance_status,
+      );
+      if (needed === "ask_full_or_half" && !decisionOverride) {
+        setLoading(false);
+        return;
+      }
+      const decision =
+        needed === "ask_full_or_half" ? (decisionOverride ?? null) : needed;
+      if (decision) {
+        const saved = await postDecision(
+          editingId,
+          decision,
+          "",
+          payload.attendance_status,
+        );
+        if (!saved) {
+          return;
+        }
+        decisionToasted = true;
+      }
     }
 
     const { error: saveError } = editingId
@@ -413,10 +556,17 @@ export default function AttendanceRegister({
       : await supabase.from("attendance_register").insert(payload);
 
     if (saveError) {
+      if (decisionToasted) {
+        notifyAttendanceChanged();
+      }
       setError(saveError.message);
       return;
     }
 
+    if (!decisionToasted) {
+      toast(editingId ? "Attendance saved." : "Attendance entry added.");
+    }
+    notifyAttendanceChanged();
     closeForm();
     await refreshEntries();
     } catch (unexpected) {
@@ -592,22 +742,20 @@ export default function AttendanceRegister({
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Clock In
                 </label>
-                <input
-                  type="time"
+                <TimePickerField
+                  aria-label="Clock In"
                   value={form.clock_in}
-                  onChange={(e) => updateField("clock_in", e.target.value)}
-                  className={inputClassName}
+                  onChange={(value) => updateField("clock_in", value)}
                 />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Clock Out
                 </label>
-                <input
-                  type="time"
+                <TimePickerField
+                  aria-label="Clock Out"
                   value={form.clock_out}
-                  onChange={(e) => updateField("clock_out", e.target.value)}
-                  className={inputClassName}
+                  onChange={(value) => updateField("clock_out", value)}
                 />
               </div>
               <div>
@@ -654,6 +802,59 @@ export default function AttendanceRegister({
                     </option>
                   ))}
                 </select>
+                {editingId && form.exception_status !== "none" ? (
+                  <p className="mt-2 text-sm text-slate-700">
+                    Decision: {exceptionDecisionLabel(form.exception_status)}
+                  </p>
+                ) : null}
+                {editingId &&
+                decisionRequiredForStatusEdit(
+                  form.exception_status,
+                  form.attendance_status,
+                ) === "absent" ? (
+                  <p className="mt-1 text-sm text-slate-600">
+                    Saving sets the decision to Absent.
+                  </p>
+                ) : null}
+                {editingId &&
+                decisionRequiredForStatusEdit(
+                  form.exception_status,
+                  form.attendance_status,
+                ) === "ask_full_or_half" ? (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-sm font-medium text-slate-800">
+                      Change decision to Full day or Half day?
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={loading}
+                        onClick={() =>
+                          void handleSubmit(
+                            { preventDefault() {} } as React.FormEvent,
+                            "full_day",
+                          )
+                        }
+                        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-[#0f2744] disabled:opacity-50"
+                      >
+                        Full day
+                      </button>
+                      <button
+                        type="button"
+                        disabled={loading}
+                        onClick={() =>
+                          void handleSubmit(
+                            { preventDefault() {} } as React.FormEvent,
+                            "half_day",
+                          )
+                        }
+                        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-[#0f2744] disabled:opacity-50"
+                      >
+                        Half day
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
             <div className="flex gap-3">
@@ -682,6 +883,55 @@ export default function AttendanceRegister({
           </form>
         </section>
       )}
+
+      {decisionTarget ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-[#0f2744]">
+            Change decision
+          </h3>
+          <p className="mt-1 text-sm text-slate-600">
+            {employeeNameByStaffId.get(decisionTarget.staff_id) ??
+              decisionTarget.staff_id}{" "}
+            · {formatDate(decisionTarget.date)} · Decision:{" "}
+            {exceptionDecisionLabel(decisionTarget.exception_status)}
+          </p>
+          <label className="mt-4 mb-1 block text-sm font-medium text-slate-700">
+            Note
+          </label>
+          <input
+            type="text"
+            value={decisionNote}
+            onChange={(event) => setDecisionNote(event.target.value)}
+            disabled={decisionSaving}
+            className={inputClassName}
+            aria-label="Decision note"
+          />
+          <div className="mt-4 flex flex-wrap gap-2">
+            {(["full_day", "half_day", "absent"] as const).map((decision) => (
+              <button
+                key={decision}
+                type="button"
+                disabled={decisionSaving}
+                onClick={() => void saveDecisionChange(decision)}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-[#0f2744] disabled:opacity-50"
+              >
+                {exceptionDecisionLabel(decision)}
+              </button>
+            ))}
+            <button
+              type="button"
+              disabled={decisionSaving}
+              onClick={() => {
+                setDecisionTarget(null);
+                setDecisionNote("");
+              }}
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       <FilteredListCount
         filteredCount={displayEntries.length}
@@ -735,6 +985,38 @@ export default function AttendanceRegister({
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-1">
                       <span>{entry.attendance_status}</span>
+                      {entry.scheduled_day_type === "weekend" ? (
+                        <span className="inline-flex w-fit items-center gap-1 text-xs text-slate-700">
+                          {entry.scheduled_shift ? (
+                            <span>{entry.scheduled_shift}</span>
+                          ) : null}
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-medium">
+                            Weekend
+                          </span>
+                        </span>
+                      ) : null}
+                      {attendanceExceptionBadges(entry).map((badge) => (
+                        <span
+                          key={badge}
+                          className="inline-flex w-fit rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900"
+                        >
+                          {badge}
+                        </span>
+                      ))}
+                      {canDecide &&
+                      !entry.pendingSync &&
+                      isReviewedException(entry.exception_status) ? (
+                        <button
+                          type="button"
+                          className="w-fit text-left text-xs font-medium text-sky-800 underline"
+                          onClick={() => {
+                            setDecisionTarget(entry);
+                            setDecisionNote("");
+                          }}
+                        >
+                          Change decision
+                        </button>
+                      ) : null}
                       {entry.pendingSync ? (
                         entry.queueError?.trim() ? (
                           <Tooltip content={entry.queueError.trim()}>

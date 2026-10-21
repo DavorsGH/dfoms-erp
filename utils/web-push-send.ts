@@ -13,7 +13,23 @@ type SendWebPushOptions = {
   body: string;
   actionUrl?: string | null;
   notificationId?: string | null;
+  /** When set, deliver only to this browser subscription. */
+  endpoint?: string | null;
 };
+
+export type WebPushSendResult = {
+  delivered: number;
+  attempted: number;
+  error: string | null;
+};
+
+function pushResult(
+  delivered: number,
+  attempted: number,
+  error: string | null,
+): WebPushSendResult {
+  return { delivered, attempted, error };
+}
 
 type PushSubscriptionRow = {
   id: string;
@@ -36,19 +52,19 @@ function truncateBody(value: string, max = 240): string {
  */
 export async function sendWebPushForRecipient(
   options: SendWebPushOptions,
-): Promise<void> {
+): Promise<WebPushSendResult> {
   const recipientUserId = options.recipientUserId.trim();
   const tenantId = options.tenantId.trim();
   const title = options.title.trim();
   const body = truncateBody(options.body);
 
   if (!recipientUserId || !tenantId || !title || !body) {
-    return;
+    return pushResult(0, 0, "Missing push recipient.");
   }
 
   if (!isWebPushConfigured()) {
     console.warn("[web-push-send] skipped: VAPID not configured in this process");
-    return;
+    return pushResult(0, 0, "Push notifications aren't available on this server");
   }
 
   console.info("[web-push-send] start", {
@@ -60,23 +76,28 @@ export async function sendWebPushForRecipient(
 
   try {
     const admin = createAdminClient();
-    const { data, error } = await admin
+    let subscriptionQuery = admin
       .from("push_subscriptions")
       .select("id, endpoint, p256dh, auth_key")
       .eq("persona", options.persona)
       .eq("recipient_user_id", recipientUserId)
       .eq("tenant_id", tenantId)
       .is("revoked_at", null);
+    const endpoint = options.endpoint?.trim() ?? "";
+    if (endpoint) {
+      subscriptionQuery = subscriptionQuery.eq("endpoint", endpoint);
+    }
+    const { data, error } = await subscriptionQuery;
 
     if (error) {
       console.error("[web-push-send] subscription lookup failed:", error.message);
-      return;
+      return pushResult(0, 0, error.message);
     }
 
     const subscriptions = (data ?? []) as PushSubscriptionRow[];
     console.info("[web-push-send] subscriptions found:", subscriptions.length);
     if (subscriptions.length === 0) {
-      return;
+      return pushResult(0, 0, "This device is not subscribed.");
     }
 
     const clickUrl = resolvePushNotificationUrl(options.persona, options.actionUrl);
@@ -90,7 +111,7 @@ export async function sendWebPushForRecipient(
 
     const nowIso = new Date().toISOString();
 
-    await Promise.all(
+    const outcomes = await Promise.all(
       subscriptions.map(async (row) => {
         try {
           await webpush.sendNotification(
@@ -113,6 +134,7 @@ export async function sendWebPushForRecipient(
             .from("push_subscriptions")
             .update({ last_used_at: nowIso })
             .eq("id", row.id);
+          return true;
         } catch (error) {
           const statusCode =
             error &&
@@ -127,7 +149,7 @@ export async function sendWebPushForRecipient(
               .from("push_subscriptions")
               .update({ revoked_at: nowIso })
               .eq("id", row.id);
-            return;
+            return false;
           }
 
           console.error(
@@ -145,13 +167,19 @@ export async function sendWebPushForRecipient(
                   : null,
             },
           );
+          return false;
         }
       }),
     );
-  } catch (error) {
-    console.error(
-      "[web-push-send] failed:",
-      error instanceof Error ? error.message : error,
+    const delivered = outcomes.filter(Boolean).length;
+    return pushResult(
+      delivered,
+      subscriptions.length,
+      delivered > 0 ? null : "The test notification could not be delivered.",
     );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Push delivery failed.";
+    console.error("[web-push-send] failed:", message);
+    return pushResult(0, 0, message);
   }
 }

@@ -18,6 +18,10 @@ export const INVENTORY_GROUPS: readonly InventoryNavGroup[] = [
     label: "Finished Products",
     items: [
       { label: "Finished Products", href: INVENTORY_FINISHED_PRODUCTS_HREF },
+      {
+        label: "Barcode Assignment",
+        href: "/dashboard/inventory/barcode-assignment",
+      },
     ],
   },
   {

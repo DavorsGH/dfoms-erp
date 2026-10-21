@@ -8,6 +8,7 @@ import {
   getCurrentUserAllowedBusinessUnits,
   getCurrentUserRole,
   getViewAllBusinessUnits,
+  hasAttendanceApprovalInbox,
   hasLeaveApprovalInbox,
   isDavorsPlatformRealEstateStaff,
   isDavorsPlatformSuperAdmin,
@@ -27,6 +28,7 @@ export type DashboardShellData = {
   displayInfo: UserDisplayInfo;
   userRole: AppRole | null;
   showLeaveApprovals: boolean;
+  showAttendanceApprovals: boolean;
   showPlatformSettings: boolean;
   showRealEstate: boolean;
   tenantBranding: TenantBranding;
@@ -110,6 +112,7 @@ export async function loadDashboardShellData(): Promise<DashboardShellData> {
     displayInfo,
     userRole,
     showLeaveApprovals,
+    showAttendanceApprovals,
     showPlatformSettings,
     showRealEstate,
     tenantBranding,
@@ -121,6 +124,7 @@ export async function loadDashboardShellData(): Promise<DashboardShellData> {
     getUserDisplayInfo(),
     getCurrentUserRole(),
     hasLeaveApprovalInbox(),
+    hasAttendanceApprovalInbox(),
     isDavorsPlatformSuperAdmin(),
     isDavorsPlatformRealEstateStaff(),
     getCurrentTenantBranding(),
@@ -173,6 +177,7 @@ export async function loadDashboardShellData(): Promise<DashboardShellData> {
     displayInfo,
     userRole: userRole as AppRole | null,
     showLeaveApprovals,
+    showAttendanceApprovals,
     showPlatformSettings,
     showRealEstate,
     tenantBranding,

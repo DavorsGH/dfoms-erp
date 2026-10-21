@@ -1,7 +1,12 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserEmployeeId } from "@/utils/dashboard-auth";
+import { createAdminClient } from "@/utils/supabase/admin";
+import {
+  getCurrentUserEmployeeId,
+  getCurrentUserTenantId,
+} from "@/utils/dashboard-auth";
 import type { AttendanceRegisterEntry } from "../../hr-payroll/attendance-register-utils";
+import type { AttendanceContractRef } from "../my-attendance-utils";
 import MyAttendance from "../my-attendance";
 import SelfServiceShell from "../self-service-shell";
 
@@ -23,27 +28,62 @@ export default async function SelfServiceAttendancePage() {
 
   const { data: employee, error: employeeError } = await supabase
     .from("employees")
-    .select("staff_id")
+    .select("staff_id, contract_project")
     .eq("employee_id", employeeId)
     .maybeSingle();
 
   let fetchError = employeeError?.message ?? null;
   let entries: AttendanceRegisterEntry[] = [];
+  let projects: AttendanceContractRef[] = [];
 
   if (!fetchError && employee?.staff_id) {
-    const { data, error } = await supabase
-      .from("attendance_register")
-      .select("*")
-      .eq("staff_id", employee.staff_id)
-      .order("date", { ascending: false });
+    const [attendance, projectResult] = await Promise.all([
+      supabase
+        .from("attendance_register")
+        .select("*")
+        .eq("staff_id", employee.staff_id)
+        .order("date", { ascending: false }),
+      supabase.from("projects").select("project_code, project_name"),
+    ]);
 
-    fetchError = error?.message ?? null;
-    entries = (data as AttendanceRegisterEntry[] | null) ?? [];
+    fetchError = attendance.error?.message ?? null;
+    entries = (attendance.data as AttendanceRegisterEntry[] | null) ?? [];
+    projects =
+      (projectResult.data as AttendanceContractRef[] | null)?.filter(
+        (project) => project.project_code && project.project_name,
+      ) ?? [];
+    if (projects.length === 0) {
+      projects = await loadTenantProjectNames();
+    }
   }
 
   return (
-    <SelfServiceShell sectionTitle="My Attendance">
-      <MyAttendance initialEntries={entries} fetchError={fetchError} />
+    <SelfServiceShell sectionTitle="My Attendance" hideSectionTitle>
+      <MyAttendance
+        initialEntries={entries}
+        fetchError={fetchError}
+        employeeContract={employee?.contract_project ?? null}
+        projects={projects}
+      />
     </SelfServiceShell>
   );
+}
+
+async function loadTenantProjectNames(): Promise<AttendanceContractRef[]> {
+  try {
+    const tenantId = await getCurrentUserTenantId();
+    if (!tenantId) {
+      return [];
+    }
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from("projects")
+      .select("project_code, project_name")
+      .eq("tenant_id", tenantId);
+    return ((data as AttendanceContractRef[] | null) ?? []).filter(
+      (project) => project.project_code && project.project_name,
+    );
+  } catch {
+    return [];
+  }
 }

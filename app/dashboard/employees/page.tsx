@@ -122,6 +122,9 @@ export default async function EmployeesPage() {
         canUseEmployeeBulkImport={canUseEmployeeBulkImport(role)}
         defaultWelfareDeductionRate={defaultWelfareDeductionRate}
         canViewSalary={canViewEmployeeSalary(role)}
+        canEditRemoteAttendance={
+          role === "super_admin" || role === "director" || role === "hr"
+        }
         activeBusinessUnitId={activeBusinessUnitId}
       />
     </HrPayrollShell>

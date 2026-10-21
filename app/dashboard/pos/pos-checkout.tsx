@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAlert } from "@/components/feedback/feedback-context";
 import {
   SALES_CRM_ALERT_TITLE,
@@ -10,6 +11,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import DashboardButton from "@/components/dashboard-button";
+import Tooltip from "@/components/ui/tooltip";
 import PromoCodeField from "@/components/promo-code-field";
 import FinishedProductPhoto from "@/components/finished-product-photo";
 import SalesRepSelect from "@/components/sales-rep-select";
@@ -23,6 +25,12 @@ import {
   type LoyaltyAccountRow,
 } from "@/utils/loyalty-types";
 import { inputClassName } from "../employees/employee-record-utils";
+import {
+  POS_DUE_DATE_FIELD_ID,
+  POS_PAYER_PHONE_FIELD_ID,
+  posMoreOptionsFocusOnComplete,
+  posPartPaymentShortLine,
+} from "./pos-more-options";
 import {
   filterActiveEmployees,
   HR_EMPLOYEE_SELECT,
@@ -76,7 +84,7 @@ import {
   type PosSelectedStoreCredit,
 } from "./pos-store-credit-utils";
 import { PosReceiptPanel, type PosReceiptData } from "./pos-receipt";
-import ProductReturnModal from "../crm/product-return-modal";
+import { receiptPaymentStanding } from "./receipt-settlement";
 import RequestPaymentModal from "./request-payment-modal";
 import {
   extractPaystackInlineReference,
@@ -147,10 +155,8 @@ import {
   findProductByScanCode,
   parseBarcodeScanPayload,
 } from "@/utils/barcode-scan-utils";
-import {
-  useConfirm,
-  useToast,
-} from "@/components/feedback/feedback-context";
+import { useToast } from "@/components/feedback/feedback-context";
+import PosUnknownBarcodeModal from "./pos-unknown-barcode-modal";
 
 type PosCheckoutProps = {
   /** Hidden when the page renders inside the Sales & CRM shell, which already
@@ -219,7 +225,7 @@ export default function PosCheckout({
   initialCustomerBalances,
   initialEmployees,
   defaultSalesRepId = "",
-  initialPaymentMethods,
+  initialPaymentMethods: _initialPaymentMethods,
   initialCartLines = [],
   initialClientId = "",
   initialNotes = "",
@@ -236,7 +242,6 @@ export default function PosCheckout({
   const supabase = useMemo(() => createClient(), []);
   const { alert, alertError } = useAlert();
   const { toast } = useToast();
-  const confirm = useConfirm();
   const router = useRouter();
 
   function showActionError(message: string) {
@@ -294,6 +299,9 @@ export default function PosCheckout({
   const [productSearch, setProductSearch] = useState("");
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanSuccess, setScanSuccess] = useState<string | null>(null);
+  const [unknownBarcodeCode, setUnknownBarcodeCode] = useState<string | null>(
+    null,
+  );
   const [clientId, setClientId] = useState(initialClientId);
   const [customerName, setCustomerName] = useState("");
   const [salesRepId, setSalesRepId] = useState(defaultSalesRepId);
@@ -309,7 +317,21 @@ export default function PosCheckout({
    * settlement account — shows a link to Payment Settings. */
   const [paymentSettingsRequired, setPaymentSettingsRequired] = useState(false);
   const [receipt, setReceipt] = useState<PosReceiptData | null>(null);
-  const [returnModalOpen, setReturnModalOpen] = useState(false);
+  const scanFocusAfterReceipt = useRef(false);
+  const cashReceivedRef = useRef<HTMLInputElement>(null);
+  const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
+  const moreOptionsButtonRef = useRef<HTMLButtonElement>(null);
+  const checkoutFormRef = useRef<HTMLFormElement>(null);
+  const [moreOptionsFocus, setMoreOptionsFocus] = useState<{
+    id: string;
+    message: string | null;
+  } | null>(null);
+  const [moreOptionsWide, setMoreOptionsWide] = useState(false);
+  const [moreOptionsAnchor, setMoreOptionsAnchor] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
   const [showRequestPayment, setShowRequestPayment] = useState(false);
   /** Snapshot of cart + customer when opening Request Payment (charge-first). */
   const [requestPaymentDraft, setRequestPaymentDraft] = useState<{
@@ -373,7 +395,7 @@ export default function PosCheckout({
   }
 
   posFullscreenBlockEscRef.current =
-    returnModalOpen ||
+    Boolean(receipt) ||
     holdLabelDialogOpen ||
     recallDialogOpen ||
     heldCartsPanelOpen ||
@@ -383,12 +405,16 @@ export default function PosCheckout({
   const { layoutFullscreen, enterFullscreen, exitFullscreen } =
     usePosFullscreen(posFullscreenBlockEscRef);
 
-  const returnRefundPaymentMethods = useMemo(() => {
-    if (initialPaymentMethods.length > 0) {
-      return initialPaymentMethods;
+  useEffect(() => {
+    if (receipt) {
+      return;
     }
-    return [...POS_CHECKOUT_PAYMENT_METHODS];
-  }, [initialPaymentMethods]);
+    if (!scanFocusAfterReceipt.current) {
+      return;
+    }
+    scanFocusAfterReceipt.current = false;
+    document.getElementById("pos-scan-box")?.focus();
+  }, [receipt]);
 
   useEffect(() => {
     setProducts(initialProducts.map(normalizeFinishedProduct));
@@ -570,6 +596,106 @@ export default function PosCheckout({
         (parsedAmountTendered == null ||
           parsedAmountTendered < cashDueAfterCredit)
       : parsedAmountTendered == null || parsedAmountTendered < payableTotal);
+  const cashDueNow = selectedStoreCredit ? cashDueAfterCredit : payableTotal;
+  const cashShortfall =
+    isCash && parsedAmountTendered != null && parsedAmountTendered + 0.001 < cashDueNow
+      ? roundMoney(cashDueNow - parsedAmountTendered)
+      : null;
+  const showDueDate = isCash && cashShortfall != null && cashShortfall > 0.001;
+  const moreOptionsGap = posMoreOptionsFocusOnComplete({
+    cashShortBy: cashShortfall,
+    dueDate,
+    mobileMoney: isMobileMoney,
+    payerPhone,
+    payerPhoneRequired: false,
+  });
+
+  useEffect(() => {
+    if (!moreOptionsOpen || receipt) {
+      return;
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      persistMoreOptions(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [moreOptionsOpen, receipt]);
+
+  function persistMoreOptions(next: boolean) {
+    setMoreOptionsOpen(next);
+    if (!next) {
+      setMoreOptionsFocus(null);
+    }
+  }
+
+  function openMoreOptions(focus?: { id: string; message?: string | null }) {
+    const buttonRect = moreOptionsButtonRef.current?.getBoundingClientRect();
+    const formRect = checkoutFormRef.current?.getBoundingClientRect();
+    const wide =
+      window.matchMedia("(min-width: 1024px)").matches &&
+      (buttonRect?.top ?? 0) > 220;
+    setMoreOptionsWide(wide);
+    if (buttonRect && formRect) {
+      setMoreOptionsAnchor({
+        top: buttonRect.top,
+        left: formRect.left,
+        width: formRect.width,
+      });
+    }
+    setMoreOptionsFocus(
+      focus ? { id: focus.id, message: focus.message ?? null } : null,
+    );
+    setMoreOptionsOpen(true);
+  }
+
+  useLayoutEffect(() => {
+    if (!moreOptionsOpen || !moreOptionsFocus) {
+      return;
+    }
+    const field = document.getElementById(moreOptionsFocus.id);
+    if (
+      !(field instanceof HTMLInputElement) &&
+      !(field instanceof HTMLTextAreaElement) &&
+      !(field instanceof HTMLSelectElement)
+    ) {
+      return;
+    }
+    field.focus();
+    if (!moreOptionsFocus.message) {
+      field.setCustomValidity("");
+      return;
+    }
+    field.setCustomValidity(moreOptionsFocus.message);
+    field.reportValidity();
+  }, [moreOptionsOpen, moreOptionsFocus]);
+
+  function selectCheckoutMethod(nextMethod: string) {
+    if (nextMethod === POS_MOMO_PAYMENT_METHOD && selectedStoreCredit) {
+      showActionError(STORE_CREDIT_MOMO_BLOCK_MESSAGE);
+      return;
+    }
+    setPaymentMethod(nextMethod);
+    if (nextMethod === "Cash") {
+      requestAnimationFrame(() => cashReceivedRef.current?.focus());
+    }
+  }
+
+  function bumpCashReceived(add: number | "exact" | "clear") {
+    if (add === "clear") {
+      setAmountTendered("");
+      return;
+    }
+    if (add === "exact") {
+      setAmountTendered(String(roundMoney(cashDueNow)));
+      return;
+    }
+    const current = parsedAmountTendered ?? 0;
+    setAmountTendered(String(roundMoney(current + add)));
+  }
   const busy = loading || momoWaiting;
 
   const customerDisplayLabel = useMemo(
@@ -990,34 +1116,63 @@ export default function PosCheckout({
 
   const scannerPaused = showRequestPayment || momoWaiting || Boolean(receipt);
 
+  async function resolveProductForScan(
+    rawPayload: string,
+  ): Promise<FinishedProductRecord | null> {
+    const local = findProductByScanCode(products, rawPayload);
+    if (local && !local.is_archived) {
+      return local;
+    }
+
+    const code = parseBarcodeScanPayload(rawPayload);
+    if (!code) {
+      return null;
+    }
+
+    const response = await fetch(
+      `/api/inventory/finished-product-by-scan?code=${encodeURIComponent(code)}`,
+    );
+    const body = (await response.json().catch(() => null)) as {
+      product?: FinishedProductRecord | null;
+    } | null;
+
+    const row = body?.product;
+    if (!row || row.is_archived) {
+      return null;
+    }
+
+    const normalized = normalizeFinishedProduct(row);
+    setProducts((current) => {
+      const index = current.findIndex((entry) => entry.id === normalized.id);
+      if (index < 0) {
+        return [...current, normalized];
+      }
+      const next = [...current];
+      next[index] = normalized;
+      return next;
+    });
+    return normalized;
+  }
+
   function handlePosBarcodeScan(rawPayload: string) {
-    const product = findProductByScanCode(products, rawPayload);
-    if (!product) {
+    void (async () => {
+      const product = await resolveProductForScan(rawPayload);
+      if (product) {
+        setScanError(null);
+        setScanSuccess(
+          `Added ${product.product_code} — ${product.product_name}`,
+        );
+        toast(`Added ${product.product_name}`);
+        addProductToCart(product);
+        return;
+      }
+
       const code =
         parseBarcodeScanPayload(rawPayload) || rawPayload.trim() || "—";
       setScanSuccess(null);
       setScanError(null);
-      toast(`Barcode ${code} not found`);
-      void (async () => {
-        const openInventory = await confirm({
-          title: "Product not found",
-          message: `No product matches barcode ${code}. Open Inventory to assign this barcode to a product?`,
-          confirmLabel: "Open Inventory",
-          cancelLabel: "Dismiss",
-        });
-        if (openInventory) {
-          router.push(
-            `/dashboard/inventory/finished-products?assignBarcode=${encodeURIComponent(code)}`,
-          );
-        }
-      })();
-      return;
-    }
-
-    setScanError(null);
-    setScanSuccess(`Added ${product.product_code} — ${product.product_name}`);
-    toast(`Added ${product.product_name}`);
-    addProductToCart(product);
+      setUnknownBarcodeCode(code);
+    })();
   }
 
   useBarcodeScannerWedge({
@@ -1490,16 +1645,18 @@ export default function PosCheckout({
     storeCreditApplied?: number | null;
     storeCreditNoteNumber?: string | null;
     storeCreditRemainingBalance?: number | null;
+    dueDate?: string | null;
     pendingSync?: boolean;
   }) {
     const receiptTotal = cartTotal(input.lines);
     setReceipt({
       invoiceNo: input.invoiceNo,
       businessUnitId: input.businessUnitId ?? null,
-      saleDate: todayIsoDate(),
+      saleDate: new Date().toISOString(),
       customerLabel: input.customerLabel,
       paymentMethod: input.paymentMethod,
-      paymentStatus: input.pendingSync ? "Pending sync" : "Paid",
+      paymentStatus: receiptPaymentStanding(receiptTotal, input.amountReceived),
+      dueDate: input.dueDate ?? null,
       amountReceived: input.amountReceived,
       cartTotal: receiptTotal,
       subtotal: receiptTotal,
@@ -1610,6 +1767,7 @@ export default function PosCheckout({
       paymentMethod: "Cash",
       lines: receiptLines,
       amountReceived,
+      dueDate,
       amountTendered: parsedAmountTendered,
       changeDue,
       pendingSync: true,
@@ -1699,6 +1857,7 @@ export default function PosCheckout({
       paymentMethod: receiptPaymentMethod,
       lines: receiptLines,
       amountReceived,
+      dueDate,
       amountTendered: isCash ? parsedAmountTendered ?? 0 : null,
       changeDue: selectedStoreCredit
         ? (summary.changeDue ?? changeDue)
@@ -1880,6 +2039,7 @@ export default function PosCheckout({
               paymentMethod: POS_MOMO_PAYMENT_METHOD,
               lines: cartSnapshotForReceipt,
               amountReceived: payableTotal,
+              dueDate,
             });
 
             const loyaltyEarnWarning = await recordLoyaltyEarnAfterSale(
@@ -1937,6 +2097,13 @@ export default function PosCheckout({
 
   async function handleCompleteSale(event: React.FormEvent) {
     event.preventDefault();
+    if (moreOptionsGap) {
+      openMoreOptions({
+        id: moreOptionsGap.fieldId,
+        message: moreOptionsGap.message,
+      });
+      return;
+    }
     setLoading(true);
     setPaymentSettingsRequired(false);
     setReceipt(null);
@@ -2094,15 +2261,38 @@ export default function PosCheckout({
   }
 
   function renderCheckoutForm() {
-    return (
-      <form
-        onSubmit={handleCompleteSale}
-        className="space-y-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
-      >
-        <h2 className="text-lg font-semibold text-[#0f2744]">Checkout</h2>
+    const summaryParts: string[] = [];
+    if (clientId === POS_CUSTOMER_OTHER_VALUE) {
+      summaryParts.push(`Customer: ${customerName.trim() || "Walk-in"}`);
+    } else if (clientId) {
+      const selected = initialClients.find((client) => client.client_id === clientId);
+      summaryParts.push(`Customer: ${selected?.client_name ?? "Selected"}`);
+    }
+    if (salesRepId) {
+      const rep = employees.find((employee) => employee.employee_id === salesRepId);
+      if (rep?.full_name) {
+        summaryParts.push(`Sales rep: ${rep.full_name}`);
+      }
+    }
+    if (payerEmail.trim()) {
+      summaryParts.push(`Email: ${payerEmail.trim()}`);
+    }
+    if (payerPhone.trim()) {
+      summaryParts.push(`Phone: ${payerPhone.trim()}`);
+    }
+    if (appliedPromoCode) {
+      summaryParts.push(`Promo ${appliedPromoCode}`);
+    }
+    if (selectedStoreCredit && storeCreditApplyAmount > 0) {
+      summaryParts.push(`Store credit −${storeCreditApplyAmount.toFixed(2)}`);
+    }
+    if (notes.trim()) {
+      summaryParts.push("Notes");
+    }
 
-        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_11rem]">
-          <div className="min-w-0">
+    const moreOptionsFields = (
+        <div className="space-y-4">
+        <div>
             <PromoCodeField
               supabase={supabase}
               clientId={clientId || null}
@@ -2121,19 +2311,6 @@ export default function PosCheckout({
               }}
               disabled={busy || cartLines.length === 0 || isOffline}
             />
-          </div>
-          <div className="min-w-0">
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Due Date
-            </label>
-            <input
-              type="date"
-              required
-              value={dueDate}
-              onChange={(event) => setDueDate(event.target.value)}
-              className={inputClassName}
-            />
-          </div>
         </div>
 
         {clientId ? (
@@ -2393,88 +2570,24 @@ export default function PosCheckout({
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
+            <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor={POS_PAYER_PHONE_FIELD_ID}>
               Payer Phone
             </label>
+            {moreOptionsFocus?.id === POS_PAYER_PHONE_FIELD_ID && moreOptionsFocus.message ? (
+              <p className="mb-1 text-sm text-amber-800">{moreOptionsFocus.message}</p>
+            ) : null}
             <input
+              id={POS_PAYER_PHONE_FIELD_ID}
               type="tel"
               value={payerPhone}
-              onChange={(event) => setPayerPhone(event.target.value)}
+              onChange={(event) => {
+                event.target.setCustomValidity("");
+                setPayerPhone(event.target.value);
+              }}
               placeholder="Optional — e.g. +233…"
               className={inputClassName}
             />
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Payment Method
-            </label>
-            <select
-              required
-              value={paymentMethod}
-              onChange={(event) => {
-                const nextMethod = event.target.value;
-                if (
-                  nextMethod === POS_MOMO_PAYMENT_METHOD &&
-                  selectedStoreCredit
-                ) {
-                  showActionError(STORE_CREDIT_MOMO_BLOCK_MESSAGE);
-                  return;
-                }
-                setPaymentMethod(nextMethod);
-              }}
-              className={inputClassName}
-            >
-              <option value="">Select payment method</option>
-              {POS_CHECKOUT_PAYMENT_METHODS.map((method) => (
-                <option key={method} value={method}>
-                  {method}
-                </option>
-              ))}
-            </select>
-          </div>
-          {isCash ? (
-            <div className="md:col-span-2 2xl:col-span-2">
-              <div className="flex flex-wrap items-end gap-4">
-                <div className="min-w-[180px] flex-1">
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Amount Tendered
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    inputMode="decimal"
-                    value={amountTendered}
-                    onChange={(event) => setAmountTendered(event.target.value)}
-                    placeholder={
-                      selectedStoreCredit
-                        ? cashDueAfterCredit > 0
-                          ? `At least ${formatGHS(cashDueAfterCredit)}`
-                          : "0 if credit covers total"
-                        : `At least ${formatGHS(payableTotal)}`
-                    }
-                    className={inputClassName}
-                  />
-                </div>
-                {parsedAmountTendered != null ? (
-                  <div className="min-w-[140px] pb-2">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Change Due
-                    </p>
-                    <p className="text-lg font-semibold text-emerald-800">
-                      {formatGHS(changeDue ?? 0)}
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-              {parsedAmountTendered == null ? (
-                <p className="mt-1 text-xs text-slate-500">
-                  Enter the cash the customer handed over. Change is calculated live
-                  on the customer display.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
           <div className="md:col-span-2 2xl:col-span-2">
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Notes
@@ -2486,61 +2599,263 @@ export default function PosCheckout({
               className={inputClassName}
             />
           </div>
+          {showDueDate ? (
+            <div className="max-w-[12rem]">
+              <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor={POS_DUE_DATE_FIELD_ID}>
+                Due Date
+              </label>
+              {moreOptionsFocus?.id === POS_DUE_DATE_FIELD_ID && moreOptionsFocus.message ? (
+                <p className="mb-1 text-sm text-amber-800">{moreOptionsFocus.message}</p>
+              ) : null}
+              <input
+                id={POS_DUE_DATE_FIELD_ID}
+                type="date"
+                value={dueDate}
+                onChange={(event) => {
+                  event.target.setCustomValidity("");
+                  setDueDate(event.target.value);
+                }}
+                className={inputClassName}
+              />
+            </div>
+          ) : null}
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => persistMoreOptions(false)}
+              className="rounded-md bg-[#0f2744] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#1a3a5c]"
+            >
+              Done
+            </button>
+          </div>
         </div>
+        </div>
+    );
 
-        <p className="text-sm text-slate-600">
-          {isMobileMoney
-            ? "Mobile Money opens a Paystack popup. Sale and stock update only after payment is confirmed."
-            : paymentMethod.trim()
-              ? "Cash sales are recorded as fully paid for the cart total. Request Payment (link) charges first — no sale or stock change until the customer pays."
-              : "Select a payment method to continue. Cash sales are recorded as fully paid; Request Payment (link) charges first — no sale or stock change until the customer pays."}
-        </p>
-        <p className="text-sm text-slate-600">
-          Mobile Money payments are remitted through Paystack. Paystack charges
-          apply, and remittance to your account may take up to 24 hours.
-        </p>
-
-        {isOffline ? (
-          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-            You are offline. Cash sales can be queued and will sync when you
-            reconnect. Mobile Money and Request Payment stay blocked. Stock
-            levels and customer balances shown are from a cached snapshot.
-          </p>
-        ) : null}
-
-        <div className="flex flex-wrap gap-3">
-          <DashboardButton
-            type="submit"
-            variant="success"
-            disabled={
-              busy ||
-              cartLines.length === 0 ||
-              (isOffline && isMobileMoney) ||
-              amountTenderBlocked
-            }
-          >
-            {momoWaiting
-              ? "Waiting for MoMo…"
-              : loading
-                ? isOffline
-                  ? "Queuing sale…"
-                  : isMobileMoney
-                    ? "Opening payment…"
-                    : "Completing sale…"
-                : isMobileMoney
-                  ? "Pay with Mobile Money"
-                  : isOffline
-                    ? "Queue Cash Sale"
-                    : "Complete Sale"}
-          </DashboardButton>
-          <DashboardButton
+    return (
+      <form
+        ref={checkoutFormRef}
+        onSubmit={handleCompleteSale}
+        className="relative shrink-0 rounded-lg border border-slate-200 bg-white shadow-sm"
+      >
+        <div className="flex items-center gap-2 px-4 pt-3">
+          <button
+            ref={moreOptionsButtonRef}
             type="button"
-            variant="paymentLink"
-            disabled={busy || cartLines.length === 0 || isOffline}
-            onClick={() => handleRequestPaymentLink()}
+            onClick={() => (moreOptionsOpen ? persistMoreOptions(false) : openMoreOptions())}
+            className="shrink-0 rounded-md border border-slate-300 px-2.5 py-1 text-sm font-medium text-[#0f2744] hover:bg-slate-50"
+            aria-expanded={moreOptionsOpen}
           >
-            Request Payment (link)
-          </DashboardButton>
+            More options
+          </button>
+          {summaryParts.length > 0 ? (
+            <span className="min-w-0 truncate rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-[#0f2744]">
+              {summaryParts.join(" · ")}
+            </span>
+          ) : null}
+        </div>
+        {moreOptionsOpen && typeof document !== "undefined"
+          ? createPortal(
+              <>
+                <button
+                  type="button"
+                  aria-label="Close more options"
+                  className="fixed inset-0 z-[80] cursor-default bg-slate-900/30"
+                  onClick={() => persistMoreOptions(false)}
+                />
+                <div
+                  className="fixed z-[90] max-h-[min(70vh,28rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white p-4 shadow-xl"
+                  style={
+                    moreOptionsWide && moreOptionsAnchor
+                      ? {
+                          top: moreOptionsAnchor.top - 8,
+                          left: moreOptionsAnchor.left,
+                          width: moreOptionsAnchor.width,
+                          transform: "translateY(-100%)",
+                        }
+                      : {
+                          top: "50%",
+                          left: "50%",
+                          width: "min(32rem, calc(100vw - 2rem))",
+                          transform: "translate(-50%, -50%)",
+                        }
+                  }
+                >
+                  {moreOptionsFields}
+                </div>
+              </>,
+              document.body,
+            )
+          : null}
+
+        <div className="space-y-3 px-4 py-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Amount due
+            </p>
+            <p className="text-[28px] font-bold leading-tight text-[#0f2744]">
+              {formatGHS(payableTotal)}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {POS_CHECKOUT_PAYMENT_METHODS.map((method) => {
+              const selected = paymentMethod === method;
+              const help =
+                method === "Cash"
+                  ? "Cash sales are recorded as fully paid for the cart total. Request Payment (link) charges first — no sale or stock change until the customer pays."
+                  : "Mobile Money payments are remitted through Paystack. Paystack charges apply, and remittance to your account may take up to 24 hours. Sale and stock update only after payment is confirmed.";
+              return (
+                <div key={method} className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => selectCheckoutMethod(method)}
+                    className={`rounded-md px-4 py-3 text-base font-semibold ${
+                      selected
+                        ? "bg-[#0f2744] text-white"
+                        : "border border-slate-300 bg-white text-[#0f2744] hover:bg-slate-50"
+                    }`}
+                  >
+                    {method}
+                  </button>
+                  <Tooltip content={help} variant="info">
+                    <button
+                      type="button"
+                      aria-label={`${method} help`}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 text-xs font-semibold text-slate-600"
+                    >
+                      i
+                    </button>
+                  </Tooltip>
+                </div>
+              );
+            })}
+          </div>
+
+          {isCash ? (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="pos-cash-received">
+                Cash received
+              </label>
+              <input
+                id="pos-cash-received"
+                ref={cashReceivedRef}
+                type="number"
+                min={0}
+                step="0.01"
+                inputMode="decimal"
+                value={amountTendered}
+                onChange={(event) => setAmountTendered(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") {
+                    return;
+                  }
+                  if (amountTenderBlocked && !moreOptionsGap) {
+                    return;
+                  }
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }}
+                placeholder={
+                  selectedStoreCredit
+                    ? cashDueAfterCredit > 0
+                      ? `At least ${formatGHS(cashDueAfterCredit)}`
+                      : "0 if credit covers total"
+                    : `At least ${formatGHS(payableTotal)}`
+                }
+                className={`${inputClassName} text-2xl font-semibold`}
+              />
+              {cashShortfall != null ? (
+                <p className="mt-2 text-sm text-amber-800">
+                  {posPartPaymentShortLine(cashShortfall)}{" "}
+                  <button
+                    type="button"
+                    className="font-medium text-[#0f2744] underline"
+                    onClick={() => openMoreOptions({ id: POS_DUE_DATE_FIELD_ID })}
+                  >
+                    Set due date
+                  </button>
+                </p>
+              ) : null}
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => bumpCashReceived("exact")}
+                  className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm font-medium text-[#0f2744] hover:bg-slate-50"
+                >
+                  Exact
+                </button>
+                {[5, 10, 20, 50, 100, 200].map((amount) => (
+                  <button
+                    key={amount}
+                    type="button"
+                    onClick={() => bumpCashReceived(amount)}
+                    className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm font-medium text-[#0f2744] hover:bg-slate-50"
+                  >
+                    +{amount}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => bumpCashReceived("clear")}
+                  className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Clear
+                </button>
+              </div>
+              {cashShortfall != null ? null : parsedAmountTendered != null ? (
+                <p className="mt-2 text-2xl font-bold text-emerald-700">
+                  Change due {formatGHS(changeDue ?? 0)}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {isOffline ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+              You are offline. Cash sales can be queued and will sync when you
+              reconnect. Mobile Money and Request Payment stay blocked. Stock
+              levels and customer balances shown are from a cached snapshot.
+            </p>
+          ) : null}
+
+          <div className={`flex gap-2 ${isMobileMoney ? "" : ""}`}>
+            <DashboardButton
+              type="submit"
+              variant="success"
+              className={isMobileMoney ? "flex-1" : "w-full"}
+              disabled={
+                busy ||
+                cartLines.length === 0 ||
+                (isOffline && isMobileMoney) ||
+                (amountTenderBlocked && !moreOptionsGap)
+              }
+            >
+              {momoWaiting
+                ? "Waiting for MoMo…"
+                : loading
+                  ? isOffline
+                    ? "Queuing sale…"
+                    : isMobileMoney
+                      ? "Opening payment…"
+                      : "Completing sale…"
+                  : isMobileMoney
+                    ? "Pay with Mobile Money"
+                    : isOffline
+                      ? "Queue Cash Sale"
+                      : "Complete Sale"}
+            </DashboardButton>
+            {isMobileMoney ? (
+              <DashboardButton
+                type="button"
+                variant="secondary"
+                disabled={busy || cartLines.length === 0 || isOffline}
+                onClick={() => handleRequestPaymentLink()}
+              >
+                Request payment (link)
+              </DashboardButton>
+            ) : null}
+          </div>
         </div>
       </form>
     );
@@ -2549,8 +2864,12 @@ export default function PosCheckout({
   function renderCartAndCheckout() {
     return (
       <>
-        {renderCartSection()}
-        {renderCheckoutForm()}
+        <div className="min-h-0 flex-1 overflow-y-auto lg:flex-none lg:overflow-visible">
+          {renderCartSection()}
+        </div>
+        <div className="shrink-0 lg:sticky lg:bottom-0 lg:z-10">
+          {renderCheckoutForm()}
+        </div>
       </>
     );
   }
@@ -2559,46 +2878,16 @@ export default function PosCheckout({
     ? "min-w-0 space-y-6"
     : "min-w-0 space-y-6 pb-24 lg:pb-6";
 
-  if (receipt) {
-    return (
-      <div data-pos-fullscreen-surface className={posSurfaceClassName}>
-        {returnModalOpen && tenantId ? (
-          <ProductReturnModal
-            invoiceNo={receipt.invoiceNo}
-            tenantId={tenantId}
-            paymentMethods={returnRefundPaymentMethods}
-            onClose={() => setReturnModalOpen(false)}
-            onSuccess={() => {
-              setReturnModalOpen(false);
-              router.refresh();
-            }}
-          />
-        ) : null}
-        <PosReceiptPanel
-          receipt={receipt}
-          onPrint={() => window.print()}
-          onNewSale={resetCheckoutForm}
-          onReturn={
-            tenantId ? () => setReturnModalOpen(true) : undefined
-          }
-        />
-        {layoutFullscreen ? (
-          <div className="mt-4 flex justify-end">
-            <DashboardButton
-              type="button"
-              variant="secondary"
-              onClick={() => void exitFullscreen()}
-            >
-              Exit full screen
-            </DashboardButton>
-          </div>
-        ) : null}
-      </div>
-    );
+  function closeReceiptPreview() {
+    scanFocusAfterReceipt.current = true;
+    setReceipt(null);
   }
 
   return (
     <div data-pos-fullscreen-surface className={posSurfaceClassName}>
+      {receipt ? (
+        <PosReceiptPanel receipt={receipt} onClose={closeReceiptPreview} />
+      ) : null}
       <div>
         <div className="flex flex-wrap items-start justify-between gap-3">
           {!layoutFullscreen ? (
@@ -2675,7 +2964,7 @@ export default function PosCheckout({
           <h2 className="mb-4 shrink-0 text-lg font-semibold text-[#0f2744]">
             Product Search
           </h2>
-          <div className="mb-4 shrink-0">
+          <div id="pos-scan-box" tabIndex={-1} className="mb-4 shrink-0 outline-none">
             <BarcodeScanStatus
               label="Barcode scanner"
               hint="Ready to scan — focus outside text fields, then scan a product or batch label."
@@ -2755,7 +3044,7 @@ export default function PosCheckout({
 
         <StickyEdgePanel
           edge="right"
-          className="hidden lg:sticky lg:top-4 lg:col-start-2 lg:row-start-1 lg:block lg:max-h-[calc(100dvh-5rem)] lg:space-y-4 lg:overflow-y-auto"
+          className="hidden lg:sticky lg:top-4 lg:z-10 lg:col-start-2 lg:row-start-1 lg:flex lg:max-h-[calc(100dvh-8.5rem)] lg:w-full lg:flex-col lg:gap-4 lg:self-start lg:overflow-y-auto"
         >
           {renderCartAndCheckout()}
         </StickyEdgePanel>
@@ -2780,7 +3069,7 @@ export default function PosCheckout({
                 Close
               </button>
             </div>
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-4">
               {renderCartAndCheckout()}
             </div>
           </div>
@@ -2857,6 +3146,38 @@ export default function PosCheckout({
           onClose={() => {
             setShowRequestPayment(false);
             setRequestPaymentDraft(null);
+          }}
+        />
+      ) : null}
+
+      {unknownBarcodeCode ? (
+        <PosUnknownBarcodeModal
+          scannedCode={unknownBarcodeCode}
+          products={products}
+          onClose={() => setUnknownBarcodeCode(null)}
+          onAssigned={(product) => {
+            setUnknownBarcodeCode(null);
+            setProducts((current) => {
+              const index = current.findIndex((entry) => entry.id === product.id);
+              if (index < 0) {
+                return [...current, product];
+              }
+              const next = [...current];
+              next[index] = product;
+              return next;
+            });
+            setScanError(null);
+            setScanSuccess(
+              `Added ${product.product_code} — ${product.product_name}`,
+            );
+            toast(`Added ${product.product_name}`);
+            addProductToCart(product);
+          }}
+          onCreateNew={(code) => {
+            setUnknownBarcodeCode(null);
+            router.push(
+              `/dashboard/inventory/finished-products?assignBarcode=${encodeURIComponent(code)}`,
+            );
           }}
         />
       ) : null}

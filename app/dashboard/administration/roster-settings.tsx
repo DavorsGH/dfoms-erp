@@ -2,14 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useToast, useAlert } from "@/components/feedback/feedback-context";
 import { inputClassName } from "../employees/employee-record-utils";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
-import type { ClientEntry } from "../operations/clients-utils";
-import { filterSitesForClient } from "../operations/duty-roster-utils";
+import {
+  sitesForContract,
+  siteProjectCode,
+} from "@/lib/operations-contract-scope";
+import {
+  listRosterContractChoices,
+  type RosterContractProject,
+} from "@/lib/roster-contract-choices";
+import { useRosterContractSelection } from "../operations/use-roster-contract-selection";
 import {
   getRosterConfigForClient,
   type RosterConfigRecord,
@@ -22,6 +30,9 @@ import {
 import {
   useStampBusinessUnitId,
 } from "@/app/dashboard/business-unit-view-context";
+import ShiftTimesCard from "./shift-times-card";
+import type { TenantHoliday } from "./public-holidays-card";
+import type { ShiftTimeRecord } from "@/lib/shift-attendance";
 import {
   assertCanModifyBusinessUnitRow,
   formatBusinessUnitAccessError,
@@ -30,10 +41,16 @@ import {
 } from "@/utils/business-unit-access";
 
 type RosterSettingsProps = {
-  initialClients: ClientEntry[];
+  initialProjects: RosterContractProject[];
   initialConfigs: RosterConfigRecord[];
   initialSites: SiteEntry[];
   fetchError: string | null;
+  tenantId: string | null;
+  initialGrace: { late_grace_minutes: number; early_leave_grace_minutes: number } | null;
+  initialShiftTimes: ShiftTimeRecord[];
+  shiftLoadError: string | null;
+  initialHolidays: TenantHoliday[];
+  holidayLoadError: string | null;
 };
 
 const emptyConfigForm = {
@@ -45,14 +62,35 @@ const emptyConfigForm = {
 };
 
 export default function RosterSettings({
-  initialClients,
+  initialProjects,
   initialConfigs,
   initialSites,
   fetchError,
+  tenantId,
+  initialGrace,
+  initialShiftTimes,
+  shiftLoadError,
+  initialHolidays,
+  holidayLoadError,
 }: RosterSettingsProps) {
   const supabase = createClient();
+  const { toast } = useToast();
+  const { alertError } = useAlert();
   const stampBusinessUnit = useStampBusinessUnitId();
-  const [selectedClientId, setSelectedClientId] = useState("");
+  const contractChoices = listRosterContractChoices({
+    projects: initialProjects,
+    sites: initialSites.map((site) => ({
+      client_id: site.client_id,
+      project_code: siteProjectCode(site),
+    })),
+    employees: [],
+  });
+  const {
+    groupKey: selectedContractKey,
+    selected: selectedContract,
+    selectContract,
+  } = useRosterContractSelection(contractChoices);
+  const selectedClientId = selectedContract?.clientId ?? "";
   const selectedConfig = getRosterConfigForClient(initialConfigs, selectedClientId);
   const [configForm, setConfigForm] = useState(emptyConfigForm);
   const [sites, setSites] = useState(initialSites.map(normalizeSiteEntry));
@@ -68,7 +106,12 @@ export default function RosterSettings({
   );
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [loadingSiteCode, setLoadingSiteCode] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(fetchError);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError);
+    }
+  }, [alertError, fetchError]);
 
   useEffect(() => {
     setSites(initialSites.map(normalizeSiteEntry));
@@ -97,9 +140,9 @@ export default function RosterSettings({
     setConfigForm(emptyConfigForm);
   }, [selectedConfig]);
 
-  const clientSites = selectedClientId
-    ? filterSitesForClient(sites, selectedClientId).sort((left, right) =>
-        left.site_name.localeCompare(right.site_name),
+  const clientSites = selectedContractKey
+    ? sitesForContract(sites, selectedContractKey, initialProjects).sort(
+        (left, right) => left.site_name.localeCompare(right.site_name),
       )
     : [];
 
@@ -110,7 +153,7 @@ export default function RosterSettings({
       .order("site_name", { ascending: true });
 
     if (refreshError) {
-      setError(refreshError.message);
+      await alertError(refreshError);
       return;
     }
 
@@ -127,24 +170,55 @@ export default function RosterSettings({
         ]),
       ),
     );
-    setError(null);
   }
 
-  async function handleConfigSubmit(event: React.FormEvent) {
+  async function handleConfigSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!selectedClientId) {
-      setError("Select a customer before saving roster settings.");
+      const contractSelect = event.currentTarget.querySelector("#roster-contract");
+      if (contractSelect instanceof HTMLSelectElement) {
+        contractSelect.setCustomValidity(
+          selectedContract?.dataIssue ??
+            "Select a contract before saving roster & shift settings.",
+        );
+        contractSelect.reportValidity();
+      }
+      return;
+    }
+
+    const startInput = document.getElementById("roster-cycle-start");
+    const lengthInput = document.getElementById("roster-cycle-length");
+    if (startInput instanceof HTMLInputElement) {
+      startInput.setCustomValidity("");
+    }
+    if (lengthInput instanceof HTMLInputElement) {
+      lengthInput.setCustomValidity("");
+    }
+    const cycleLength = Number.parseInt(configForm.cycle_length_days, 10);
+    if (!configForm.cycle_start_date) {
+      if (startInput instanceof HTMLInputElement) {
+        startInput.setCustomValidity("Enter a cycle start date to save a rotation.");
+        startInput.reportValidity();
+      }
+      return;
+    }
+    if (!Number.isInteger(cycleLength) || cycleLength < 1) {
+      if (lengthInput instanceof HTMLInputElement) {
+        lengthInput.setCustomValidity(
+          "Enter a cycle length of at least 1 day to save a rotation.",
+        );
+        lengthInput.reportValidity();
+      }
       return;
     }
 
     setLoadingConfig(true);
-    setError(null);
 
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
       setLoadingConfig(false);
+      await alertError(buContext.error);
       return;
     }
 
@@ -156,8 +230,8 @@ export default function RosterSettings({
           selectedConfig.business_unit_id,
         );
       } catch (accessError) {
-        setError(formatBusinessUnitAccessError(accessError));
         setLoadingConfig(false);
+        await alertError(formatBusinessUnitAccessError(accessError));
         return;
       }
     } else {
@@ -166,8 +240,8 @@ export default function RosterSettings({
         stamp: stampBusinessUnit,
       });
       if (!stampResult.ok) {
-        setError(stampResult.error);
         setLoadingConfig(false);
+        await alertError(stampResult.error);
         return;
       }
       createBusinessUnitId = stampResult.businessUnitId;
@@ -176,7 +250,7 @@ export default function RosterSettings({
     const payload = {
       client_id: selectedClientId,
       cycle_start_date: configForm.cycle_start_date,
-      cycle_length_days: Number.parseInt(configForm.cycle_length_days, 10) || 14,
+      cycle_length_days: cycleLength,
       morning_time: configForm.morning_time.trim() || null,
       afternoon_time: configForm.afternoon_time.trim() || null,
       supervisor_time: configForm.supervisor_time.trim() || null,
@@ -199,26 +273,35 @@ export default function RosterSettings({
         });
 
     if (saveError) {
-      setError(saveError.message);
       setLoadingConfig(false);
+      await alertError(saveError);
       return;
     }
 
     setLoadingConfig(false);
+    toast("Roster & shift settings saved");
   }
 
   async function saveRequiredStaff(siteCode: string) {
     setLoadingSiteCode(siteCode);
-    setError(null);
 
     const rawValue = requiredStaffDrafts[siteCode]?.trim() ?? "";
     const requiredStaff =
       rawValue === "" ? null : Number.parseInt(rawValue, 10);
+    const staffInput = document.getElementById(
+      `roster-required-staff-${siteCode}`,
+    );
 
     if (rawValue !== "" && Number.isNaN(requiredStaff)) {
-      setError("Required staff must be a whole number.");
       setLoadingSiteCode(null);
+      if (staffInput instanceof HTMLInputElement) {
+        staffInput.setCustomValidity("Required staff must be a whole number.");
+        staffInput.reportValidity();
+      }
       return;
+    }
+    if (staffInput instanceof HTMLInputElement) {
+      staffInput.setCustomValidity("");
     }
 
     const { error: saveError } = await supabase
@@ -227,49 +310,58 @@ export default function RosterSettings({
       .eq("site_code", siteCode);
 
     if (saveError) {
-      setError(saveError.message);
       setLoadingSiteCode(null);
+      await alertError(saveError);
       return;
     }
 
     await refreshSites();
     setLoadingSiteCode(null);
+    toast("Required staff saved");
   }
 
   return (
     <div className="space-y-8">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
-          Rotation & Shift Times
-        </h3>
+        <h3 className="mb-1 text-lg font-semibold text-[#0f2744]">Rotation</h3>
+        <p className="mb-4 text-sm text-slate-600">
+          Cycle start and length are only needed when you save a rotation.
+          Shift times, public holidays, and attendance grace save on their own
+          and do not create a cycle.
+        </p>
         <div className="mb-4 max-w-md">
           <label className="mb-1 block text-sm font-medium text-slate-700">
-            Customer
+            Contract
           </label>
           <select
-            value={selectedClientId}
-            onChange={(event) => setSelectedClientId(event.target.value)}
+            id="roster-contract"
+            value={selectedContractKey}
+            onChange={(event) => {
+              event.currentTarget.setCustomValidity("");
+              selectContract(event.target.value);
+            }}
             className={inputClassName}
           >
-            <option value="">Select customer</option>
-            {initialClients.map((client) => (
-              <option key={client.client_id} value={client.client_id}>
-                {client.client_name}
+            <option value="">Select contract</option>
+            {contractChoices.map((choice) => (
+              <option key={choice.groupKey} value={choice.groupKey}>
+                {choice.label}
               </option>
             ))}
           </select>
         </div>
 
+        {selectedContract?.dataIssue ? (
+          <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {selectedContract.dataIssue}
+          </p>
+        ) : null}
+
         {!selectedClientId ? (
           <p className="text-sm text-slate-600">
-            Select a customer to configure their rotation cycle and shift times.
-            New customers do not receive default roster settings automatically.
+            Select a contract to save its shift times. Public holidays and
+            attendance grace apply to the whole company. A rotation cycle is
+            optional.
           </p>
         ) : (
           <form onSubmit={handleConfigSubmit} className="space-y-4">
@@ -279,15 +371,16 @@ export default function RosterSettings({
                   Cycle Start Date
                 </label>
                 <input
+                  id="roster-cycle-start"
                   type="date"
-                  required
                   value={configForm.cycle_start_date}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    event.currentTarget.setCustomValidity("");
                     setConfigForm((current) => ({
                       ...current,
                       cycle_start_date: event.target.value,
-                    }))
-                  }
+                    }));
+                  }}
                   className={inputClassName}
                 />
               </div>
@@ -296,64 +389,17 @@ export default function RosterSettings({
                   Cycle Length (Days)
                 </label>
                 <input
+                  id="roster-cycle-length"
                   type="number"
                   min={1}
-                  required
                   value={configForm.cycle_length_days}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    event.currentTarget.setCustomValidity("");
                     setConfigForm((current) => ({
                       ...current,
                       cycle_length_days: event.target.value,
-                    }))
-                  }
-                  className={inputClassName}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Morning Time
-                </label>
-                <input
-                  type="text"
-                  value={configForm.morning_time}
-                  onChange={(event) =>
-                    setConfigForm((current) => ({
-                      ...current,
-                      morning_time: event.target.value,
-                    }))
-                  }
-                  className={inputClassName}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Afternoon Time
-                </label>
-                <input
-                  type="text"
-                  value={configForm.afternoon_time}
-                  onChange={(event) =>
-                    setConfigForm((current) => ({
-                      ...current,
-                      afternoon_time: event.target.value,
-                    }))
-                  }
-                  className={inputClassName}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Supervisor Time
-                </label>
-                <input
-                  type="text"
-                  value={configForm.supervisor_time}
-                  onChange={(event) =>
-                    setConfigForm((current) => ({
-                      ...current,
-                      supervisor_time: event.target.value,
-                    }))
-                  }
+                    }));
+                  }}
                   className={inputClassName}
                 />
               </div>
@@ -366,12 +412,27 @@ export default function RosterSettings({
               {loadingConfig
                 ? "Saving…"
                 : selectedConfig
-                  ? "Save Roster Settings"
-                  : "Create Roster Settings"}
+                  ? "Save Roster & Shift Settings"
+                  : "Create Roster & Shift Settings"}
             </button>
           </form>
         )}
       </section>
+
+      <ShiftTimesCard
+        tenantId={tenantId}
+        clientId={selectedClientId}
+        initialGrace={initialGrace}
+        initialShiftTimes={initialShiftTimes}
+        loadError={shiftLoadError}
+        previousTimes={{
+          morning: configForm.morning_time,
+          afternoon: configForm.afternoon_time,
+          supervisor: configForm.supervisor_time,
+        }}
+        initialHolidays={initialHolidays}
+        holidayLoadError={holidayLoadError}
+      />
 
       <section className="space-y-4">
         <div>
@@ -380,13 +441,13 @@ export default function RosterSettings({
           </h3>
           <p className="mt-1 text-sm text-slate-600">
             Set the target headcount for each site used on the Duty Roster for
-            the selected customer.
+            the selected contract.
           </p>
         </div>
 
         {!selectedClientId ? (
           <p className="text-sm text-slate-600">
-            Select a customer above to manage required staff for their facilities.
+            Select a contract above to manage required staff for its facilities.
           </p>
         ) : (
           <ScrollableTable>
@@ -416,15 +477,17 @@ export default function RosterSettings({
                       <td className="px-4 py-3">{site.site_name}</td>
                       <td className="px-4 py-3">
                         <input
+                          id={`roster-required-staff-${site.site_code}`}
                           type="number"
                           min={0}
                           value={requiredStaffDrafts[site.site_code] ?? ""}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            event.currentTarget.setCustomValidity("");
                             setRequiredStaffDrafts((current) => ({
                               ...current,
                               [site.site_code]: event.target.value,
-                            }))
-                          }
+                            }));
+                          }}
                           className={inputClassName}
                         />
                       </td>

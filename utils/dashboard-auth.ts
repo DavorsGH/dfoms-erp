@@ -350,6 +350,14 @@ export async function isCurrentLeaveApprover(): Promise<boolean> {
   return currentApprover === user.id;
 }
 
+export async function hasAttendanceApprovalInbox(): Promise<boolean> {
+  const role = await getCurrentUserRole();
+  if (role === "director" || role === "super_admin") {
+    return true;
+  }
+  return isCurrentLeaveApprover();
+}
+
 export async function hasLeaveApprovalInbox(): Promise<boolean> {
   const user = await getCurrentAuthUser();
   if (!user) {

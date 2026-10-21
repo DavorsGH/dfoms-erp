@@ -7,7 +7,10 @@ import {
   moduleNavActiveTabProps,
 } from "@/app/dashboard/module-nav-tab-strip";
 import type { AppRole } from "@/app/dashboard/user-account-types";
-import { isCrmNavItemVisibleForRole } from "@/utils/rbac-access";
+import {
+  canAccessDevicesHub,
+  isCrmNavItemVisibleForRole,
+} from "@/utils/rbac-access";
 
 const navItems = [
   { label: "Customer List", href: "/dashboard/crm/customers" },
@@ -45,6 +48,12 @@ export default function CrmNav({ showProductCatalog, userRole }: CrmNavProps) {
   const pathname = usePathname();
   const visibleItems = navItems.filter((item) => {
     if ("davorsOnly" in item && item.davorsOnly && !showProductCatalog) {
+      return false;
+    }
+    if (
+      item.href === "/dashboard/pos/scanner-setup" &&
+      canAccessDevicesHub(userRole)
+    ) {
       return false;
     }
 

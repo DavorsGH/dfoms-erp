@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useToast } from "@/components/feedback/feedback-context";
 import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import RegisterRowActions, {
@@ -20,7 +21,8 @@ import {
   type HrEmployee,
 } from "../hr-payroll/employee-utils";
 import { formatDate, inputClassName } from "../hr-payroll/hr-register-utils";
-import type { ClientEntry } from "./clients-utils";
+import type { RosterContractProject } from "@/lib/roster-contract-choices";
+import { useOperationsContracts } from "./use-operations-contracts";
 import {
   derivePassFailFromScore,
   nullableNumber,
@@ -41,7 +43,7 @@ import { useOperationsReadOnly } from "./operations-read-only-context";
 
 type InspectionSummaryProps = {
   initialEntries: InspectionSummaryEntry[];
-  initialClients: ClientEntry[];
+  initialProjects: RosterContractProject[];
   initialSites: SiteEntry[];
   initialWorkOrders: WorkOrderLookup[];
   initialEmployees: HrEmployee[];
@@ -67,7 +69,7 @@ const emptyForm = {
 
 export default function InspectionSummary({
   initialEntries,
-  initialClients,
+  initialProjects,
   initialSites,
   initialWorkOrders,
   initialEmployees,
@@ -76,6 +78,7 @@ export default function InspectionSummary({
   tenantId = null,
 }: InspectionSummaryProps) {
   const supabase = createClient();
+  const { toast } = useToast();
   const operationsReadOnly = useOperationsReadOnly();
   const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(
@@ -88,7 +91,7 @@ export default function InspectionSummary({
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
-  const [filterClient, setFilterClient] = useState("");
+  const contracts = useOperationsContracts(initialProjects, initialSites);
   const [filterSite, setFilterSite] = useState("");
   const [filterPassFail, setFilterPassFail] = useState("");
   const [filterDateFrom, setFilterDateFrom] = useState("");
@@ -128,25 +131,9 @@ export default function InspectionSummary({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
   }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
-  const filterSiteOptions = useMemo(() => {
-    if (!filterClient) {
-      return initialSites;
-    }
-
-    return initialSites.filter((site) => site.client_id === filterClient);
-  }, [filterClient, initialSites]);
-
-  const formSiteOptions = useMemo(() => {
-    if (!form.client_id) {
-      return [];
-    }
-
-    return initialSites.filter((site) => site.client_id === form.client_id);
-  }, [form.client_id, initialSites]);
-
   const filteredEntries = useMemo(() => {
     return entries.filter((entry) => {
-      if (filterClient && (entry.client_id ?? "") !== filterClient) {
+      if (!contracts.matchesFilter(entry.client_id)) {
         return false;
       }
 
@@ -171,7 +158,7 @@ export default function InspectionSummary({
     });
   }, [
     entries,
-    filterClient,
+    contracts,
     filterDateFrom,
     filterDateTo,
     filterPassFail,
@@ -198,7 +185,18 @@ export default function InspectionSummary({
     setError(null);
   }
 
+  function chooseContract(groupKey: string) {
+    const choice = contracts.choices.find((entry) => entry.groupKey === groupKey);
+    contracts.setFormContractKey(groupKey);
+    setForm((current) => ({
+      ...current,
+      client_id: choice?.clientId ?? "",
+      site_id: "",
+    }));
+  }
+
   function openAddForm() {
+    contracts.setFormContractKey("");
     setEditingId(null);
     setForm({
       ...emptyForm,
@@ -208,12 +206,14 @@ export default function InspectionSummary({
   }
 
   function closeForm() {
+    contracts.setFormContractKey("");
     setEditingId(null);
     setForm(emptyForm);
     setShowForm(false);
   }
 
   function openEditForm(entry: InspectionSummaryEntry) {
+    contracts.setFormContractKey(contracts.keyFor(entry.client_id, entry.site_id));
     setEditingId(entry.checklist_id);
     setForm({
       checklist_id: entry.checklist_id,
@@ -252,6 +252,9 @@ export default function InspectionSummary({
         if (workOrder) {
           next.client_id = workOrder.client_id ?? "";
           next.site_id = workOrder.site_id ?? "";
+          contracts.setFormContractKey(
+            contracts.keyFor(workOrder.client_id, workOrder.site_id),
+          );
         }
       }
 
@@ -301,10 +304,19 @@ export default function InspectionSummary({
     setLoading(true);
     setError(null);
 
+    if (contracts.formContractKey && !contracts.formChoice?.clientId) {
+      setError(
+        contracts.formChoice?.dataIssue ??
+          "This contract has no customer, so the inspection cannot be saved.",
+      );
+      setLoading(false);
+      return;
+    }
+
     const payload = {
       inspection_date: form.inspection_date,
       work_order_no: nullableText(form.work_order_no),
-      client_id: nullableText(form.client_id),
+      client_id: nullableText(contracts.formChoice?.clientId ?? form.client_id),
       site_id: nullableText(form.site_id),
       supervisor: nullableText(form.supervisor),
       inspection_score_pct: nullableNumber(form.inspection_score_pct),
@@ -351,6 +363,7 @@ export default function InspectionSummary({
     closeForm();
     await refreshEntries();
     setLoading(false);
+    toast(editingId ? "Inspection saved" : "Inspection created");
   }
 
   return (
@@ -359,20 +372,20 @@ export default function InspectionSummary({
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Filter by Customer
+              Filter by Contract
             </label>
             <select
-              value={filterClient}
+              value={contracts.filterContractKey}
               onChange={(event) => {
-                setFilterClient(event.target.value);
+                contracts.setFilterContractKey(event.target.value);
                 setFilterSite("");
               }}
               className={inputClassName}
             >
-              <option value="">All customers</option>
-              {initialClients.map((client) => (
-                <option key={client.client_id} value={client.client_id}>
-                  {client.client_name}
+              <option value="">All contracts</option>
+              {contracts.choices.map((choice) => (
+                <option key={choice.groupKey} value={choice.groupKey}>
+                  {choice.label}
                 </option>
               ))}
             </select>
@@ -387,7 +400,7 @@ export default function InspectionSummary({
               className={inputClassName}
             >
               <option value="">All sites</option>
-              {filterSiteOptions.map((site) => (
+              {contracts.filterSites.map((site) => (
                 <option key={site.site_code} value={site.site_code}>
                   {site.site_name}
                 </option>
@@ -509,20 +522,25 @@ export default function InspectionSummary({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Customer
+                  Contract
                 </label>
                 <select
-                  value={form.client_id}
-                  onChange={(event) => updateField("client_id", event.target.value)}
+                  value={contracts.formContractKey}
+                  onChange={(event) => chooseContract(event.target.value)}
                   className={inputClassName}
                 >
-                  <option value="">Select customer</option>
-                  {initialClients.map((client) => (
-                    <option key={client.client_id} value={client.client_id}>
-                      {client.client_name}
+                  <option value="">Select contract</option>
+                  {contracts.choices.map((choice) => (
+                    <option key={choice.groupKey} value={choice.groupKey}>
+                      {choice.label}
                     </option>
                   ))}
                 </select>
+                {contracts.formChoice?.dataIssue ? (
+                  <p className="mt-1 text-sm text-amber-700">
+                    {contracts.formChoice.dataIssue}
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -531,13 +549,15 @@ export default function InspectionSummary({
                 <select
                   value={form.site_id}
                   onChange={(event) => updateField("site_id", event.target.value)}
-                  disabled={!form.client_id}
+                  disabled={!contracts.formContractKey}
                   className={inputClassName}
                 >
                   <option value="">
-                    {form.client_id ? "Select site" : "Select a customer first"}
+                    {contracts.formContractKey
+                      ? "Select site"
+                      : "Select a contract first"}
                   </option>
-                  {formSiteOptions.map((site) => (
+                  {contracts.formSites.map((site) => (
                     <option key={site.site_code} value={site.site_code}>
                       {site.site_name}
                     </option>
@@ -671,7 +691,7 @@ export default function InspectionSummary({
         totalCount={entries.length}
         itemSingular="inspection"
         hasActiveFilters={Boolean(
-          filterClient ||
+          contracts.filterContractKey ||
             filterSite ||
             filterPassFail ||
             filterDateFrom ||
@@ -684,7 +704,7 @@ export default function InspectionSummary({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Inspection Date</th>
-              <th className={scrollableTableThClassName}>Customer</th>
+              <th className={scrollableTableThClassName}>Contract</th>
               <th className={scrollableTableThClassName}>Site</th>
               <th className={scrollableTableThClassName}>Supervisor</th>
               <th className={scrollableTableThClassName}>Score %</th>
@@ -707,7 +727,13 @@ export default function InspectionSummary({
               filteredEntries.map((entry, index) => (
                 <tr key={entry.checklist_id} className={getStripedRowClassName(index)}>
                   <td className="px-4 py-3">{formatDate(entry.inspection_date)}</td>
-                  <td className="px-4 py-3">{getInspectionClientName(entry)}</td>
+                  <td className="px-4 py-3">
+                    {contracts.labelFor(
+                      entry.client_id,
+                      entry.site_id,
+                      getInspectionClientName(entry),
+                    )}
+                  </td>
                   <td className="px-4 py-3">{getInspectionSiteName(entry)}</td>
                   <td className="px-4 py-3">
                     {entry.supervisor

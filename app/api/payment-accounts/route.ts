@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { requireTenantSuperAdmin } from "@/utils/admin-auth";
+import { requireTenantRoleIn } from "@/utils/admin-auth";
+import { PAYMENT_AND_LEAVE_APPROVER_ROLES } from "@/utils/rbac-access";
 import {
   linkPaymentAccountToBusinessUnit,
   loadPaymentAccountById,
@@ -36,7 +37,7 @@ function rejectClientTenantId(body: unknown): NextResponse | null {
 }
 
 export async function GET() {
-  const auth = await requireTenantSuperAdmin();
+  const auth = await requireTenantRoleIn(PAYMENT_AND_LEAVE_APPROVER_ROLES);
   if (!auth.ok) {
     return auth.response;
   }
@@ -63,7 +64,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireTenantSuperAdmin();
+  const auth = await requireTenantRoleIn(PAYMENT_AND_LEAVE_APPROVER_ROLES);
   if (!auth.ok) {
     return auth.response;
   }
@@ -132,7 +133,7 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const auth = await requireTenantSuperAdmin();
+  const auth = await requireTenantRoleIn(PAYMENT_AND_LEAVE_APPROVER_ROLES);
   if (!auth.ok) {
     return auth.response;
   }
@@ -255,7 +256,7 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const auth = await requireTenantSuperAdmin();
+  const auth = await requireTenantRoleIn(PAYMENT_AND_LEAVE_APPROVER_ROLES);
   if (!auth.ok) {
     return auth.response;
   }

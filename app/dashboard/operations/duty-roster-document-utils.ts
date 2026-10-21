@@ -1,4 +1,7 @@
-import type { DutyRosterViewModel } from "./duty-roster-utils";
+import type {
+  DutyRosterShiftHeader,
+  DutyRosterViewModel,
+} from "./duty-roster-utils";
 
 export type DutyRosterPdfPayload = {
   companyLegalName: string;
@@ -7,9 +10,9 @@ export type DutyRosterPdfPayload = {
   clientName: string;
   effectiveLabel: string;
   rotationLabel: string;
-  morningTime: string;
-  afternoonTime: string;
-  supervisorTime: string;
+  morningTime: DutyRosterShiftHeader;
+  afternoonTime: DutyRosterShiftHeader;
+  supervisorTime: DutyRosterShiftHeader;
   rows: DutyRosterViewModel["rows"];
   totals: DutyRosterViewModel["totals"];
   preparedBy: string;

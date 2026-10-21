@@ -18,6 +18,7 @@ export type ProjectEntry = {
   project_code: string;
   project_name: string;
   service_contract_id: string | null;
+  contract_type?: "contract" | "adhoc" | null;
   required_staff?: number | null;
   business_unit_id?: string | null;
   is_archived: boolean;
@@ -25,7 +26,7 @@ export type ProjectEntry = {
 };
 
 export const PROJECT_SELECT =
-  "id, project_code, project_name, service_contract_id, required_staff, business_unit_id, is_archived, sites:sites!sites_project_id_fkey(site_code, site_name, client_id, required_staff, project_id)";
+  "id, project_code, project_name, service_contract_id, contract_type, required_staff, business_unit_id, is_archived, sites:sites!sites_project_id_fkey(site_code, site_name, client_id, required_staff, project_id)";
 
 export const CONTRACT_PROJECT_SELECT =
   "id, project_code, project_name, is_archived";
@@ -55,6 +56,7 @@ export function normalizeProjectEntry(raw: ProjectEntry): ProjectEntry {
   return {
     ...raw,
     service_contract_id: raw.service_contract_id ?? null,
+    contract_type: raw.contract_type === "adhoc" ? "adhoc" : "contract",
     is_archived: raw.is_archived ?? false,
     sites,
   };
@@ -118,6 +120,44 @@ export function getProjectSiteLabel(project: ProjectEntry): string {
   }
 
   return `${count} sites`;
+}
+
+/** Active contract with the same name, ignoring case, trim, and archived rows. */
+export function findActiveContractNameDuplicate(
+  name: string,
+  contracts: Array<{
+    project_code: string;
+    project_name: string;
+    is_archived?: boolean | null;
+  }>,
+  editingCode?: string | null,
+): { project_code: string; project_name: string } | null {
+  const key = name.trim().toLowerCase();
+  if (!key) {
+    return null;
+  }
+  for (const contract of contracts) {
+    if (contract.is_archived) {
+      continue;
+    }
+    if (editingCode && contract.project_code === editingCode) {
+      continue;
+    }
+    if (contract.project_name.trim().toLowerCase() === key) {
+      return {
+        project_code: contract.project_code,
+        project_name: contract.project_name.trim(),
+      };
+    }
+  }
+  return null;
+}
+
+export function duplicateContractNameMessage(
+  name: string,
+  projectCode: string,
+): string {
+  return `A contract named '${name.trim()}' already exists (${projectCode})`;
 }
 
 export function getProjectClientName(

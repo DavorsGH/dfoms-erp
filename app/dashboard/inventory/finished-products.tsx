@@ -5,6 +5,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
 import FinishedProductPhoto from "@/components/finished-product-photo";
 import { createClient } from "@/utils/supabase/client";
+import { useAlert, useToast } from "@/components/feedback/feedback-context";
+import Tooltip from "@/components/ui/tooltip";
+import {
+  claimSingleSubmit,
+  finishedProductNeedsOpeningCost,
+} from "@/lib/inventory/finished-product-wac";
+import { loadFinishedProductOutflowStatus } from "@/lib/inventory/finished-product-outflow-cost";
 import { inputClassName } from "../employees/employee-record-utils";
 import RegisterRowActions, {
   confirmArchiveEntry,
@@ -36,8 +43,9 @@ import { allocateProductBarcode, allocateProductCode } from "./inventory-ids-api
 import ProductBarcodeLabelPrint from "./product-barcode-label-print";
 import {
   findFinishedProductIdByBarcode,
+  isExcelScientificBarcode,
   mapFinishedProductBarcodeSaveError,
-  normalizeProductBarcodeInput,
+  parseProductBarcodeText,
 } from "@/utils/finished-product-barcode-utils";
 import {
   BARCODE_WEDGE_INPUT_ATTR,
@@ -110,6 +118,9 @@ type FinishedProductsProps = {
   fetchError: string | null;
   readOnly?: boolean;
   showStockAdjustments?: boolean;
+  canSetOpeningCost?: boolean;
+  initialOutflowCostByProductId?: Record<string, number>;
+  initialUncostedUnitNamesByProductId?: Record<string, string[]>;
   internalConsumptionReadOnly?: boolean;
   tenantId?: string | null;
   initialInternalConsumptionEntries?: InternalConsumptionRecord[];
@@ -154,6 +165,44 @@ function nullableText(value: string): string | null {
   return trimmed ? trimmed : null;
 }
 
+type ProductListSortColumn =
+  | "product_name"
+  | "product_code"
+  | "barcode"
+  | "unit_of_measure"
+  | "current_stock"
+  | "standard_selling_price";
+
+function ProductListSortHeader({
+  label,
+  column,
+  sortColumn,
+  sortDirection,
+  onSort,
+}: {
+  label: string;
+  column: ProductListSortColumn;
+  sortColumn: ProductListSortColumn;
+  sortDirection: "asc" | "desc";
+  onSort: (column: ProductListSortColumn) => void;
+}) {
+  const active = sortColumn === column;
+  return (
+    <th className={scrollableTableThClassName}>
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        className="flex w-full items-center gap-1 text-left font-medium text-white transition-opacity hover:opacity-90"
+      >
+        <span>{label}</span>
+        {active ? (
+          <span aria-hidden="true">{sortDirection === "asc" ? "↑" : "↓"}</span>
+        ) : null}
+      </button>
+    </th>
+  );
+}
+
 export default function FinishedProducts({
   initialProducts,
   initialCatalogProducts,
@@ -162,6 +211,9 @@ export default function FinishedProducts({
   fetchError,
   readOnly = false,
   showStockAdjustments = true,
+  canSetOpeningCost = false,
+  initialOutflowCostByProductId = {},
+  initialUncostedUnitNamesByProductId = {},
   internalConsumptionReadOnly,
   tenantId = null,
   initialInternalConsumptionEntries = [],
@@ -180,6 +232,19 @@ export default function FinishedProducts({
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const { viewAllBusinessUnits } = useBusinessUnitView();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
+  const openingCostLock = useRef(false);
+  const adjustmentLock = useRef(false);
+  const [savingOpeningCostId, setSavingOpeningCostId] = useState<string | null>(null);
+  const [openingCostProduct, setOpeningCostProduct] =
+    useState<FinishedProductRecord | null>(null);
+  const [openingCostInput, setOpeningCostInput] = useState("");
+  const [outflowCostByProductId, setOutflowCostByProductId] = useState(
+    initialOutflowCostByProductId,
+  );
+  const [uncostedUnitNamesByProductId, setUncostedUnitNamesByProductId] =
+    useState(initialUncostedUnitNamesByProductId);
   const [products, setProducts] = useState(
     initialProducts.map(normalizeFinishedProduct),
   );
@@ -227,6 +292,103 @@ export default function FinishedProducts({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
   const [adjustmentError, setAdjustmentError] = useState<string | null>(null);
+  const [listSortColumn, setListSortColumn] =
+    useState<ProductListSortColumn>("product_name");
+  const [listSortDirection, setListSortDirection] = useState<"asc" | "desc">(
+    "asc",
+  );
+  const [filterProductCode, setFilterProductCode] = useState("");
+  const [filterProductName, setFilterProductName] = useState("");
+  const [filterBarcode, setFilterBarcode] = useState("");
+  const [filterUnit, setFilterUnit] = useState("");
+
+  function handleProductListSort(column: ProductListSortColumn) {
+    if (listSortColumn === column) {
+      setListSortDirection((direction) =>
+        direction === "asc" ? "desc" : "asc",
+      );
+      return;
+    }
+    setListSortColumn(column);
+    setListSortDirection("asc");
+  }
+
+  const filteredProducts = useMemo(() => {
+    const codeQuery = filterProductCode.trim().toLowerCase();
+    const nameQuery = filterProductName.trim().toLowerCase();
+    const barcodeQuery = filterBarcode.trim().toLowerCase();
+    const unitQuery = filterUnit.trim().toLowerCase();
+
+    return products.filter((product) => {
+      if (
+        codeQuery &&
+        !product.product_code.toLowerCase().includes(codeQuery)
+      ) {
+        return false;
+      }
+      if (
+        nameQuery &&
+        !product.product_name.toLowerCase().includes(nameQuery)
+      ) {
+        return false;
+      }
+      if (
+        barcodeQuery &&
+        !(product.barcode ?? "").toLowerCase().includes(barcodeQuery)
+      ) {
+        return false;
+      }
+      if (unitQuery) {
+        const unitLabel = formatUnit(product.unit_of_measure).toLowerCase();
+        const unitStored = product.unit_of_measure.toLowerCase();
+        if (!unitLabel.includes(unitQuery) && !unitStored.includes(unitQuery)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [
+    filterBarcode,
+    filterProductCode,
+    filterProductName,
+    filterUnit,
+    products,
+  ]);
+
+  const displayProducts = useMemo(() => {
+    const sorted = [...filteredProducts];
+    sorted.sort((left, right) => {
+      let comparison = 0;
+      switch (listSortColumn) {
+        case "product_code":
+          comparison = left.product_code.localeCompare(right.product_code);
+          break;
+        case "product_name":
+          comparison = left.product_name.localeCompare(right.product_name);
+          break;
+        case "barcode":
+          comparison = (left.barcode ?? "").localeCompare(right.barcode ?? "");
+          break;
+        case "unit_of_measure":
+          comparison = formatUnit(left.unit_of_measure).localeCompare(
+            formatUnit(right.unit_of_measure),
+          );
+          break;
+        case "current_stock":
+          comparison = left.current_stock - right.current_stock;
+          break;
+        case "standard_selling_price":
+          comparison =
+            (left.standard_selling_price ?? 0) -
+            (right.standard_selling_price ?? 0);
+          break;
+        default:
+          comparison = 0;
+      }
+      return listSortDirection === "asc" ? comparison : -comparison;
+    });
+    return sorted;
+  }, [filteredProducts, listSortColumn, listSortDirection]);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const editingProduct = useMemo(
@@ -380,6 +542,17 @@ export default function FinishedProducts({
       Object.fromEntries(purchaseCountsResult.countsByProductId.entries()),
     );
     setInternalUseEntries(internalUseResult.entries);
+    const outflowStatus = await loadFinishedProductOutflowStatus(
+      supabase,
+      tenantId,
+      buReadScope,
+    );
+    if (outflowStatus.error) {
+      setError(outflowStatus.error);
+      return;
+    }
+    setOutflowCostByProductId(outflowStatus.outflowCostByProductId);
+    setUncostedUnitNamesByProductId(outflowStatus.uncostedUnitNamesByProductId);
     setError(null);
   }
 
@@ -543,13 +716,21 @@ export default function FinishedProducts({
       }
 
       const payload = buildFinishedProductSavePayload(form);
-      const barcodeInput = normalizeProductBarcodeInput(form.barcode);
+      const parsedBarcode = parseProductBarcodeText(form.barcode);
+      if (!parsedBarcode.ok) {
+        setLoading(false);
+        barcodeInputRef.current?.setCustomValidity(parsedBarcode.error);
+        barcodeInputRef.current?.reportValidity();
+        return;
+      }
+      const barcodeInput = parsedBarcode.barcode;
       const updateRow: Record<string, unknown> = {
         product_name: payload.product_name,
         unit_of_measure: payload.unit_of_measure,
         standard_selling_price: payload.standard_selling_price,
         sourcing_type: payload.sourcing_type,
         supplier_id: payload.supplier_id,
+        barcode: barcodeInput,
         updated_at: new Date().toISOString(),
       };
 
@@ -564,15 +745,13 @@ export default function FinishedProducts({
           return;
         }
         if (duplicate.productId) {
-          if (barcodeInputRef.current) {
-            barcodeInputRef.current.setCustomValidity(
-              "This barcode is already used by another product in your workspace.",
-            );
-            barcodeInputRef.current.reportValidity();
-          }
+          setLoading(false);
+          barcodeInputRef.current?.setCustomValidity(
+            "This barcode is already used by another product in your workspace.",
+          );
+          barcodeInputRef.current?.reportValidity();
           return;
         }
-        updateRow.barcode = barcodeInput;
       }
 
       if (barcodeInputRef.current) {
@@ -594,6 +773,7 @@ export default function FinishedProducts({
         setError(saveError.message);
         return;
       }
+      toast("Product saved");
     } else {
       const stampResult = resolveWriteBusinessUnitIdForCreate({
         allowedUnits: buContext.allowedUnits,
@@ -610,8 +790,14 @@ export default function FinishedProducts({
         return;
       }
 
-      const manualBarcode = normalizeProductBarcodeInput(form.barcode);
-      let barcodeToSave = manualBarcode;
+      const parsedBarcode = parseProductBarcodeText(form.barcode);
+      if (!parsedBarcode.ok) {
+        setLoading(false);
+        barcodeInputRef.current?.setCustomValidity(parsedBarcode.error);
+        barcodeInputRef.current?.reportValidity();
+        return;
+      }
+      let barcodeToSave = parsedBarcode.barcode ?? "";
       if (!barcodeToSave) {
         const barcodeAllocated = await allocateProductBarcode(supabase);
         if (barcodeAllocated.error || !barcodeAllocated.barcode) {
@@ -629,12 +815,11 @@ export default function FinishedProducts({
           return;
         }
         if (duplicate.productId) {
-          if (barcodeInputRef.current) {
-            barcodeInputRef.current.setCustomValidity(
-              "This barcode is already used by another product in your workspace.",
-            );
-            barcodeInputRef.current.reportValidity();
-          }
+          setLoading(false);
+          barcodeInputRef.current?.setCustomValidity(
+            "This barcode is already used by another product in your workspace.",
+          );
+          barcodeInputRef.current?.reportValidity();
           return;
         }
       }
@@ -856,6 +1041,9 @@ export default function FinishedProducts({
 
   async function handleAdjustmentSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (!claimSingleSubmit(adjustmentLock)) {
+      return;
+    }
     setLoading(true);
     setAdjustmentError(null);
     setSuccessMessage(null);
@@ -914,8 +1102,8 @@ export default function FinishedProducts({
     let costPerUnit: number | undefined;
     if (needsCost) {
       costPerUnit = Number.parseFloat(adjustmentForm.cost_per_unit);
-      if (Number.isNaN(costPerUnit) || costPerUnit < 0) {
-        setAdjustmentError("Cost per unit must be zero or greater.");
+      if (Number.isNaN(costPerUnit) || costPerUnit <= 0) {
+        setAdjustmentError("Enter a cost per unit greater than zero.");
         return;
       }
     }
@@ -965,6 +1153,7 @@ export default function FinishedProducts({
     setAdjustmentForm(emptyAdjustmentForm);
     setShowAdjustmentForm(false);
     setAdjustmentError(null);
+    toast("Stock adjustment recorded.");
     await refreshLiveInventoryData();
     } catch (unexpected) {
       setAdjustmentError(
@@ -973,7 +1162,93 @@ export default function FinishedProducts({
           : "Unable to record stock adjustment.",
       );
     } finally {
+      adjustmentLock.current = false;
       setLoading(false);
+    }
+  }
+
+  function openOpeningCostDialog(product: FinishedProductRecord) {
+    if (openingCostLock.current) {
+      return;
+    }
+    setOpeningCostProduct(product);
+    setOpeningCostInput("");
+  }
+
+  async function handleSetOpeningCost() {
+    const product = openingCostProduct;
+    if (!product || !claimSingleSubmit(openingCostLock)) {
+      return;
+    }
+    const cost = Number.parseFloat(openingCostInput);
+    if (!Number.isFinite(cost) || cost <= 0) {
+      openingCostLock.current = false;
+      await alertError("Enter a cost per unit greater than zero.", {
+        title: "Could not set opening cost",
+      });
+      return;
+    }
+
+    setSavingOpeningCostId(product.id);
+    try {
+      const response = await fetch("/api/inventory/finished-product-opening-cost", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_id: product.id,
+          cost_per_unit: cost,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            average_cost_per_unit?: number;
+            outflow_unit_cost?: number;
+          }
+        | null;
+      if (!response.ok) {
+        await alertError(payload?.error ?? "Could not set the opening cost.", {
+          title: "Could not set opening cost",
+        });
+        return;
+      }
+      const resulting = Number(payload?.average_cost_per_unit);
+      const outflow = Number(payload?.outflow_unit_cost);
+      setProducts((current) =>
+        current.map((row) =>
+          row.id === product.id
+            ? {
+                ...row,
+                average_cost_per_unit: Number.isFinite(resulting)
+                  ? resulting
+                  : cost,
+              }
+            : row,
+        ),
+      );
+      if (Number.isFinite(outflow)) {
+        setOutflowCostByProductId((current) => ({
+          ...current,
+          [product.id]: outflow,
+        }));
+      }
+      if (!finishedProductNeedsOpeningCost(product.current_stock, outflow)) {
+        setUncostedUnitNamesByProductId((current) => {
+          const next = { ...current };
+          delete next[product.id];
+          return next;
+        });
+      }
+      setOpeningCostProduct(null);
+      setOpeningCostInput("");
+      const shown = Number.isFinite(resulting) ? resulting : cost;
+      toast(
+        `Opening cost set — ${product.product_code} now ${formatInventoryMoney(shown)}`,
+      );
+      await refreshLiveInventoryData();
+    } finally {
+      openingCostLock.current = false;
+      setSavingOpeningCostId(null);
     }
   }
 
@@ -1269,35 +1544,144 @@ export default function FinishedProducts({
         </section>
       ) : null}
 
+      <FilteredListCount
+        totalCount={products.length}
+        filteredCount={displayProducts.length}
+        itemSingular="product"
+        hasActiveFilters={
+          filterProductCode.trim() !== "" ||
+          filterProductName.trim() !== "" ||
+          filterBarcode.trim() !== "" ||
+          filterUnit.trim() !== ""
+        }
+      />
+
       <ScrollableTable>
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
-              <th className={scrollableTableThClassName}>Photo</th>
-              <th className={scrollableTableThClassName}>Code</th>
-              <th className={scrollableTableThClassName}>Product</th>
-              <th className={scrollableTableThClassName}>Unit</th>
-              <th className={scrollableTableThClassName}>Current Stock</th>
-              <th className={scrollableTableThClassName}>Selling Price</th>
-              <th className={scrollableTableThClassName}>Mfg Date</th>
-              <th className={scrollableTableThClassName}>Expiration</th>
+              <th className={scrollableTableThClassName} rowSpan={2}>
+                Photo
+              </th>
+              <ProductListSortHeader
+                label="Code"
+                column="product_code"
+                sortColumn={listSortColumn}
+                sortDirection={listSortDirection}
+                onSort={handleProductListSort}
+              />
+              <ProductListSortHeader
+                label="Product"
+                column="product_name"
+                sortColumn={listSortColumn}
+                sortDirection={listSortDirection}
+                onSort={handleProductListSort}
+              />
+              <ProductListSortHeader
+                label="Barcode"
+                column="barcode"
+                sortColumn={listSortColumn}
+                sortDirection={listSortDirection}
+                onSort={handleProductListSort}
+              />
+              <ProductListSortHeader
+                label="Unit"
+                column="unit_of_measure"
+                sortColumn={listSortColumn}
+                sortDirection={listSortDirection}
+                onSort={handleProductListSort}
+              />
+              <ProductListSortHeader
+                label="Current Stock"
+                column="current_stock"
+                sortColumn={listSortColumn}
+                sortDirection={listSortDirection}
+                onSort={handleProductListSort}
+              />
+              <ProductListSortHeader
+                label="Selling Price"
+                column="standard_selling_price"
+                sortColumn={listSortColumn}
+                sortDirection={listSortDirection}
+                onSort={handleProductListSort}
+              />
+              <th className={scrollableTableThClassName} rowSpan={2}>
+                Mfg Date
+              </th>
+              <th className={scrollableTableThClassName} rowSpan={2}>
+                Expiration
+              </th>
               {!readOnly ? (
-                <th className={scrollableTableThClassName}>Actions</th>
+                <th className={scrollableTableThClassName} rowSpan={2}>
+                  Actions
+                </th>
               ) : null}
+            </tr>
+            <tr>
+              <th className={scrollableTableThClassName}>
+                <input
+                  type="search"
+                  value={filterProductCode}
+                  onChange={(event) => setFilterProductCode(event.target.value)}
+                  placeholder="Filter code"
+                  aria-label="Filter by product code"
+                  className="w-full min-w-[5rem] rounded border border-white/30 bg-white/10 px-2 py-1 text-xs font-normal text-white placeholder:text-white/60"
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <input
+                  type="search"
+                  value={filterProductName}
+                  onChange={(event) => setFilterProductName(event.target.value)}
+                  placeholder="Filter name"
+                  aria-label="Filter by product name"
+                  className="w-full min-w-[5rem] rounded border border-white/30 bg-white/10 px-2 py-1 text-xs font-normal text-white placeholder:text-white/60"
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <input
+                  type="search"
+                  value={filterBarcode}
+                  onChange={(event) => setFilterBarcode(event.target.value)}
+                  placeholder="Filter barcode"
+                  aria-label="Filter by barcode"
+                  className="w-full min-w-[5rem] rounded border border-white/30 bg-white/10 px-2 py-1 text-xs font-normal text-white placeholder:text-white/60"
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <input
+                  type="search"
+                  value={filterUnit}
+                  onChange={(event) => setFilterUnit(event.target.value)}
+                  placeholder="Filter unit"
+                  aria-label="Filter by unit"
+                  className="w-full min-w-[5rem] rounded border border-white/30 bg-white/10 px-2 py-1 text-xs font-normal text-white placeholder:text-white/60"
+                />
+              </th>
+              <th className={scrollableTableThClassName} colSpan={2} />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {products.length === 0 ? (
               <tr>
                 <td
-                  colSpan={readOnly ? 8 : 9}
+                  colSpan={readOnly ? 9 : 10}
                   className="px-4 py-8 text-center text-sm text-slate-500"
                 >
                   No finished products yet.
                 </td>
               </tr>
+            ) : displayProducts.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={readOnly ? 9 : 10}
+                  className="px-4 py-8 text-center text-sm text-slate-500"
+                >
+                  No products match the current filters.
+                </td>
+              </tr>
             ) : (
-              products.map((product, index) => {
+              displayProducts.map((product, index) => {
                 const expirationStatus = getFinishedProductExpirationStatus(
                   product.expiration_date,
                 );
@@ -1323,6 +1707,61 @@ export default function FinishedProducts({
                         <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700">
                           Inactive
                         </span>
+                      ) : null}
+                      {(() => {
+                        const uncostedUnits =
+                          uncostedUnitNamesByProductId[product.id] ?? [];
+                        const missingCost = viewAllBusinessUnits
+                          ? uncostedUnits.length > 0
+                          : finishedProductNeedsOpeningCost(
+                              product.current_stock,
+                              outflowCostByProductId[product.id],
+                            );
+                        if (!missingCost) {
+                          return null;
+                        }
+                        const unitHint = uncostedUnits.length
+                          ? `No cost recorded in ${uncostedUnits.join(", ")}.`
+                          : undefined;
+                        return (
+                          <>
+                            <span
+                              className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-950"
+                              title={unitHint}
+                            >
+                              No cost recorded
+                            </span>
+                            {canSetOpeningCost && !viewAllBusinessUnits ? (
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-[#0f2744] underline disabled:opacity-50"
+                                disabled={savingOpeningCostId === product.id}
+                                onClick={() => openOpeningCostDialog(product)}
+                              >
+                                {savingOpeningCostId === product.id
+                                  ? "Saving…"
+                                  : "Set opening cost"}
+                              </button>
+                            ) : null}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-sm text-slate-700">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span>{product.barcode || "—"}</span>
+                      {isExcelScientificBarcode(product.barcode) ? (
+                        <Tooltip
+                          content={`This barcode looks like Excel converted it (${product.barcode}). Format the barcode column as Text in Excel and enter the real barcode.`}
+                        >
+                          <span
+                            tabIndex={0}
+                            className="rounded-full bg-amber-100 px-2 py-0.5 font-sans text-xs font-medium text-amber-950"
+                          >
+                            Check barcode
+                          </span>
+                        </Tooltip>
                       ) : null}
                     </div>
                   </td>
@@ -1423,10 +1862,11 @@ export default function FinishedProducts({
 
         {showAdjustmentForm && !readOnly && !viewAllBusinessUnits ? (
           <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-            <form
-              onSubmit={handleAdjustmentSubmit}
-              className="grid gap-4 md:grid-cols-2"
-            >
+            <form onSubmit={handleAdjustmentSubmit}>
+              <fieldset
+                disabled={loading}
+                className="grid gap-4 border-0 p-0 disabled:opacity-70 md:grid-cols-2"
+              >
               {adjustmentError ? (
                 <p className="md:col-span-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                   {adjustmentError}
@@ -1641,6 +2081,7 @@ export default function FinishedProducts({
                   {loading ? "Saving…" : "Save Adjustment"}
                 </button>
               </div>
+              </fieldset>
             </form>
           </section>
         ) : null}
@@ -1771,6 +2212,74 @@ export default function FinishedProducts({
           product={labelPrintProduct}
           onClose={() => setLabelPrintProduct(null)}
         />
+      ) : null}
+
+      {openingCostProduct ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="opening-cost-title"
+        >
+          <form
+            className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-xl"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSetOpeningCost();
+            }}
+          >
+            <h3 id="opening-cost-title" className="text-lg font-semibold text-[#0f2744]">
+              Set opening cost
+            </h3>
+            <p className="mt-3 text-sm text-slate-700">
+              Enter the cost per unit for the{" "}
+              {formatInventoryQuantity(openingCostProduct.current_stock)}{" "}
+              {formatUnit(openingCostProduct.unit_of_measure)} of{" "}
+              {openingCostProduct.product_code} already in stock. The quantity is
+              cleared at no cost, then recorded again as an Opening balance at
+              this cost. The stock count stays the same.
+            </p>
+            <label className="mt-4 mb-1 block text-sm font-medium text-slate-700">
+              Cost per unit (GHS)
+            </label>
+            <input
+              type="number"
+              min={0.0001}
+              step="any"
+              required
+              autoFocus
+              disabled={savingOpeningCostId === openingCostProduct.id}
+              value={openingCostInput}
+              onChange={(event) => setOpeningCostInput(event.target.value)}
+              className={inputClassName}
+            />
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                disabled={savingOpeningCostId === openingCostProduct.id}
+                onClick={() => {
+                  if (savingOpeningCostId) {
+                    return;
+                  }
+                  setOpeningCostProduct(null);
+                  setOpeningCostInput("");
+                }}
+                className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={savingOpeningCostId === openingCostProduct.id}
+                className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a3a5c] disabled:opacity-50"
+              >
+                {savingOpeningCostId === openingCostProduct.id
+                  ? "Saving…"
+                  : "Save opening cost"}
+              </button>
+            </div>
+          </form>
+        </div>
       ) : null}
     </div>
   );

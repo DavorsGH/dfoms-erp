@@ -112,6 +112,8 @@ export function ReportCompanyHeader({
   periodLabel,
   stampedBusinessUnitId,
   brandingSource = "switcher",
+  metaLabel = "Period",
+  variant = "default",
 }: {
   title: string;
   periodLabel: string;
@@ -125,6 +127,9 @@ export function ReportCompanyHeader({
    * stamp — brand from stampedBusinessUnitId on the record being printed.
    */
   brandingSource?: "switcher" | "stamp";
+  /** Receipts use Date. Reports keep Period. */
+  metaLabel?: string;
+  variant?: "default" | "receipt";
 }) {
   const branding = useTenantBranding();
   const { viewAllBusinessUnits, activeBusinessUnitId, units } =
@@ -149,20 +154,50 @@ export function ReportCompanyHeader({
   );
   const companyLogoUrl = resolveDocumentLogoUrl(branding, documentContact);
 
+  const receipt = variant === "receipt";
+
   return (
-    <header className="mb-6 border-b-4 border-[#0f2744] pb-4">
-      <div className="flex items-start gap-4">
+    <header
+      className={
+        receipt
+          ? "mb-2 border-b-2 border-[#0f2744] pb-2"
+          : "mb-6 border-b-4 border-[#0f2744] pb-4"
+      }
+    >
+      <div className={`flex items-start ${receipt ? "gap-2" : "gap-4"}`}>
         <WorkspaceLogo
           workspaceLogoUrl={companyLogoUrl}
           name={companyLegalName}
-          size="md"
+          size={receipt ? "xs" : "md"}
         />
-        <div>
-          <h3 className="text-lg font-bold text-[#0f2744]">
+        <div className="min-w-0">
+          <h3
+            className={
+              receipt
+                ? "receipt-business-name break-words text-[13px] font-bold leading-tight text-[#0f2744]"
+                : "text-lg font-bold text-[#0f2744]"
+            }
+          >
             {companyLegalName}
           </h3>
-          <p className="mt-1 text-base font-semibold text-slate-800">{title}</p>
-          <p className="mt-1 text-sm text-slate-600">Period: {periodLabel}</p>
+          <p
+            className={
+              receipt
+                ? "mt-0.5 break-words text-[11px] font-semibold leading-tight text-slate-800"
+                : "mt-1 text-base font-semibold text-slate-800"
+            }
+          >
+            {title}
+          </p>
+          <p
+            className={
+              receipt
+                ? "mt-0.5 break-words text-[10px] leading-tight text-slate-600"
+                : "mt-1 text-sm text-slate-600"
+            }
+          >
+            {metaLabel}: {periodLabel}
+          </p>
         </div>
       </div>
     </header>

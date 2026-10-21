@@ -95,10 +95,10 @@ export default async function ProjectsPage() {
     return (
       <>
         <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
-          Contract/Project Assignments
+          Contract & Project Assignments
         </h2>
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          Unable to resolve tenant for Contract/Project Assignments.
+          Unable to resolve tenant for Contract & Project Assignments.
         </p>
       </>
     );
@@ -107,7 +107,7 @@ export default async function ProjectsPage() {
   return (
     <>
       <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
-        Contract/Project Assignments
+        Contract & Project Assignments
       </h2>
       <Projects
         tenantId={tenantId}

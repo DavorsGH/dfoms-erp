@@ -3,6 +3,7 @@
 import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryTab } from "@/hooks/use-query-tab";
 import {
   extractPaystackInlineReference,
   openPaystackInlineWithAccessCode,
@@ -123,13 +124,16 @@ export default function LandlordPortalBillingSettings({
   initialTab = "billing",
 }: LandlordPortalBillingSettingsProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<BillingTab>(
-    initialTab === "payment" && showPaymentSettings
-      ? "payment"
-      : initialTab === "sms"
-        ? "sms"
-        : "billing",
-  );
+  const { tab: activeTab, setTab: setActiveTab } = useQueryTab<BillingTab>({
+    values: ["billing", "sms", "payment"],
+    defaultTab:
+      initialTab === "payment" && showPaymentSettings
+        ? "payment"
+        : initialTab === "sms"
+          ? "sms"
+          : "billing",
+    isAllowed: (tab) => tab !== "payment" || showPaymentSettings,
+  });
   const [error, setError] = useState<string | null>(fetchError);
   const [success, setSuccess] = useState<string | null>(null);
   const [smsPackLoadingKey, setSmsPackLoadingKey] = useState<string | null>(

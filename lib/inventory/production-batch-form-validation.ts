@@ -123,10 +123,10 @@ export function validateProductionBatchMaterialLines(input: {
     }
 
     const cost = input.resolveCost(material);
-    if (cost == null) {
+    if (cost == null || !(cost > 0)) {
       lineErrors[index] = {
         ...lineErrors[index],
-        material: `No unit cost on file for ${material.material_name} in this business.`,
+        material: `No unit cost on file for ${material.material_name} in this business. Set a cost before using it in a batch.`,
       };
       continue;
     }

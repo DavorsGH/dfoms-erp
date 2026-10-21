@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useQueryTab } from "@/hooks/use-query-tab";
 import { useRouter } from "next/navigation";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
 import {
@@ -43,7 +44,10 @@ export default function FacilityMaintenanceClient({
   tenantId,
 }: FacilityMaintenanceClientProps) {
   const router = useRouter();
-  const [tab, setTab] = useState<TabId>("list");
+  const { tab, setTab } = useQueryTab<TabId>({
+    values: ["list", "create"],
+    defaultTab: "list",
+  });
   const [leaseId, setLeaseId] = useState(leases[0]?.leaseId ?? "");
   const [description, setDescription] = useState("");
   const [costGhs, setCostGhs] = useState("");

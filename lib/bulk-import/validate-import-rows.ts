@@ -1375,10 +1375,6 @@ function collectProductOpeningStockCostWarning(input: {
     return null;
   }
 
-  if ("unit_cost" in input.mappedData && !isBlank(input.mappedData.unit_cost)) {
-    return null;
-  }
-
   const headerRowIndex = input.ctx.headerRowIndex ?? 0;
   const excel_row_number = bulkImportExcelRowNumber(
     input.rowNumber,
@@ -1392,16 +1388,26 @@ function collectProductOpeningStockCostWarning(input: {
     excelRowNumber: excel_row_number,
     employeeName: employee_name,
   });
+  const costToken =
+    "unit_cost" in input.mappedData && !isBlank(input.mappedData.unit_cost)
+      ? parseNumericToken(input.mappedData.unit_cost)
+      : null;
+  const unitCost =
+    costToken && costToken !== "invalid" ? Number(costToken) : 0;
+  if (Number.isFinite(unitCost) && unitCost > 0) {
+    return null;
+  }
+
   const problem =
-    "Opening stock will be recorded with zero cost — add a Unit cost to value your inventory correctly.";
+    "Opening stock needs a unit cost greater than zero. This row will not be imported until Unit cost is filled.";
   const how_to_fix =
-    "Enter a unit cost in your spreadsheet and upload the file again, or leave Current stock blank if you are not opening stock yet.";
+    "Enter a unit cost greater than zero in your spreadsheet and upload the file again, or leave Current stock blank and record the quantity later as an Opening balance adjustment.";
 
   return {
     row_number: input.rowNumber,
     excel_row_number,
     employee_name,
-    severity: "warning",
+    severity: "error",
     column_header: "Current stock",
     column_label: "Current stock",
     cell_value: String(input.mappedData.current_stock ?? "").trim(),
@@ -1409,7 +1415,7 @@ function collectProductOpeningStockCostWarning(input: {
     how_to_fix,
     message: formatBulkImportReviewIssueMessage({
       rowLabel: row_label,
-      severity: "warning",
+      severity: "error",
       problem,
       howToFix: how_to_fix,
     }),

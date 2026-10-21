@@ -3,6 +3,7 @@ import {
   applyBusinessUnitScope,
   type BusinessUnitReadScope,
 } from "@/utils/business-unit-view";
+import { resolveStoredUnitForForm } from "@/utils/units-of-measure";
 
 export type FinishedProductSourcingType = "manufactured" | "purchased";
 
@@ -297,7 +298,7 @@ export function finishedProductToForm(product: FinishedProductRecord) {
     product_code: product.product_code,
     barcode: product.barcode ?? "",
     product_name: product.product_name,
-    unit_of_measure: product.unit_of_measure,
+    unit_of_measure: resolveStoredUnitForForm(product.unit_of_measure),
     standard_selling_price:
       product.standard_selling_price == null
         ? ""

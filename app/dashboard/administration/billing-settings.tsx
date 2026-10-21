@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryTab } from "@/hooks/use-query-tab";
 import {
   formatBillingCycle,
   formatProductPrice,
@@ -211,7 +212,10 @@ export default function BillingSettings({
     null,
   );
   const [walletBalance, setWalletBalance] = useState(smsCreditBalance);
-  const [activeTab, setActiveTab] = useState<"billing" | "payment">(initialTab);
+  const { tab: activeTab, setTab: setActiveTab } = useQueryTab<"billing" | "payment">({
+    values: ["billing", "payment"],
+    defaultTab: initialTab === "payment" ? "payment" : "billing",
+  });
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [cancelReason, setCancelReason] =
     useState<SubscriptionCancellationReason>("too_expensive");

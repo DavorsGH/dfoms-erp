@@ -213,7 +213,7 @@ export async function loadDirectoryNetPayContext(
     .eq("payroll_month", period.payrollMonth);
   let attendanceQuery = supabase
     .from("attendance_register")
-    .select("staff_id, date, attendance_status")
+    .select("staff_id, date, attendance_status, exception_status")
     .gte("date", periodStart)
     .lte("date", periodEnd);
   let overtimeQuery = supabase

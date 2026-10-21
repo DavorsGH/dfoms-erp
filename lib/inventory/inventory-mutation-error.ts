@@ -1,4 +1,5 @@
 import type { PostgrestError } from "@supabase/supabase-js";
+import { mapNegativeWacUserMessage } from "@/lib/inventory/finished-product-wac";
 import { resolvePostgresRpcErrorMessage } from "@/utils/postgres-fk-violation";
 
 const RAW_POSTGRES_PATTERN =
@@ -37,6 +38,11 @@ export function mapInventoryMutationErrorMessage(
   error: { code?: string | null; message?: string | null } | null | undefined,
   options: MapInventoryMutationErrorOptions,
 ): string {
+  const negativeWac = mapNegativeWacUserMessage(error?.message);
+  if (negativeWac) {
+    return negativeWac;
+  }
+
   if (isPostgresRlsViolation(error)) {
     return INVENTORY_PERMISSION_DENIED_MESSAGE;
   }

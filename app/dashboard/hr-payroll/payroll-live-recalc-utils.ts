@@ -147,7 +147,7 @@ export async function fetchPayrollLiveRecalcBundle(
     withOptionalTenant(
       supabase
         .from("attendance_register")
-        .select("staff_id, date, attendance_status"),
+        .select("staff_id, date, attendance_status, exception_status"),
       tenantId,
     ),
     withOptionalTenant(

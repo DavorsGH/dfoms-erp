@@ -10,8 +10,20 @@ import {
 import {
   fulfillPosCartSnapshotPaymentRequest,
   loadPaymentRequestForFulfillment,
+  paymentMethodFromPaystackChannel,
 } from "@/utils/pos-momo-fulfillment";
 import { postProductSalePaystackFee } from "@/utils/paystack-finance-posting";
+import { tryApplyProductSalePaystackPayment } from "@/utils/paystack-payment-apply";
+import {
+  PaystackPaymentNeedsAttentionError,
+  paystackAttentionMessage,
+  recordPaystackPaymentAttention,
+} from "@/utils/paystack-payment-attention";
+import {
+  notesWithPaystackReference,
+  paystackOverpaymentReason,
+} from "@/utils/manual-sale-paystack";
+import { notesWithPaymentMethod } from "@/utils/product-sale-payments-types";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -57,7 +69,7 @@ export function isProductSalePaystackContext(
  */
 export async function processProductSalePaystackEvent(
   data: JsonRecord,
-): Promise<{ detail: string; ignored?: boolean }> {
+): Promise<{ detail: string; ignored?: boolean; needsAttention?: boolean }> {
   const meta = metadataObject(data);
   const reference = asString(data.reference);
   const paymentRequestId = asString(meta.payment_request_id);
@@ -117,20 +129,27 @@ export async function processProductSalePaystackEvent(
     : [];
 
   if (incomeIds.length === 0 && requestRow.cart_snapshot) {
-    const fulfilled = await fulfillPosCartSnapshotPaymentRequest(
-      admin,
-      requestRow,
-      {
-        reference,
-        paidAmountGhs,
-        paidAt,
-        skipVerify: true,
-        paystackChannel,
-      },
-    );
-    return {
-      detail: `product_sale charge.success created POS sale invoice ${fulfilled.invoiceNo} from cart_snapshot (${fulfilled.incomeIds.length} line(s), method=${fulfilled.paymentMethod}, request ${requestRow.id}, ref=${reference ?? "n/a"}).`,
-    };
+    try {
+      const fulfilled = await fulfillPosCartSnapshotPaymentRequest(
+        admin,
+        requestRow,
+        {
+          reference,
+          paidAmountGhs,
+          paidAt,
+          skipVerify: true,
+          paystackChannel,
+        },
+      );
+      return {
+        detail: `product_sale charge.success created POS sale invoice ${fulfilled.invoiceNo} from cart_snapshot (${fulfilled.incomeIds.length} line(s), method=${fulfilled.paymentMethod}, request ${requestRow.id}, ref=${reference ?? "n/a"}).`,
+      };
+    } catch (error) {
+      if (error instanceof PaystackPaymentNeedsAttentionError) {
+        return { detail: error.message, needsAttention: true };
+      }
+      throw error;
+    }
   }
 
   if (incomeIds.length === 0) {
@@ -179,15 +198,98 @@ export async function processProductSalePaystackEvent(
       ? paidAmountGhs
       : roundGhs(Number(requestRow.amount_requested) || 0);
 
+  if (reference) {
+    const atomic = await tryApplyProductSalePaystackPayment(admin, {
+      requestId: requestRow.id,
+      reference,
+      amount: applyAmount,
+    });
+    if (atomic.status === "applied") {
+      const appliedInvoice = atomic.invoiceNo || invoiceNo || requestRow.invoice_no;
+      if (atomic.unallocatedAmount > 0) {
+        await recordPaystackPaymentAttention(admin, {
+          tenantId: requestRow.tenant_id,
+          paymentRequestId: requestRow.id,
+          reference,
+          amount: atomic.unallocatedAmount,
+          customerLabel:
+            requestRow.cart_snapshot?.customerName ||
+            requestRow.cart_snapshot?.clientId ||
+            null,
+          clientId: requestRow.cart_snapshot?.clientId ?? null,
+          reason: paystackOverpaymentReason(
+            atomic.unallocatedAmount,
+            appliedInvoice,
+          ),
+        });
+      }
+      await postProductSalePaystackFee(admin, {
+        tenantId: requestRow.tenant_id,
+        reference,
+        transactionAmountGhs: applyAmount,
+        paidAt,
+        flowLabel: "Product sale payment",
+        invoiceNo: appliedInvoice,
+        incomeIds: atomic.incomeIds.length > 0 ? atomic.incomeIds : incomeIds,
+      });
+      return {
+        detail: `product_sale charge.success applied ${reference} on request ${requestRow.id} in one transaction (invoice ${appliedInvoice}).`,
+      };
+    }
+    if (atomic.status === "error") {
+      const saved = await recordPaystackPaymentAttention(admin, {
+        tenantId: requestRow.tenant_id,
+        paymentRequestId: requestRow.id,
+        reference,
+        amount: applyAmount,
+        customerLabel:
+          requestRow.cart_snapshot?.customerName ||
+          requestRow.cart_snapshot?.clientId ||
+          null,
+        clientId: requestRow.cart_snapshot?.clientId ?? null,
+        reason: atomic.error,
+      });
+      const message = paystackAttentionMessage({
+        amount: applyAmount,
+        reference,
+        customer:
+          requestRow.cart_snapshot?.customerName ||
+          requestRow.cart_snapshot?.clientId ||
+          "",
+        reason: atomic.error,
+        stored: saved.stored,
+      });
+      if (saved.stored) {
+        return { detail: message, needsAttention: true };
+      }
+      throw new Error(message);
+    }
+  }
+
   const allocations = allocatePaymentAcrossLines(activeLines, applyAmount);
 
+  const tender = paymentMethodFromPaystackChannel(
+    paystackChannel,
+    requestRow.payment_method,
+  );
+  const paidOn = paidAt.slice(0, 10);
+
   for (const allocation of allocations) {
+    const source = activeLines.find((line) => line.id === allocation.id);
+    const nextNotes =
+      reference && allocation.applied > 0
+        ? notesWithPaystackReference(
+            notesWithPaymentMethod(source?.notes, tender),
+            reference,
+          )
+        : null;
     const { error: updateError } = await admin
       .from("income_register")
       .update({
         amount_received: allocation.nextAmountReceived,
         outstanding_balance: allocation.nextOutstanding,
         payment_status: allocation.nextPaymentStatus,
+        ...(nextNotes ? { notes: nextNotes } : {}),
       })
       .eq("id", allocation.id)
       .eq("tenant_id", requestRow.tenant_id);
@@ -197,6 +299,57 @@ export async function processProductSalePaystackEvent(
         `Failed updating income ${allocation.id}: ${updateError.message}`,
       );
     }
+
+    if (allocation.applied > 0 && reference) {
+      const refNote = `Paystack ref: ${reference}`;
+      const { data: existingPayment, error: existingPaymentError } = await admin
+        .from("product_sale_payments")
+        .select("id")
+        .eq("tenant_id", requestRow.tenant_id)
+        .eq("income_id", allocation.id)
+        .eq("notes", refNote)
+        .limit(1)
+        .maybeSingle();
+      if (existingPaymentError) {
+        throw new Error(existingPaymentError.message);
+      }
+      if (!existingPayment?.id) {
+        const { error: paymentError } = await admin
+          .from("product_sale_payments")
+          .insert({
+            tenant_id: requestRow.tenant_id,
+            income_id: allocation.id,
+            payment_date: paidOn,
+            amount: allocation.applied,
+            payment_method: tender,
+            notes: refNote,
+            recorded_by: null,
+          });
+        if (paymentError) {
+          throw new Error(paymentError.message);
+        }
+      }
+    }
+  }
+
+  const appliedTotal = roundGhs(
+    allocations.reduce((sum, allocation) => sum + allocation.applied, 0),
+  );
+  const unallocated = roundGhs(applyAmount - appliedTotal);
+  const appliedInvoice = invoiceNo || requestRow.invoice_no;
+  if (unallocated > 0 && reference) {
+    await recordPaystackPaymentAttention(admin, {
+      tenantId: requestRow.tenant_id,
+      paymentRequestId: requestRow.id,
+      reference,
+      amount: unallocated,
+      customerLabel:
+        requestRow.cart_snapshot?.customerName ||
+        requestRow.cart_snapshot?.clientId ||
+        null,
+      clientId: requestRow.cart_snapshot?.clientId ?? null,
+      reason: paystackOverpaymentReason(unallocated, appliedInvoice),
+    });
   }
 
   const { error: markPaidError } = await admin

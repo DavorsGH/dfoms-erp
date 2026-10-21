@@ -137,6 +137,7 @@ export function allocatePaymentAcrossLines(
   paidAmountGhs: number,
 ): Array<{
   id: string;
+  applied: number;
   nextAmountReceived: number;
   nextOutstanding: number;
   nextPaymentStatus: string;
@@ -168,6 +169,7 @@ export function allocatePaymentAcrossLines(
 
     return {
       id: line.id,
+      applied,
       nextAmountReceived,
       nextOutstanding,
       nextPaymentStatus,

@@ -40,6 +40,7 @@ export type ProductSaleEntry = {
   cogs_expense_id: string | null;
   cogs_reversal_expense_id: string | null;
   business_unit_id?: string | null;
+  created_at?: string | null;
   payment_method?: string | null;
   sales_rep_id?: string | null;
   is_sale_return?: boolean;

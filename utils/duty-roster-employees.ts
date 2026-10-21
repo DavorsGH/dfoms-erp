@@ -40,9 +40,47 @@ export async function fetchDutyRosterEmployeeDisplay(
 
   const rows = (data as DutyRosterEmployeeRow[] | null) ?? [];
   return {
-    employees: rows.map((row) => normalizeDutyRosterEmployee(row)),
+    employees: await attachAssignedSites(
+      supabase,
+      rows.map((row) => normalizeDutyRosterEmployee(row)),
+    ),
     error: null,
   };
+}
+
+async function attachAssignedSites(
+  supabase: SupabaseClient,
+  employees: DutyRosterEmployee[],
+): Promise<DutyRosterEmployee[]> {
+  const ids = employees.map((employee) => employee.employee_id).filter(Boolean);
+  if (ids.length === 0) {
+    return employees;
+  }
+  const { data, error } = await supabase
+    .from("employees")
+    .select("employee_id, assigned_site_id, remote_attendance_allowed")
+    .in("employee_id", ids);
+  if (error || !data) {
+    return employees;
+  }
+  const byId = new Map(
+    (
+      data as Array<{
+        employee_id: string;
+        assigned_site_id: string | null;
+        remote_attendance_allowed: boolean | null;
+      }>
+    ).map((row) => [row.employee_id, row]),
+  );
+  return employees.map((employee) => {
+    const row = byId.get(employee.employee_id);
+    return {
+      ...employee,
+      assigned_site_id: row?.assigned_site_id ?? employee.assigned_site_id ?? null,
+      remote_attendance_allowed:
+        row?.remote_attendance_allowed ?? employee.remote_attendance_allowed ?? null,
+    };
+  });
 }
 
 export async function fetchDutyRosterEmployeeDisplayScoped(
@@ -60,7 +98,10 @@ export async function fetchDutyRosterEmployeeDisplayScoped(
 
   const rows = (data as DutyRosterEmployeeRow[] | null) ?? [];
   return {
-    employees: rows.map((row) => normalizeDutyRosterEmployee(row)),
+    employees: await attachAssignedSites(
+      supabase,
+      rows.map((row) => normalizeDutyRosterEmployee(row)),
+    ),
     error: null,
   };
 }

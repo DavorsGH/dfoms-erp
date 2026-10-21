@@ -187,6 +187,10 @@ const ACCOUNT_SETTINGS_ALIASES: Record<string, string> = {
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
+  if (pathname.startsWith("/iclock/")) {
+    return proxyPassthrough(request);
+  }
+
   if (process.env.LEGACY_DOMAIN_REDIRECT === "on" && !pathname.startsWith("/api/")) {
     const rawHost =
       request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";

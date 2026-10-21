@@ -43,7 +43,7 @@ export function formatActionError(error: unknown): string {
       return "Something went wrong.";
     }
     if (NETWORK_ERROR_PATTERN.test(trimmed)) {
-      return "Couldn't reach the server — check your connection and try again.";
+      return "Couldn't reach the server. Check your connection and try again.";
     }
     return trimmed;
   }
@@ -54,7 +54,7 @@ export function formatActionError(error: unknown): string {
       return "Something went wrong.";
     }
     if (NETWORK_ERROR_PATTERN.test(trimmed)) {
-      return "Couldn't reach the server — check your connection and try again.";
+      return "Couldn't reach the server. Check your connection and try again.";
     }
     return trimmed;
   }
@@ -63,7 +63,7 @@ export function formatActionError(error: unknown): string {
     const fromPostgres = messageFromPostgresLike(error as PostgresLikeError);
     if (fromPostgres) {
       if (NETWORK_ERROR_PATTERN.test(fromPostgres)) {
-        return "Couldn't reach the server — check your connection and try again.";
+        return "Couldn't reach the server. Check your connection and try again.";
       }
       return fromPostgres;
     }

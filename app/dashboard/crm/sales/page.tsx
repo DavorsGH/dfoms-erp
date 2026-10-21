@@ -3,7 +3,8 @@ import { createClient } from "@/utils/supabase/server";
 import {
   getActiveBusinessUnitId,
   getCurrentUserEmployeeId,
-    getCurrentUserTenantId,
+  getCurrentUserRole,
+  getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
 import { fetchScopedEmployeeIds, applyEmployeeIdScope } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
@@ -50,11 +51,13 @@ export default async function SalesPage() {
     viewAllBusinessUnits,
     tenantId,
     defaultSalesRepId,
+    viewerRole,
   ] = await Promise.all([
     getActiveBusinessUnitId(),
     getViewAllBusinessUnits(),
     getCurrentUserTenantId(),
     getCurrentUserEmployeeId(),
+    getCurrentUserRole(),
   ]);
   const buScope = resolveBusinessUnitReadScope({
     viewAllBusinessUnits,
@@ -135,7 +138,7 @@ export default async function SalesPage() {
   ).map((row) => normalizeWebhookSale(row));
 
   return (
-    <CrmShell sectionTitle="Sales">
+    <CrmShell sectionTitle="Sales" hideSectionTitle>
       <SalesRegister
         initialIncomeEntries={initialIncomeEntries}
         initialWebhookSales={initialWebhookSales}
@@ -153,6 +156,7 @@ export default async function SalesPage() {
         fetchError={fetchError}
         activeBusinessUnitId={activeBusinessUnitId}
         tenantId={tenantId}
+        viewerRole={viewerRole}
       />
     </CrmShell>
   );

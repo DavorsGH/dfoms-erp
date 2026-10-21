@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useQueryTab } from "@/hooks/use-query-tab";
 import { useAlert } from "@/components/feedback/feedback-context";
 import {
   SALES_CRM_ALERT_TITLE,
@@ -103,7 +104,10 @@ export default function Customer360({
   fetchError,
 }: Customer360Props) {
   const { alertError } = useAlert();
-  const [activeTab, setActiveTab] = useState<Customer360TabId>("opportunities");
+  const { tab: activeTab, setTab: setActiveTab } = useQueryTab<Customer360TabId>({
+    values: CUSTOMER_360_TABS.map((item) => item.id),
+    defaultTab: "opportunities",
+  });
 
   useEffect(() => {
     if (fetchError) {
