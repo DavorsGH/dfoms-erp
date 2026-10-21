@@ -102,7 +102,7 @@ export default async function PayrollProcessingPage() {
   }
 
   const employeeSelect =
-    "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, basic_salary, housing_allowance, transport_allowance, other_allowances, welfare_deduction_rate, business_unit_id, department, contract_project, payment_method, bank_name, account_number, momo_number, momo_name";
+    "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, basic_salary, housing_allowance, transport_allowance, other_allowances, welfare_deduction_rate, business_unit_id, department, contract_project, assigned_site_id, payment_method, bank_name, account_number, momo_number, momo_name";
 
   const [
     { data: processingMonths, error: processingMonthsError },
@@ -119,6 +119,7 @@ export default async function PayrollProcessingPage() {
     { data: compensationPolicies },
     statutoryTaxBundle,
     { data: hrPayrollSettingsRows, error: hrPayrollSettingsError },
+    { data: sites, error: sitesError },
   ] = await Promise.all([
     supabase.from("payroll_processing").select("payroll_month"),
     supabase.from("payroll_history").select("payroll_month"),
@@ -200,6 +201,13 @@ export default async function PayrollProcessingPage() {
           .select(HR_PAYROLL_SETTINGS_SELECT)
           .eq("tenant_id", tenantId)
       : Promise.resolve({ data: null, error: null }),
+    tenantId
+      ? supabase
+          .from("sites")
+          .select("site_code, site_name")
+          .eq("tenant_id", tenantId)
+          .order("site_name")
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   // Exempt attendance mode: never deducted for absence.
@@ -235,7 +243,18 @@ export default async function PayrollProcessingPage() {
     maternityLeaveError?.message ??
     statutoryTaxBundle.error ??
     hrPayrollSettingsError?.message ??
+    sitesError?.message ??
     null;
+
+  const initialSiteNameByCode: Record<string, string> = {};
+  for (const site of (sites as Array<{
+    site_code: string;
+    site_name: string;
+  }> | null) ?? []) {
+    if (site.site_code) {
+      initialSiteNameByCode[site.site_code] = site.site_name || site.site_code;
+    }
+  }
 
   const employeeStaffById = new Map(
     ((employees as PayrollEmployeeSource[] | null) ?? []).map((employee) => [
@@ -321,6 +340,7 @@ export default async function PayrollProcessingPage() {
         fetchError={fetchError}
         activeBusinessUnitId={activeBusinessUnitId}
         hrPayrollSettingsRows={normalizedHrPayrollSettingsRows}
+        initialSiteNameByCode={initialSiteNameByCode}
       />
     </HrPayrollShell>
   );

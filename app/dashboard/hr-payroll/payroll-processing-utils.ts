@@ -83,6 +83,8 @@ export type PayrollEmployeeSource = {
   other_allowances: number | null;
   department: string | null;
   contract_project: string | null;
+  /** Display-only site filter (employees.assigned_site_id). */
+  assigned_site_id?: string | null;
   /**
    * Percent of period gross pay (e.g. 2.5 = 2.5%). Auto-applied each calc
    * into payroll_processing.welfare_deduction — not a manual Adjust field.

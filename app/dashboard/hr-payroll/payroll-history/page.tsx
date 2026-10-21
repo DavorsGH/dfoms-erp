@@ -33,7 +33,9 @@ export default async function PayrollHistoryPage() {
 
   let employeesQuery = supabase
     .from("employees")
-    .select("employee_id, staff_id, full_name")
+    .select(
+      "employee_id, staff_id, full_name, employment_type, position, shift, contract_project, assigned_site_id",
+    )
     .order("staff_id", { ascending: true });
   if (tenantId) {
     employeesQuery = employeesQuery.eq("tenant_id", tenantId);
@@ -44,6 +46,7 @@ export default async function PayrollHistoryPage() {
     { data: historyMonths, error: historyMonthsError },
     { data: monthEndCloseRows, error: monthEndCloseError },
     { data: employees, error: employeesError },
+    { data: sites, error: sitesError },
   ] = await Promise.all([
     supabase.from("payroll_history").select("payroll_month"),
     applyBusinessUnitScope(
@@ -51,12 +54,20 @@ export default async function PayrollHistoryPage() {
       buScope,
     ),
     employeesQuery,
+    tenantId
+      ? supabase
+          .from("sites")
+          .select("site_code, site_name")
+          .eq("tenant_id", tenantId)
+          .order("site_name")
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   const fetchError =
     historyMonthsError?.message ??
     monthEndCloseError?.message ??
     employeesError?.message ??
+    sitesError?.message ??
     null;
 
   const payrollMonths = [
@@ -71,6 +82,16 @@ export default async function PayrollHistoryPage() {
     return rightKey.localeCompare(leftKey);
   });
 
+  const initialSiteNameByCode: Record<string, string> = {};
+  for (const site of (sites as Array<{
+    site_code: string;
+    site_name: string;
+  }> | null) ?? []) {
+    if (site.site_code) {
+      initialSiteNameByCode[site.site_code] = site.site_name || site.site_code;
+    }
+  }
+
   return (
     <HrPayrollShell sectionTitle="Payroll History">
       <PayrollHistory
@@ -80,9 +101,19 @@ export default async function PayrollHistoryPage() {
         }
         initialEmployees={
           (employees as
-            | { employee_id: string; staff_id: string; full_name: string }[]
+            | {
+                employee_id: string;
+                staff_id: string;
+                full_name: string;
+                employment_type: string | null;
+                position: string | null;
+                shift: string | null;
+                contract_project: string | null;
+                assigned_site_id: string | null;
+              }[]
             | null) ?? []
         }
+        initialSiteNameByCode={initialSiteNameByCode}
         fetchError={fetchError}
       />
     </HrPayrollShell>

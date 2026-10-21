@@ -1213,7 +1213,11 @@ export default function AttendanceRegister({
         <div className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
           <p className="font-medium">{personSummary.summaryLine}</p>
           <Link
-            href={payrollProcessingHrefForMonth(selectedYear, selectedMonth)}
+            href={payrollProcessingHrefForMonth(
+              selectedYear,
+              selectedMonth,
+              personSummary.staffId,
+            )}
             className="mt-1 inline-block font-medium text-sky-800 underline"
           >
             View payroll for {personSummary.monthLabel}

@@ -13,6 +13,7 @@ import {
 import Tooltip from "@/components/ui/tooltip";
 import { LoadingState } from "@/components/loading-indicator";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { formatGHS, inputClassName, compareStaffIds } from "../employees/employee-record-utils";
 import { filterEmployeesForPayrollPeriod } from "./employee-utils";
@@ -24,6 +25,27 @@ import ScrollableTable, {
   scrollableTableStickyFirstThClassName,
 } from "../scrollable-table";
 import FilteredListCount from "../filtered-list-count";
+import { downloadCsv } from "../reports/report-ui";
+import PayrollTableFilterBar, {
+  PayrollFilteredTotalsCard,
+  PayrollSortableHeader,
+} from "./payroll-table-filter-bar";
+import {
+  EMPTY_PAYROLL_TABLE_FILTERS,
+  collectPayrollFilterOptions,
+  defaultPayrollTableSort,
+  enrichPayrollFilterLabels,
+  filterPayrollTableRows,
+  filteredPayrollBannerLabel,
+  lockPeriodFilterConfirmSuffix,
+  payrollFiltersFromSearchParams,
+  payrollFiltersToSearchParams,
+  payrollTableFiltersActive,
+  sortPayrollTableRows,
+  sumPayrollMoneyTotals,
+  type PayrollTableFilters,
+} from "./payroll-table-filters";
+import type { RegisterColumnSortState } from "../finance/register-column-filter";
 import {
   buildPeriodKey,
   findMonthEndCloseForKey,
@@ -117,12 +139,18 @@ type PayrollProcessingProps = {
   /** Stamp only new payroll_allowance_lines; null = All Businesses. */
   activeBusinessUnitId?: string | null;
   hrPayrollSettingsRows?: HrPayrollSettingsRow[];
+  initialSiteNameByCode?: Record<string, string>;
 };
 
 type WorkspaceRow = PayrollProcessingRow & {
   staff_id: string;
   full_name: string;
   employment_type: string | null;
+  contractLabel: string;
+  siteLabel: string;
+  positionLabel: string;
+  employmentTypeLabel: string;
+  shiftLabel: string;
 };
 
 /** Hoisted once per open-period sync (loadWorkspace → syncOpenPeriod). */
@@ -150,12 +178,23 @@ function sortWorkspaceRows(rows: WorkspaceRow[]): WorkspaceRow[] {
 function toWorkspaceRow(
   row: PayrollProcessingRow | PayrollHistoryRow,
   employee: PayrollEmployeeSource | undefined,
+  siteNameByCode: Map<string, string>,
 ): WorkspaceRow {
+  const labels = enrichPayrollFilterLabels({
+    contractProject: employee?.contract_project,
+    projectContract: row.project_contract,
+    siteCode: employee?.assigned_site_id,
+    siteNameByCode,
+    position: employee?.position,
+    employmentType: employee?.employment_type,
+    shift: employee?.shift,
+  });
   return {
     ...row,
     staff_id: employee?.staff_id ?? "—",
     full_name: employee?.full_name ?? row.employee_id,
     employment_type: employee?.employment_type ?? null,
+    ...labels,
   };
 }
 
@@ -176,7 +215,24 @@ export default function PayrollProcessing({
   fetchError,
   activeBusinessUnitId = null,
   hrPayrollSettingsRows = [],
+  initialSiteNameByCode = {},
 }: PayrollProcessingProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const urlBootstrap = useMemo(
+    () => payrollFiltersFromSearchParams(searchParams),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once from URL
+    [],
+  );
+  const [siteNameByCode] = useState(() => new Map(Object.entries(initialSiteNameByCode)));
+  const [tableFilters, setTableFilters] = useState<PayrollTableFilters>(
+    () => urlBootstrap.filters,
+  );
+  const [tableSort, setTableSort] = useState<RegisterColumnSortState | null>(
+    () => urlBootstrap.sort ?? defaultPayrollTableSort(),
+  );
+  const urlSyncReady = useRef(false);
   const supabase = createClient();
   const { alert } = useAlert();
   const { toast } = useToast();
@@ -197,13 +253,8 @@ export default function PayrollProcessing({
   const [maternityLeaves] = useState(initialMaternityLeaves);
   const [exemptStaffIds] = useState(() => new Set(initialExemptStaffIds));
   const [selectedPeriodKey, setSelectedPeriodKey] = useState(() => {
-    if (typeof window !== "undefined") {
-      const period = new URLSearchParams(window.location.search)
-        .get("period")
-        ?.trim();
-      if (period && parsePeriodKey(period)) {
-        return period;
-      }
+    if (urlBootstrap.period && parsePeriodKey(urlBootstrap.period)) {
+      return urlBootstrap.period;
     }
     const { year, month } = getDefaultReportPeriod();
     return buildPeriodKey(year, month);
@@ -491,6 +542,7 @@ export default function PayrollProcessing({
         id: row.id,
       },
       employee,
+      siteNameByCode,
     );
   }
 
@@ -600,26 +652,95 @@ export default function PayrollProcessing({
     buReadScope,
   ]);
 
-  const totals = useMemo(() => {
-    return rows.reduce(
-      (accumulator, row) => ({
-        grossPay: accumulator.grossPay + (Number(row.gross_pay) || 0),
-        totalDeductions:
-          accumulator.totalDeductions + (Number(row.total_deductions) || 0),
-        netPay: accumulator.netPay + (Number(row.net_pay) || 0),
-        employerSsnitCost:
-          accumulator.employerSsnitCost +
-          (Number(row.employer_ssnit) || 0) +
-          (Number(row.tier2) || 0),
-      }),
-      {
-        grossPay: 0,
-        totalDeductions: 0,
-        netPay: 0,
-        employerSsnitCost: 0,
-      },
+  const periodTotals = useMemo(() => sumPayrollMoneyTotals(rows), [rows]);
+
+  const filtersActive = payrollTableFiltersActive(tableFilters);
+
+  const filterOptions = useMemo(
+    () => collectPayrollFilterOptions(rows),
+    [rows],
+  );
+
+  const filteredRows = useMemo(() => {
+    const filtered = filterPayrollTableRows(rows, tableFilters);
+    return sortPayrollTableRows(filtered, tableSort, (row, columnId) => {
+      switch (columnId) {
+        case "days_to_pay":
+          return row.days_to_pay;
+        case "basic_salary":
+          return row.basic_salary;
+        case "absence_deduction":
+          return row.absence_deduction;
+        case "overtime_amount":
+          return row.overtime_amount;
+        case "gross_pay":
+          return row.gross_pay;
+        case "employee_ssnit":
+          return row.employee_ssnit;
+        case "paye_tax":
+          return row.paye_tax;
+        case "overtime_tax":
+          return row.overtime_tax;
+        case "loan_repayment":
+          return row.loan_repayment;
+        case "welfare_deduction":
+          return row.welfare_deduction;
+        case "total_deductions":
+          return row.total_deductions;
+        case "net_pay":
+          return row.net_pay;
+        case "payment_method":
+          return formatPayrollPaymentMethodDisplay(
+            employeeMap.get(row.employee_id),
+          );
+        case "momo_name":
+          return formatPayrollMomoNameDisplay(
+            employeeMap.get(row.employee_id),
+          );
+        default:
+          return null;
+      }
+    });
+  }, [employeeMap, rows, tableFilters, tableSort]);
+
+  const filteredTotals = useMemo(
+    () => sumPayrollMoneyTotals(filteredRows),
+    [filteredRows],
+  );
+
+  useEffect(() => {
+    if (!urlSyncReady.current) {
+      urlSyncReady.current = true;
+      return;
+    }
+    const params = payrollFiltersToSearchParams(
+      selectedPeriodKey,
+      tableFilters,
+      tableSort,
     );
-  }, [rows]);
+    for (const [key, value] of searchParams.entries()) {
+      if (
+        ![
+          "period",
+          "q",
+          "contract",
+          "site",
+          "position",
+          "empType",
+          "shift",
+          "absence",
+          "ot",
+          "missingBasic",
+          "sort",
+        ].includes(key)
+      ) {
+        params.set(key, value);
+      }
+    }
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPeriodKey, tableFilters, tableSort]);
 
   useEffect(() => {
     void loadWorkspace(selectedPeriodKey);
@@ -973,7 +1094,11 @@ export default function PayrollProcessing({
         setRows(
           sortWorkspaceRows(
             historyRows.map((row) =>
-              toWorkspaceRow(row, employeeMap.get(row.employee_id)),
+              toWorkspaceRow(
+                row,
+                employeeMap.get(row.employee_id),
+                siteNameByCode,
+              ),
             ),
           ),
         );
@@ -1548,10 +1673,13 @@ export default function PayrollProcessing({
     }
 
     const label = formatPeriodLabel(currentPeriod.year, currentPeriod.month);
+    const filterNote = filtersActive
+      ? lockPeriodFilterConfirmSuffix(filteredRows.length, rows.length)
+      : "";
 
     if (
       !(await confirmDialog({
-        message: `Lock ${label} permanently? This cannot be reopened through the UI after the month ends.`,
+        message: `Lock ${label} permanently?${filterNote} This cannot be reopened through the UI after the month ends.`,
       }))
     ) {
       return;
@@ -1590,10 +1718,13 @@ export default function PayrollProcessing({
     }
 
     const label = formatPeriodLabel(currentPeriod.year, currentPeriod.month);
+    const filterNote = filtersActive
+      ? lockPeriodFilterConfirmSuffix(filteredRows.length, rows.length)
+      : "";
 
     if (
       !(await confirmDialog({
-        message: `Fully lock ${label}? This marks payroll as fully paid and posts a cash outflow to Cash Position. This cannot be undone without Release to Open (or Reopen if still Partially Locked).`,
+        message: `Fully lock ${label}?${filterNote} This marks payroll as fully paid and posts a cash outflow to Cash Position. This cannot be undone without Release to Open (or Reopen if still Partially Locked).`,
       }))
     ) {
       return;
@@ -1906,7 +2037,19 @@ export default function PayrollProcessing({
           <ul className="mt-2 list-disc space-y-1 pl-5">
             {missingBasicSalaryWarnings.map((warning) => (
               <li key={warning.employee_id}>
-                {warning.full_name} ({warning.staff_id}) — {warning.position} /{" "}
+                <button
+                  type="button"
+                  className="font-medium text-amber-950 underline"
+                  onClick={() =>
+                    setTableFilters({
+                      ...EMPTY_PAYROLL_TABLE_FILTERS,
+                      search: warning.staff_id,
+                    })
+                  }
+                >
+                  {warning.full_name}
+                </button>{" "}
+                ({warning.staff_id}) — {warning.position} /{" "}
                 {warning.employment_type} / {warning.shift}
               </li>
             ))}
@@ -1923,6 +2066,12 @@ export default function PayrollProcessing({
             <p className="mt-2 text-sm text-slate-600">
               Add a note for this partial lock, e.g. &quot;Half month pay - 15
               of 27 days&quot;.
+              {filtersActive
+                ? lockPeriodFilterConfirmSuffix(
+                    filteredRows.length,
+                    rows.length,
+                  )
+                : null}
             </p>
             <textarea
               value={partialLockNote}
@@ -1967,59 +2116,301 @@ export default function PayrollProcessing({
       ) : null}
 
       {!loading ? (
-        <FilteredListCount
-          filteredCount={rows.length}
-          totalCount={rows.length}
-          itemSingular="employee"
-        />
+        <>
+          <PayrollTableFilterBar
+            filters={tableFilters}
+            onChange={setTableFilters}
+            options={filterOptions}
+            showMissingBasicChip
+          />
+          <div className="no-print flex flex-wrap items-center justify-between gap-3">
+            <FilteredListCount
+              filteredCount={filteredRows.length}
+              totalCount={rows.length}
+              itemSingular="employee"
+              hasActiveFilters={filtersActive}
+            />
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={filteredRows.length === 0}
+                onClick={() => {
+                  const label = currentPeriod
+                    ? formatPeriodLabel(
+                        currentPeriod.year,
+                        currentPeriod.month,
+                      )
+                    : "payroll";
+                  const headers = [
+                    "Staff ID",
+                    "Full Name",
+                    "Days to Pay",
+                    "Basic Salary",
+                    "Absence Deduction",
+                    "Overtime",
+                    "Gross Pay",
+                    "Employee SSNIT",
+                    "PAYE Tax",
+                    "Overtime Tax",
+                    "Loan Repayment",
+                    "Welfare Deduction",
+                    "Total Deductions",
+                    "Net Pay",
+                  ];
+                  const body = filteredRows.map((row) => [
+                    row.staff_id,
+                    row.full_name,
+                    row.days_to_pay,
+                    row.basic_salary,
+                    row.absence_deduction,
+                    row.overtime_amount,
+                    row.gross_pay,
+                    row.employee_ssnit,
+                    row.paye_tax,
+                    row.overtime_tax,
+                    row.loan_repayment,
+                    row.welfare_deduction,
+                    row.total_deductions,
+                    row.net_pay,
+                  ]);
+                  const prefix = filtersActive
+                    ? [
+                        [
+                          filteredPayrollBannerLabel(
+                            filteredRows.length,
+                            rows.length,
+                          ),
+                          ...Array(headers.length - 1).fill(""),
+                        ],
+                        [
+                          `Filtered totals — Gross ${formatGHS(filteredTotals.grossPay)}; Deductions ${formatGHS(filteredTotals.totalDeductions)}; Net ${formatGHS(filteredTotals.netPay)}; Employer SSNIT ${formatGHS(filteredTotals.employerSsnitCost)}`,
+                          ...Array(headers.length - 1).fill(""),
+                        ],
+                      ]
+                    : [];
+                  downloadCsv(
+                    `payroll-processing-${label.replace(/\s+/g, "-").toLowerCase()}.csv`,
+                    headers,
+                    [...prefix, ...body],
+                  );
+                }}
+                className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Export CSV
+              </button>
+              <button
+                type="button"
+                disabled={filteredRows.length === 0}
+                onClick={() => window.print()}
+                className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Print
+              </button>
+            </div>
+          </div>
+        </>
       ) : null}
 
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #payroll-processing-print-area,
+          #payroll-processing-print-area * { visibility: visible; }
+          #payroll-processing-print-area {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            padding: 16px;
+            background: white;
+          }
+          .no-print { display: none !important; }
+        }
+      `}</style>
+
       <div
+        id="payroll-processing-print-area"
         className={
           loading
             ? "pointer-events-none opacity-50 transition-opacity"
             : undefined
         }
       >
+      {filtersActive && filteredRows.length > 0 ? (
+        <p className="mb-2 text-sm font-medium text-slate-800">
+          {filteredPayrollBannerLabel(filteredRows.length, rows.length)}
+        </p>
+      ) : null}
       <ScrollableTable>
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
-              <th className={scrollableTableThClassName}>Staff ID</th>
-              <th className={scrollableTableStickyFirstThClassName}>Full Name</th>
-              <th className={scrollableTableThClassName}>Days to Pay</th>
-              <th className={scrollableTableThClassName}>Basic Salary</th>
-              <th className={scrollableTableThClassName}>Absence Deduction</th>
-              <th className={scrollableTableThClassName}>Overtime</th>
-              <th className={scrollableTableThClassName}>Gross Pay</th>
-              <th className={scrollableTableThClassName}>Employee SSNIT</th>
-              <th className={scrollableTableThClassName}>PAYE Tax</th>
-              <th className={scrollableTableThClassName}>Overtime Tax</th>
-              <th className={scrollableTableThClassName}>Loan Repayment</th>
-              <th className={scrollableTableThClassName}>Welfare Deduction</th>
-              <th className={scrollableTableThClassName}>Total Deductions</th>
-              <th className={scrollableTableThClassName}>Net Pay</th>
-              <th className={scrollableTableThClassName}>Payment Method</th>
-              <th className={scrollableTableThClassName}>MoMo Name</th>
+              <th className={scrollableTableThClassName}>
+                <PayrollSortableHeader
+                  label="Staff ID"
+                  columnId="staff_id"
+                  valueType="text"
+                  sort={tableSort}
+                  onSortChange={setTableSort}
+                />
+              </th>
+              <th className={scrollableTableStickyFirstThClassName}>
+                <PayrollSortableHeader
+                  label="Full Name"
+                  columnId="full_name"
+                  valueType="text"
+                  sort={tableSort}
+                  onSortChange={setTableSort}
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <PayrollSortableHeader
+                  label="Days to Pay"
+                  columnId="days_to_pay"
+                  valueType="number"
+                  sort={tableSort}
+                  onSortChange={setTableSort}
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <PayrollSortableHeader
+                  label="Basic Salary"
+                  columnId="basic_salary"
+                  valueType="number"
+                  sort={tableSort}
+                  onSortChange={setTableSort}
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <PayrollSortableHeader
+                  label="Absence Deduction"
+                  columnId="absence_deduction"
+                  valueType="number"
+                  sort={tableSort}
+                  onSortChange={setTableSort}
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <PayrollSortableHeader
+                  label="Overtime"
+                  columnId="overtime_amount"
+                  valueType="number"
+                  sort={tableSort}
+                  onSortChange={setTableSort}
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <PayrollSortableHeader
+                  label="Gross Pay"
+                  columnId="gross_pay"
+                  valueType="number"
+                  sort={tableSort}
+                  onSortChange={setTableSort}
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <PayrollSortableHeader
+                  label="Employee SSNIT"
+                  columnId="employee_ssnit"
+                  valueType="number"
+                  sort={tableSort}
+                  onSortChange={setTableSort}
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <PayrollSortableHeader
+                  label="PAYE Tax"
+                  columnId="paye_tax"
+                  valueType="number"
+                  sort={tableSort}
+                  onSortChange={setTableSort}
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <PayrollSortableHeader
+                  label="Overtime Tax"
+                  columnId="overtime_tax"
+                  valueType="number"
+                  sort={tableSort}
+                  onSortChange={setTableSort}
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <PayrollSortableHeader
+                  label="Loan Repayment"
+                  columnId="loan_repayment"
+                  valueType="number"
+                  sort={tableSort}
+                  onSortChange={setTableSort}
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <PayrollSortableHeader
+                  label="Welfare Deduction"
+                  columnId="welfare_deduction"
+                  valueType="number"
+                  sort={tableSort}
+                  onSortChange={setTableSort}
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <PayrollSortableHeader
+                  label="Total Deductions"
+                  columnId="total_deductions"
+                  valueType="number"
+                  sort={tableSort}
+                  onSortChange={setTableSort}
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <PayrollSortableHeader
+                  label="Net Pay"
+                  columnId="net_pay"
+                  valueType="number"
+                  sort={tableSort}
+                  onSortChange={setTableSort}
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <PayrollSortableHeader
+                  label="Payment Method"
+                  columnId="payment_method"
+                  valueType="text"
+                  sort={tableSort}
+                  onSortChange={setTableSort}
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <PayrollSortableHeader
+                  label="MoMo Name"
+                  columnId="momo_name"
+                  valueType="text"
+                  sort={tableSort}
+                  onSortChange={setTableSort}
+                />
+              </th>
               {!isPeriodClosed ? (
-                <th className={scrollableTableThClassName}>Adjustments</th>
+                <th className={`${scrollableTableThClassName} no-print`}>
+                  Adjustments
+                </th>
               ) : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
-            {rows.length === 0 ? (
+            {filteredRows.length === 0 ? (
               <tr>
                 <td
                   colSpan={isPeriodClosed ? 15 : 16}
                   className="px-4 py-8 text-center text-slate-500"
                 >
-                  {isPeriodClosed
-                    ? "No locked payroll records for this period."
-                    : "No active employees to process for this period."}
+                  {rows.length === 0
+                    ? isPeriodClosed
+                      ? "No locked payroll records for this period."
+                      : "No active employees to process for this period."
+                    : "No employees match the current filters."}
                 </td>
               </tr>
             ) : (
-              rows.flatMap((row) => {
+              filteredRows.flatMap((row) => {
                 const mainRow = (
                   <tr key={row.id} className="text-slate-700">
                     <td className="px-4 py-3">{row.staff_id}</td>
@@ -2215,36 +2606,68 @@ export default function PayrollProcessing({
       </div>
 
       {rows.length > 0 && !loading ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
-            Period Totals
-          </h3>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <p className="text-sm text-slate-600">
-              Total Gross:{" "}
-              <span className="font-medium text-[#0f2744]">
-                {formatGHS(totals.grossPay)}
-              </span>
-            </p>
-            <p className="text-sm text-slate-600">
-              Total Deductions:{" "}
-              <span className="font-medium text-[#0f2744]">
-                {formatGHS(totals.totalDeductions)}
-              </span>
-            </p>
-            <p className="text-sm text-slate-600">
-              Total Net Pay:{" "}
-              <span className="font-medium text-[#0f2744]">
-                {formatGHS(totals.netPay)}
-              </span>
-            </p>
-            <p className="text-sm text-slate-600">
-              Total Employer SSNIT Cost:{" "}
-              <span className="font-medium text-[#0f2744]">
-                {formatGHS(totals.employerSsnitCost)}
-              </span>
-            </p>
+        <div className="space-y-3">
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
+              Period Totals
+            </h3>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <p className="text-sm text-slate-600">
+                Total Gross:{" "}
+                <span className="font-medium text-[#0f2744]">
+                  {formatGHS(periodTotals.grossPay)}
+                </span>
+              </p>
+              <p className="text-sm text-slate-600">
+                Total Deductions:{" "}
+                <span className="font-medium text-[#0f2744]">
+                  {formatGHS(periodTotals.totalDeductions)}
+                </span>
+              </p>
+              <p className="text-sm text-slate-600">
+                Total Net Pay:{" "}
+                <span className="font-medium text-[#0f2744]">
+                  {formatGHS(periodTotals.netPay)}
+                </span>
+              </p>
+              <p className="text-sm text-slate-600">
+                Total Employer SSNIT Cost:{" "}
+                <span className="font-medium text-[#0f2744]">
+                  {formatGHS(periodTotals.employerSsnitCost)}
+                </span>
+              </p>
+            </div>
           </div>
+          {filtersActive ? (
+            <PayrollFilteredTotalsCard filteredCount={filteredRows.length}>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <p className="text-sm text-slate-600">
+                  Total Gross:{" "}
+                  <span className="font-medium text-sky-950">
+                    {formatGHS(filteredTotals.grossPay)}
+                  </span>
+                </p>
+                <p className="text-sm text-slate-600">
+                  Total Deductions:{" "}
+                  <span className="font-medium text-sky-950">
+                    {formatGHS(filteredTotals.totalDeductions)}
+                  </span>
+                </p>
+                <p className="text-sm text-slate-600">
+                  Total Net Pay:{" "}
+                  <span className="font-medium text-sky-950">
+                    {formatGHS(filteredTotals.netPay)}
+                  </span>
+                </p>
+                <p className="text-sm text-slate-600">
+                  Total Employer SSNIT Cost:{" "}
+                  <span className="font-medium text-sky-950">
+                    {formatGHS(filteredTotals.employerSsnitCost)}
+                  </span>
+                </p>
+              </div>
+            </PayrollFilteredTotalsCard>
+          ) : null}
         </div>
       ) : null}
     </div>

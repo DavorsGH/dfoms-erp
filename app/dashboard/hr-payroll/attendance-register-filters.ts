@@ -582,9 +582,15 @@ export function attendanceFiltersFromSearchParams(
 export function payrollProcessingHrefForMonth(
   year: number,
   month: number,
+  staffId?: string | null,
 ): string {
   const period = `${year}-${String(month).padStart(2, "0")}`;
-  return `/dashboard/hr-payroll/payroll-processing?period=${period}`;
+  const params = new URLSearchParams({ period });
+  const q = staffId?.trim();
+  if (q) {
+    params.set("q", q);
+  }
+  return `/dashboard/hr-payroll/payroll-processing?${params.toString()}`;
 }
 
 export function buildAttendanceRegisterCsvRows(
