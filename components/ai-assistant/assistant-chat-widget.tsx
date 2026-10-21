@@ -399,7 +399,7 @@ export default function AssistantChatWidget({
   return (
     <div
       data-assistant-chat
-      className={`print:hidden fixed z-50 ${isDragging ? "" : "transition-[left,top] duration-200 ease-out motion-reduce:transition-none"}`}
+      className={`print:hidden fixed z-[var(--z-dropdown)] ${isDragging ? "" : "transition-[left,top] duration-200 ease-out motion-reduce:transition-none"}`}
       style={{
         left: fixedStyle.left,
         top: fixedStyle.top,

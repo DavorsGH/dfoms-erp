@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
+import { zClass } from "@/utils/z-index";
 import EmployeePhotoAvatar from "./employee-photo-avatar";
 import LogoutButton from "./logout-button";
 
@@ -19,6 +21,8 @@ export default function UserAccountMenu({
   linkedEmployeeId = null,
 }: UserAccountMenuProps) {
   const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
+  const triggerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -26,10 +30,30 @@ export default function UserAccountMenu({
       return;
     }
 
-    function handleClickOutside(event: MouseEvent) {
-      if (!menuRef.current?.contains(event.target as Node)) {
-        setOpen(false);
+    function positionMenu() {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) {
+        return;
       }
+      setMenuStyle({
+        position: "fixed",
+        top: rect.bottom + 8,
+        right: Math.max(8, window.innerWidth - rect.right),
+        width: "16rem",
+      });
+    }
+
+    positionMenu();
+
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as Node;
+      if (
+        triggerRef.current?.contains(target) ||
+        menuRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setOpen(false);
     }
 
     function handleEscape(event: KeyboardEvent) {
@@ -38,10 +62,14 @@ export default function UserAccountMenu({
       }
     }
 
+    window.addEventListener("resize", positionMenu);
+    window.addEventListener("scroll", positionMenu, true);
     document.addEventListener("click", handleClickOutside);
     document.addEventListener("keydown", handleEscape);
 
     return () => {
+      window.removeEventListener("resize", positionMenu);
+      window.removeEventListener("scroll", positionMenu, true);
       document.removeEventListener("click", handleClickOutside);
       document.removeEventListener("keydown", handleEscape);
     };
@@ -65,7 +93,7 @@ export default function UserAccountMenu({
         <LogoutButton />
       </div>
 
-      <div ref={menuRef} className="relative md:hidden">
+      <div ref={triggerRef} className="relative md:hidden">
         <button
           type="button"
           onClick={() => setOpen((current) => !current)}
@@ -82,27 +110,32 @@ export default function UserAccountMenu({
           />
         </button>
 
-        {open ? (
-          <div
-            role="menu"
-            className="absolute right-0 z-50 mt-2 w-64 rounded-md border border-slate-200 bg-white py-2 shadow-lg"
-          >
-            <p className="border-b border-slate-100 px-4 py-3 text-sm font-medium text-slate-900">
-              {userLabel}
-            </p>
-            <Link
-              href="/dashboard/my-account"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-              className="block px-4 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-[#0f2744]"
-            >
-              My Account
-            </Link>
-            <div className="px-4 py-2">
-              <LogoutButton className="block w-full text-center" />
-            </div>
-          </div>
-        ) : null}
+        {open && typeof document !== "undefined"
+          ? createPortal(
+              <div
+                ref={menuRef}
+                role="menu"
+                style={menuStyle}
+                className={`${zClass.dropdown} rounded-md border border-slate-200 bg-white py-2 shadow-lg`}
+              >
+                <p className="border-b border-slate-100 px-4 py-3 text-sm font-medium text-slate-900">
+                  {userLabel}
+                </p>
+                <Link
+                  href="/dashboard/my-account"
+                  role="menuitem"
+                  onClick={() => setOpen(false)}
+                  className="block px-4 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-[#0f2744]"
+                >
+                  My Account
+                </Link>
+                <div className="px-4 py-2">
+                  <LogoutButton className="block w-full text-center" />
+                </div>
+              </div>,
+              document.body,
+            )
+          : null}
       </div>
     </>
   );

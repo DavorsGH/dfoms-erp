@@ -1,3 +1,27 @@
-/** Shared notification dropdown panel positioning (dashboard + portals). */
-export const NOTIFICATION_DROPDOWN_PANEL_CLASS =
-  "z-50 mt-2 overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg max-md:fixed max-md:inset-x-4 max-md:top-16 max-md:mt-0 max-md:w-auto md:absolute md:right-0 md:w-[min(24rem,calc(100vw-2rem))]";
+import type { CSSProperties } from "react";
+import { zClass } from "@/utils/z-index";
+
+/** Shared notification dropdown panel chrome (dashboard + portals). Position via portal. */
+export const NOTIFICATION_DROPDOWN_PANEL_CLASS = `${zClass.dropdown} overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg w-[min(24rem,calc(100vw-2rem))]`;
+
+/** Fixed placement for the portaled notifications panel. */
+export function notificationDropdownPanelStyle(
+  triggerRect: DOMRect,
+  isMobile: boolean,
+): CSSProperties {
+  if (isMobile) {
+    return {
+      position: "fixed",
+      top: "4rem",
+      left: "1rem",
+      right: "1rem",
+      width: "auto",
+    };
+  }
+
+  return {
+    position: "fixed",
+    top: triggerRect.bottom + 8,
+    right: Math.max(8, window.innerWidth - triggerRect.right),
+  };
+}

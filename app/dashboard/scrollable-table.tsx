@@ -80,7 +80,7 @@ export const scrollableTableFinancialStatementClassName =
 export const scrollableTableHeadClassName = "bg-[#0f2744] text-white";
 
 export const scrollableTableThClassName =
-  "sticky top-0 z-[35] bg-[#0f2744] px-4 py-3 font-medium text-white";
+  "sticky top-0 z-[var(--z-table-sticky-header)] bg-[#0f2744] px-4 py-3 font-medium text-white";
 
 export const scrollableTableActionsThClassName = `${scrollableTableThClassName} ${scrollableTableCompactCellClassName} ${scrollableTableActionsCellClassName}`;
 

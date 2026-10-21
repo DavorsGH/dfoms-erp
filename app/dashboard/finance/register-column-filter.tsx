@@ -493,7 +493,7 @@ export function RegisterColumnFilterHeader({
               role="dialog"
               aria-label={`Filter ${label}`}
               style={panelStyle}
-              className="z-[80] rounded-md border border-slate-200 bg-white text-slate-900 shadow-lg"
+              className="z-[var(--z-popover)] rounded-md border border-slate-200 bg-white text-slate-900 shadow-lg"
             >
               {sort ? (
                 <RegisterColumnSortMenu sort={sort} onClose={() => setOpen(false)} />
@@ -708,7 +708,7 @@ export function RegisterDateRangeFilterHeader({
               role="dialog"
               aria-label={`Filter ${label}`}
               style={panelStyle}
-              className="z-[80] rounded-md border border-slate-200 bg-white text-slate-900 shadow-lg"
+              className="z-[var(--z-popover)] rounded-md border border-slate-200 bg-white text-slate-900 shadow-lg"
             >
               {sort ? (
                 <RegisterColumnSortMenu sort={sort} onClose={() => setOpen(false)} />

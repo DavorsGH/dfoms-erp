@@ -5,6 +5,20 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /*
+   * Stacking scale (keep in sync with utils/z-index.ts):
+   * table sticky < page sticky < top bar < dropdowns < popovers < modals < toasts < tooltips
+   */
+  --z-table-sticky-body: 10;
+  --z-table-sticky-header: 20;
+  --z-table-sticky-corner: 21;
+  --z-page-sticky: 30;
+  --z-top-bar: 40;
+  --z-dropdown: 50;
+  --z-popover: 60;
+  --z-modal: 100;
+  --z-toast: 110;
+  --z-tooltip: 120;
 }
 
 @theme inline {
@@ -71,7 +85,7 @@ body {
   position: sticky;
   top: 0;
   left: auto;
-  z-index: 30;
+  z-index: var(--z-table-sticky-header);
   width: auto;
   min-width: max-content;
   max-width: none;
@@ -114,7 +128,7 @@ body {
 .scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge table tbody td:nth-child(2):not([colspan]) {
   position: sticky;
   left: 0;
-  z-index: 12;
+  z-index: var(--z-table-sticky-body);
   width: auto !important;
   min-width: var(--st-edge-identifying-min) !important;
   max-width: var(--st-edge-identifying-max) !important;
@@ -124,7 +138,7 @@ body {
 
 .scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge table thead th:nth-child(2) {
   top: 0;
-  z-index: 31;
+  z-index: var(--z-table-sticky-corner);
   background-color: #0f2744;
 }
 
@@ -151,7 +165,7 @@ body {
 .scrollable-table-host--sticky-edges table tbody td:nth-child(1):not([colspan]) {
   position: sticky;
   left: 0;
-  z-index: 12;
+  z-index: var(--z-table-sticky-body);
   background-color: #ffffff;
   box-shadow: 2px 0 4px -2px rgba(15, 39, 68, 0.12);
 }
@@ -167,7 +181,7 @@ body {
 .scrollable-table-host--sticky-edges table tbody td:nth-child(2):not([colspan]) {
   position: sticky;
   left: var(--st-edge-col-1-offset, var(--st-edge-col-1-width));
-  z-index: 11;
+  z-index: calc(var(--z-table-sticky-body) - 1);
   background-color: #ffffff;
   box-shadow: 2px 0 4px -2px rgba(15, 39, 68, 0.12);
 }
@@ -184,12 +198,12 @@ body {
 
 .scrollable-table-host--sticky-edges table thead th:nth-child(1),
 .scrollable-table-host--sticky-edges table thead th:nth-child(2) {
-  z-index: 30;
+  z-index: var(--z-table-sticky-header);
   background-color: #0f2744;
 }
 
 .scrollable-table-host--sticky-edges table thead th:nth-child(1) {
-  z-index: 31;
+  z-index: var(--z-table-sticky-corner);
 }
 
 .scrollable-table-host--sticky-edges table tbody tr.bg-slate-50 td:nth-child(1):not([colspan]),

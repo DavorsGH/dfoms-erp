@@ -6,8 +6,8 @@ import {
   resolveLesseeNotificationHref,
   type LesseeNotificationRow,
 } from "@/utils/lessee-notifications-types";
-import { NOTIFICATION_DROPDOWN_PANEL_CLASS } from "@/utils/notification-bell-ui";
 import NotificationBellPushPrompt from "@/components/notification-bell-push-prompt";
+import NotificationDropdownPortal from "@/components/notification-dropdown-portal";
 import {
   setNotificationBadgeCount,
   useNotificationBadgePoll,
@@ -65,6 +65,7 @@ export default function PortalNotificationBell() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const loadPage = useCallback(async (offset: number, append: boolean) => {
@@ -112,9 +113,14 @@ export default function PortalNotificationBell() {
     if (!open) return;
 
     function handlePointerDown(event: MouseEvent) {
-      if (!panelRef.current?.contains(event.target as Node)) {
-        setOpen(false);
+      const target = event.target as Node;
+      if (
+        triggerRef.current?.contains(target) ||
+        panelRef.current?.contains(target)
+      ) {
+        return;
       }
+      setOpen(false);
     }
 
     function handleEscape(event: KeyboardEvent) {
@@ -244,7 +250,7 @@ export default function PortalNotificationBell() {
     unreadCount > 99 ? "99+" : unreadCount > 0 ? String(unreadCount) : null;
 
   return (
-    <div ref={panelRef} className="relative">
+    <div ref={triggerRef} className="relative">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
@@ -265,12 +271,12 @@ export default function PortalNotificationBell() {
         ) : null}
       </button>
 
-      {open ? (
-        <div
-          role="dialog"
-          aria-label="Notifications"
-          className={`${NOTIFICATION_DROPDOWN_PANEL_CLASS} text-slate-900`}
-        >
+      <NotificationDropdownPortal
+        open={open}
+        triggerRef={triggerRef}
+        panelRef={panelRef}
+        className="text-slate-900"
+      >
           <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
             <h2 className="text-sm font-semibold text-[#0f2744]">
               Notifications
@@ -397,8 +403,7 @@ export default function PortalNotificationBell() {
               </button>
             </div>
           ) : null}
-        </div>
-      ) : null}
+      </NotificationDropdownPortal>
     </div>
   );
 }

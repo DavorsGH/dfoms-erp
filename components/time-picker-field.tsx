@@ -381,7 +381,7 @@ const TimePickerField = forwardRef<HTMLInputElement, TimePickerFieldProps>(
               ref={panelRef}
               role="dialog"
               aria-label={ariaLabel ? `${ariaLabel} time` : "Select time"}
-              className="fixed z-[260] max-w-[calc(100vw-1rem)] rounded-lg border border-slate-200 bg-white p-2 shadow-xl"
+              className="fixed z-[var(--z-popover)] max-w-[calc(100vw-1rem)] rounded-lg border border-slate-200 bg-white p-2 shadow-xl"
               style={{
                 top: placement.top,
                 left: placement.left,

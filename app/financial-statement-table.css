@@ -16,14 +16,14 @@
 .scrollable-table-host--financial-statement table thead th {
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: var(--z-table-sticky-header);
   background-color: #0f2744;
   color: #ffffff;
 }
 
 .scrollable-table-host--financial-statement table thead th:first-child {
   left: 0;
-  z-index: 30;
+  z-index: var(--z-table-sticky-corner);
   min-width: var(--fs-line-item-width);
   width: var(--fs-line-item-width);
   max-width: var(--fs-line-item-width);
@@ -36,7 +36,7 @@
   td:first-child:not([colspan]) {
   position: sticky;
   left: 0;
-  z-index: 10;
+  z-index: var(--z-table-sticky-body);
   min-width: var(--fs-line-item-width);
   width: var(--fs-line-item-width);
   max-width: var(--fs-line-item-width);

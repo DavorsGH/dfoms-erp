@@ -3,7 +3,7 @@
 export function ToastUi({ message }: { message: string }) {
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-6 z-[100] flex justify-center px-4"
+      className="pointer-events-none fixed inset-x-0 bottom-6 z-[var(--z-toast)] flex justify-center px-4"
       role="status"
       aria-live="polite"
     >

@@ -107,7 +107,7 @@ export default function ListRowStatusActionsMenu<T extends string>({
               ref={menuRef}
               role="menu"
               style={menuStyle}
-              className="z-[80] rounded-md border border-slate-200 bg-white py-1 shadow-lg"
+              className="z-[var(--z-popover)] rounded-md border border-slate-200 bg-white py-1 shadow-lg"
             >
               {items.map((item) => (
                 <button

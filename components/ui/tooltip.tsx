@@ -424,7 +424,7 @@ export default function Tooltip({
         id={tooltipId}
         role="tooltip"
         style={style}
-        className={`pointer-events-auto fixed z-[99999] w-max max-w-[min(320px,calc(100vw-16px))] rounded-md border px-3 py-2 text-sm leading-snug ${variantStyles.panel} ${
+        className={`pointer-events-auto fixed z-[var(--z-tooltip)] w-max max-w-[min(320px,calc(100vw-16px))] rounded-md border px-3 py-2 text-sm leading-snug ${variantStyles.panel} ${
           positionReady ? "" : "invisible"
         }`}
         onMouseEnter={() => {

@@ -53,7 +53,7 @@ export default function TopBar({
   businessUnitSwitcher = null,
 }: TopBarProps) {
   return (
-    <header className="relative z-30 flex min-h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-2 md:px-6">
+    <header className="relative z-[var(--z-top-bar)] flex min-h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-2 md:px-6">
       <button
         type="button"
         onClick={onMenuToggle}
