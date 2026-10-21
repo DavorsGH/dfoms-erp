@@ -6,6 +6,7 @@ import {
   ReceiptMoney,
   ReceiptPaymentsList,
   ReceiptPreviewFrame,
+  receiptPreviewFingerprint,
   SaleReceiptFooter,
 } from "../pos/pos-receipt";
 import {
@@ -127,11 +128,23 @@ export function ProductSaleReceiptPanel({
   const standing = receiptPaymentStanding(receipt.amount, receipt.amountReceived);
   const balanceDue = receiptBalanceDue(receipt.amount, receipt.amountReceived);
   const changeFromReceived = receiptChangeDue(receipt.amount, receipt.amountReceived);
+  const fingerprint = receiptPreviewFingerprint({
+    invoiceNo: receipt.invoiceNo,
+    lineCount: 1 + (receipt.paymentLines?.length ?? 0),
+    totals: [
+      receipt.amount,
+      receipt.amountReceived,
+      balanceDue,
+      receipt.saleStatus,
+      standing,
+    ],
+  });
   return (
     <ReceiptPreviewFrame
       paper={receiptPaper}
       printAreaId={PRODUCT_SALE_RECEIPT_PRINT_AREA_ID}
       onClose={onClose}
+      fingerprint={fingerprint}
     >
       <ProductSaleReceiptPrintStyles paper={receiptPaper} />
 
@@ -167,22 +180,6 @@ export function ProductSaleReceiptPanel({
             <span className="font-medium text-slate-900">Customer:</span>{" "}
             {receipt.customerLabel}
           </p>
-          {receipt.paymentLines && receipt.paymentLines.length > 0 ? (
-            <ReceiptPaymentsList lines={receipt.paymentLines} />
-          ) : (
-            <p>
-              <span className="font-medium text-slate-900">Payment method:</span>{" "}
-              {receipt.paymentMethod}
-            </p>
-          )}
-          <p>
-            <span className="font-medium text-slate-900">Payment status:</span>{" "}
-            {standing}
-          </p>
-          <p>
-            <span className="font-medium text-slate-900">Sale status:</span>{" "}
-            {receipt.saleStatus}
-          </p>
         </div>
 
         <div className="receipt-body border-t border-dashed border-slate-400 pt-2 text-[13px]">
@@ -203,24 +200,28 @@ export function ProductSaleReceiptPanel({
               <ReceiptMoney paper={receiptPaper} value={receipt.amount} />
             </span>
           </div>
+          <div className="receipt-body text-[13px] text-slate-700">
+            {receipt.paymentLines && receipt.paymentLines.length > 0 ? (
+              <ReceiptPaymentsList lines={receipt.paymentLines} />
+            ) : (
+              <div className="space-y-1">
+                <p className="font-bold text-slate-900">Payments</p>
+                <p>{receipt.paymentMethod === "—" ? "No payment recorded" : receipt.paymentMethod}</p>
+              </div>
+            )}
+          </div>
           <div className="flex items-start justify-between gap-2">
-            <span className="min-w-0 break-words font-medium text-slate-700">
-              {receipt.paymentLines && receipt.paymentLines.length > 0
-                ? "Total paid"
-                : "Amount received"}
-            </span>
+            <span className="min-w-0 break-words font-medium text-slate-700">Total paid</span>
             <span className="receipt-total shrink-0 font-bold text-[#0f2744]">
               <ReceiptMoney paper={receiptPaper} value={receipt.amountReceived} />
             </span>
           </div>
-          {balanceDue > 0 ? (
-            <div className="flex items-start justify-between gap-2">
-              <span className="min-w-0 break-words font-medium text-slate-700">Balance due</span>
-              <span className="receipt-total shrink-0 font-bold text-[#0f2744]">
-                <ReceiptMoney paper={receiptPaper} value={balanceDue} />
-              </span>
-            </div>
-          ) : null}
+          <div className="flex items-start justify-between gap-2">
+            <span className="min-w-0 break-words font-medium text-slate-700">Balance due</span>
+            <span className="receipt-total shrink-0 font-bold text-[#0f2744]">
+              <ReceiptMoney paper={receiptPaper} value={balanceDue} />
+            </span>
+          </div>
           {balanceDue > 0 && receipt.dueDate?.trim() ? (
             <div className="flex items-start justify-between gap-2">
               <span className="min-w-0 break-words font-medium text-slate-700">Due date</span>
@@ -237,6 +238,16 @@ export function ProductSaleReceiptPanel({
               </span>
             </div>
           ) : null}
+          <div className="receipt-body space-y-1 text-[13px] text-slate-700">
+            <p>
+              <span className="font-medium text-slate-900">Payment status:</span>{" "}
+              {standing}
+            </p>
+            <p>
+              <span className="font-medium text-slate-900">Sale status:</span>{" "}
+              {receipt.saleStatus}
+            </p>
+          </div>
         </div>
         <SaleReceiptFooter />
       </div>

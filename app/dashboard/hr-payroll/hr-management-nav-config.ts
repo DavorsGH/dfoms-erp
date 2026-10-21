@@ -42,6 +42,10 @@ export const HR_MANAGEMENT_GROUPS: readonly HrManagementNavGroup[] = [
     label: "HR Operations",
     items: [
       { label: "Attendance", href: "/dashboard/hr-payroll/attendance" },
+      {
+        label: "Remote Work",
+        href: "/dashboard/hr-payroll/remote-work",
+      },
       { label: "Leave", href: "/dashboard/hr-payroll/leave" },
       {
         label: "Leave Balances",

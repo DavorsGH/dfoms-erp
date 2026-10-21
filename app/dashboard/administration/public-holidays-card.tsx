@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useAlert, useConfirm, useToast } from "@/components/feedback/feedback-context";
 import { inputClassName } from "../employees/employee-record-utils";
+import { formatDate } from "@/app/dashboard/finance/income-register-utils";
 
 export type TenantHoliday = {
   id: string;
@@ -218,7 +219,7 @@ export default function PublicHolidaysCard({
   async function removeHoliday(row: TenantHoliday) {
     const accepted = await confirm({
       title: "Remove public holiday",
-      message: `Remove ${row.name} on ${dateKey(row.holiday_date)}?`,
+      message: `Remove ${row.name} on ${formatDate(dateKey(row.holiday_date))}?`,
       confirmLabel: "Remove",
       destructive: true,
     });
@@ -355,7 +356,7 @@ export default function PublicHolidaysCard({
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <span className="font-medium text-[#0f2744]">
-                      {dateKey(row.holiday_date)}
+                      {formatDate(dateKey(row.holiday_date))}
                     </span>
                     <span className="ml-3 text-slate-700">{row.name}</span>
                   </div>

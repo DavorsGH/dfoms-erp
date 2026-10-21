@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import DashboardButton from "@/components/dashboard-button";
@@ -1043,6 +1051,19 @@ function SalesRegisterViewRow({
   return null;
 }
 
+/**
+ * Check payment for rows awaiting Paystack. Provided by the register; null when
+ * the viewer may not collect Paystack payments.
+ */
+export type PaystackCheckContextValue = {
+  onCheck: (row: SalesRegisterReceiptRow) => void;
+  checkingRequestId: string | null;
+};
+
+export const PaystackCheckContext = createContext<PaystackCheckContextValue | null>(
+  null,
+);
+
 function ReceiptActions({
   row,
   view,
@@ -1064,8 +1085,26 @@ function ReceiptActions({
   onPrint: () => void;
   onVoidLine: (line: ProductSaleEntry) => void;
 }) {
+  const paystackCheck = useContext(PaystackCheckContext);
+  const canCheckPayment =
+    paystackCheck != null && Boolean(row.paystackPending && row.paystackRequestId);
+  const checkingPayment =
+    canCheckPayment && paystackCheck?.checkingRequestId === row.paystackRequestId;
   if (row.paystackPending && row.lines.length === 0) {
-    return <span className="text-xs text-slate-500">Waiting for Paystack</span>;
+    if (!canCheckPayment || !paystackCheck) {
+      return <span className="text-xs text-slate-500">Awaiting payment</span>;
+    }
+    return (
+      <RegisterActionButton
+        action={{
+          key: "check-payment",
+          label: checkingPayment ? "Checking…" : "Check payment",
+          primary: true,
+          disabled: checkingPayment,
+          onClick: () => paystackCheck.onCheck(row),
+        }}
+      />
+    );
   }
   const outstandingLines =
     row.totalOutstanding > 0.001
@@ -1120,6 +1159,15 @@ function ReceiptActions({
       label: "Record payment",
       primary: true,
       onClick: () => onRecordPayment(singlePaymentLine),
+    });
+  }
+  if (canCheckPayment && paystackCheck) {
+    actions.push({
+      key: "check-payment",
+      label: checkingPayment ? "Checking…" : "Check payment",
+      primary: true,
+      disabled: checkingPayment,
+      onClick: () => paystackCheck.onCheck(row),
     });
   }
   actions.push({

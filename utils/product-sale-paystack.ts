@@ -10,13 +10,251 @@ export const PRODUCT_SALE_PAYSTACK_CONTEXT = "product_sale" as const;
 
 /**
  * Machine-readable error code returned by product-sale Paystack initialize
- * routes when the tenant has no active settlement subaccount. Client-safe so
- * the POS UI can detect it and link to Payment Settings.
+ * routes when the tenant has no ready Online Payments settlement. Client-safe
+ * so the POS UI can detect it and link to Finance Settings → Online Payments.
  */
 export const PAYMENT_SETTINGS_REQUIRED_CODE = "payment_settings_required" as const;
 
-export const PAYMENT_SETTINGS_REQUIRED_MESSAGE =
-  "Payment Settings required - set up your settlement account before accepting Mobile Money or card payments." as const;
+/** Centred modal title when Mobile Money / Paystack collection is not configured. */
+export const MOBILE_MONEY_NOT_SETUP_TITLE = "Mobile Money isn't set up yet";
+
+/**
+ * Body (and server 409 error) when Paystack Mobile Money collection is not ready.
+ * Plain "Record payment" with method Mobile Money (no Paystack popup) stays allowed.
+ */
+export const MOBILE_MONEY_NOT_SETUP_BODY =
+  "Payments can't be received by Mobile Money until a Mobile Money account is connected. Use Cash payment for now.";
+
+/** Shown only to super_admin and director under the modal body. */
+export const MOBILE_MONEY_NOT_SETUP_ADMIN_HINT =
+  "Connect it in Administration → Finance Settings → Online Payments.";
+
+/** Canonical Online Payments page (Paystack settlement). */
+export const ONLINE_PAYMENTS_HREF =
+  "/dashboard/administration/online-payments" as const;
+
+/** @deprecated Prefer ONLINE_PAYMENTS_HREF — old Billing Settings deep link. */
+export const PAYMENT_SETTINGS_HREF = ONLINE_PAYMENTS_HREF;
+
+/** Legacy Billing Settings ?tab=payment URL — pages should redirect here. */
+export const LEGACY_PAYMENT_SETTINGS_HREF =
+  "/dashboard/administration/billing?tab=payment" as const;
+
+/** @deprecated Prefer MOBILE_MONEY_NOT_SETUP_BODY — kept as the initialize 409 text. */
+export const PAYMENT_SETTINGS_REQUIRED_MESSAGE = MOBILE_MONEY_NOT_SETUP_BODY;
+
+/** Verification older than this triggers a background re-check (does not block alone). */
+export const SETTLEMENT_VERIFICATION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function isSettlementVerificationStale(
+  lastVerifiedAt: string | null | undefined,
+  nowMs: number = Date.now(),
+): boolean {
+  if (!lastVerifiedAt?.trim()) {
+    return true;
+  }
+  const verifiedMs = Date.parse(lastVerifiedAt);
+  if (!Number.isFinite(verifiedMs)) {
+    return true;
+  }
+  return nowMs - verifiedMs > SETTLEMENT_VERIFICATION_MAX_AGE_MS;
+}
+
+/** True when lastVerifiedAt is missing (never checked) or older than 7 days. */
+export function shouldScheduleSettlementVerification(
+  lastVerifiedAt: string | null | undefined,
+  nowMs: number = Date.now(),
+): boolean {
+  return isSettlementVerificationStale(lastVerifiedAt, nowMs);
+}
+
+/** In-flight background verifies — at most one per tenant at a time. */
+const settlementVerificationInFlight = new Set<string>();
+
+/**
+ * Claim the single in-flight verification slot for a tenant.
+ * @returns true when this caller owns the slot (must release later).
+ */
+export function claimSettlementVerificationSlot(tenantId: string): boolean {
+  const trimmed = tenantId.trim();
+  if (!trimmed || settlementVerificationInFlight.has(trimmed)) {
+    return false;
+  }
+  settlementVerificationInFlight.add(trimmed);
+  return true;
+}
+
+export function releaseSettlementVerificationSlot(tenantId: string): void {
+  settlementVerificationInFlight.delete(tenantId.trim());
+}
+
+/** Test helper — clears the in-flight set between cases. */
+export function resetSettlementVerificationInFlightForTests(): void {
+  settlementVerificationInFlight.clear();
+}
+
+/**
+ * True when billing_settings can collect Mobile Money via Paystack.
+ * Requires active status and a subaccount code. Only verified_ok === false
+ * blocks. NULL (never checked after deploy) and true both allow collection;
+ * callers should schedule a background check when NULL or stale (>7 days).
+ */
+export function isSettlementSubaccountReady(input: {
+  paystack_subaccount_status?: string | null;
+  paystack_subaccount_code?: string | null;
+  paystack_subaccount_verified_ok?: boolean | null;
+  paystack_subaccount_last_verified_at?: string | null;
+}): boolean {
+  const code = input.paystack_subaccount_code?.trim() ?? "";
+  if (input.paystack_subaccount_status !== "active" || code.length === 0) {
+    return false;
+  }
+  // Only an explicit failed verification blocks Mobile Money.
+  return input.paystack_subaccount_verified_ok !== false;
+}
+
+/** UI / assistant badge for Online Payments connection. */
+export type OnlinePaymentsConnectionStatus =
+  | "connected"
+  | "not_connected"
+  | "needs_attention"
+  | "checking";
+
+export function resolveOnlinePaymentsConnectionStatus(input: {
+  paystack_subaccount_status?: string | null;
+  paystack_subaccount_code?: string | null;
+  paystack_subaccount_verified_ok?: boolean | null;
+}): OnlinePaymentsConnectionStatus {
+  const code = input.paystack_subaccount_code?.trim() ?? "";
+  const active =
+    input.paystack_subaccount_status === "active" && code.length > 0;
+  if (!active) {
+    return "not_connected";
+  }
+  if (input.paystack_subaccount_verified_ok === true) {
+    return "connected";
+  }
+  if (input.paystack_subaccount_verified_ok === false) {
+    return "needs_attention";
+  }
+  // NULL = never checked (migration / new subaccount) — not a hard failure.
+  return "checking";
+}
+
+/** Plain labels for Ask DavSuite / Online Payments badges. */
+export function onlinePaymentsConnectionStatusLabel(
+  status: OnlinePaymentsConnectionStatus,
+): string {
+  switch (status) {
+    case "connected":
+      return "Connected";
+    case "not_connected":
+      return "Not connected";
+    case "needs_attention":
+      return "Needs attention";
+    case "checking":
+      return "Checking";
+  }
+}
+
+/**
+ * Ask DavSuite payload for get_mobile_money_status (pure — unit-testable).
+ * Path is included only for roles that can open Online Payments.
+ */
+export function buildMobileMoneyStatusAssistantPayload(input: {
+  paystack_subaccount_status?: string | null;
+  paystack_subaccount_code?: string | null;
+  paystack_subaccount_verified_ok?: boolean | null;
+  paystack_subaccount_last_verified_at?: string | null;
+  paystack_subaccount_last_verify_error?: string | null;
+  role?: string | null;
+}): {
+  status: OnlinePaymentsConnectionStatus;
+  statusLabel: string;
+  ready: boolean;
+  message: string;
+  lastVerifiedAt: string | null;
+  reason: string | null;
+  paymentSettingsPath?: string;
+  note?: string;
+} {
+  const connection = resolveOnlinePaymentsConnectionStatus(input);
+  const ready = isSettlementSubaccountReady(input);
+  const lastVerifiedAt =
+    input.paystack_subaccount_last_verified_at?.trim() || null;
+  const showPath = canShowMobileMoneyPaymentSettingsHint(input.role);
+  const pathSentence = showPath
+    ? " Connect or update it under Administration → Finance Settings → Online Payments."
+    : "";
+  const pathField = showPath
+    ? { paymentSettingsPath: ONLINE_PAYMENTS_HREF }
+    : {};
+
+  if (connection === "connected") {
+    return {
+      status: "connected",
+      statusLabel: onlinePaymentsConnectionStatusLabel(connection),
+      ready: true,
+      message:
+        "Mobile Money collection is Connected for this workspace (Paystack settlement confirmed).",
+      lastVerifiedAt,
+      reason: null,
+    };
+  }
+
+  if (connection === "checking") {
+    return {
+      status: "checking",
+      statusLabel: onlinePaymentsConnectionStatusLabel(connection),
+      ready: true,
+      message:
+        "Mobile Money is available while DavSuite confirms the Paystack settlement connection (Checking — never verified yet).",
+      lastVerifiedAt,
+      reason: null,
+      note: "A background check runs once per workspace; the nightly job also verifies every connected account.",
+    };
+  }
+
+  if (connection === "needs_attention") {
+    const reason =
+      input.paystack_subaccount_last_verify_error?.trim() ||
+      "Paystack can't find this settlement account.";
+    return {
+      status: "needs_attention",
+      statusLabel: onlinePaymentsConnectionStatusLabel(connection),
+      ready: false,
+      message: `${MOBILE_MONEY_NOT_SETUP_BODY}${pathSentence}`,
+      lastVerifiedAt,
+      reason,
+      ...pathField,
+      note: "Recording a Mobile Money payment received outside DavSuite via Record payment is still allowed.",
+    };
+  }
+
+  return {
+    status: "not_connected",
+    statusLabel: onlinePaymentsConnectionStatusLabel(connection),
+    ready: false,
+    message: `${MOBILE_MONEY_NOT_SETUP_BODY}${pathSentence}`,
+    lastVerifiedAt,
+    reason: null,
+    ...pathField,
+    note: "Recording a Mobile Money payment received outside DavSuite via Record payment is still allowed.",
+  };
+}
+
+/** Admin hint on the Mobile Money not-set-up modal. */
+export function canShowMobileMoneyPaymentSettingsHint(
+  role: string | null | undefined,
+): boolean {
+  const normalized = (role ?? "").trim().toLowerCase();
+  return normalized === "super_admin" || normalized === "director";
+}
+
+/** Dropdown label for Mobile Money when collection may be unavailable. */
+export function mobileMoneyPaymentMethodOptionLabel(ready: boolean): string {
+  return ready ? "Mobile Money" : "Mobile Money (not set up)";
+}
 
 export type ProductSaleIncomeLine = {
   id: string;

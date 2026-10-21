@@ -148,7 +148,7 @@ export async function POST(request: Request) {
 
   // Tenant fund routing: POS MoMo payments are customer money owed to the
   // tenant, so we must charge into the tenant's settlement subaccount. BLOCK
-  // (never silently omit the subaccount) if Payment Settings is not active.
+  // (never silently omit the subaccount) if Online Payments settlement is not ready.
   const settlement = await requireActiveSettlementSubaccount(auth.tenantId);
   if (!settlement.ok) {
     return NextResponse.json(

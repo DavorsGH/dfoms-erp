@@ -16,6 +16,7 @@ import PromoCodeField from "@/components/promo-code-field";
 import FinishedProductPhoto from "@/components/finished-product-photo";
 import SalesRepSelect from "@/components/sales-rep-select";
 import { PAYMENT_SETTINGS_REQUIRED_CODE } from "@/utils/product-sale-paystack";
+import MobileMoneyNotSetupModal from "@/components/mobile-money-not-setup-modal";
 import { redeemLoyaltyPointsForCheckout } from "@/utils/promo-discount-utils";
 import {
   LOYALTY_ACCOUNT_SELECT,
@@ -26,11 +27,30 @@ import {
 } from "@/utils/loyalty-types";
 import { inputClassName } from "../employees/employee-record-utils";
 import {
+  POS_CUSTOMER_FIELD_ID,
   POS_DUE_DATE_FIELD_ID,
+  POS_NOTES_FIELD_ID,
   POS_PAYER_PHONE_FIELD_ID,
+  POS_PROMO_FIELD_ID,
+  POS_SALES_REP_FIELD_ID,
+  POS_STORE_CREDIT_FIELD_ID,
+  posMoreOptionsChips,
   posMoreOptionsFocusOnComplete,
-  posPartPaymentShortLine,
+  posMoreOptionsPlacement,
+  posPaymentMethodDisplayLabel,
+  type PosMoreOptionsPlacement,
 } from "./pos-more-options";
+import {
+  POS_MANUAL_SALE_HANDOFF_PARAM,
+  POS_MANUAL_SALE_RESTORE_PARAM,
+  buildPosManualSaleHandoffPayload,
+  consumePosManualSaleHandoff,
+  createPosManualSaleHandoffId,
+  posHasCustomerSelected,
+  posShortfallChooseCustomerPrompt,
+  posShortfallShortByPrefix,
+  writePosManualSaleHandoff,
+} from "./pos-manual-sale-handoff";
 import {
   filterActiveEmployees,
   HR_EMPLOYEE_SELECT,
@@ -86,10 +106,7 @@ import {
 import { PosReceiptPanel, type PosReceiptData } from "./pos-receipt";
 import { receiptPaymentStanding } from "./receipt-settlement";
 import RequestPaymentModal from "./request-payment-modal";
-import {
-  extractPaystackInlineReference,
-  openPaystackInlineWithAccessCode,
-} from "./paystack-inline";
+import { runPaystackPopupWithConfirm } from "./paystack-inline";
 import { recordQuoteSaleConversions } from "@/utils/sales-quotes-types";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import { useOfflineWriteBlocked } from "@/hooks/use-online-status";
@@ -189,6 +206,9 @@ type PosCheckoutProps = {
   activeBusinessUnitId?: string | null;
   /** Workspace id for employee-linked BU scoping of sales-rep options. */
   tenantId?: string | null;
+  /** False when Paystack settlement is not configured for MoMo collection. */
+  mobileMoneyCollectionReady?: boolean;
+  viewerRole?: string | null;
 };
 
 type MomoInitializeResponse = {
@@ -202,20 +222,52 @@ type MomoInitializeResponse = {
   amount_ghs?: number;
 };
 
-type MomoConfirmResponse = {
-  ok?: boolean;
-  error?: string;
-  invoice_no?: string;
-  income_ids?: string[];
-  already_fulfilled?: boolean;
-};
-
 function createCartLineId(): string {
   return crypto.randomUUID();
 }
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/** Tabler "device-mobile" (ti-device-mobile) as inline SVG, matching the POS cart's inline icons. */
+function PosMobileMoneyIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M6 5a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2v-14z" />
+      <path d="M11 4h2" />
+      <path d="M12 17v.01" />
+    </svg>
+  );
+}
+
+/** Tabler "cash" (ti-cash) as inline SVG. */
+function PosCashIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M7 9m0 2a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2z" />
+      <path d="M14 14m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+      <path d="M17 9v-2a2 2 0 0 0 -2 -2h-10a2 2 0 0 0 -2 2v6a2 2 0 0 0 2 2h2" />
+    </svg>
+  );
 }
 
 export default function PosCheckout({
@@ -238,6 +290,8 @@ export default function PosCheckout({
   onStockCacheChanged,
   activeBusinessUnitId = null,
   tenantId = null,
+  mobileMoneyCollectionReady = true,
+  viewerRole = null,
 }: PosCheckoutProps) {
   const supabase = useMemo(() => createClient(), []);
   const { alert, alertError } = useAlert();
@@ -314,11 +368,13 @@ export default function PosCheckout({
   const [loading, setLoading] = useState(false);
   const [momoWaiting, setMomoWaiting] = useState(false);
   /** True when the backend blocked payment because the tenant has no active
-   * settlement account — shows a link to Payment Settings. */
+   * settlement account — shows a link to Online Payments. */
   const [paymentSettingsRequired, setPaymentSettingsRequired] = useState(false);
   const [receipt, setReceipt] = useState<PosReceiptData | null>(null);
   const scanFocusAfterReceipt = useRef(false);
   const cashReceivedRef = useRef<HTMLInputElement>(null);
+  const cashMethodButtonRef = useRef<HTMLButtonElement>(null);
+  const [momoNotSetupOpen, setMomoNotSetupOpen] = useState(false);
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
   const moreOptionsButtonRef = useRef<HTMLButtonElement>(null);
   const checkoutFormRef = useRef<HTMLFormElement>(null);
@@ -326,9 +382,11 @@ export default function PosCheckout({
     id: string;
     message: string | null;
   } | null>(null);
-  const [moreOptionsWide, setMoreOptionsWide] = useState(false);
+  const [moreOptionsPlacement, setMoreOptionsPlacement] =
+    useState<PosMoreOptionsPlacement | null>(null);
   const [moreOptionsAnchor, setMoreOptionsAnchor] = useState<{
     top: number;
+    bottom: number;
     left: number;
     width: number;
   } | null>(null);
@@ -602,6 +660,7 @@ export default function PosCheckout({
       ? roundMoney(cashDueNow - parsedAmountTendered)
       : null;
   const showDueDate = isCash && cashShortfall != null && cashShortfall > 0.001;
+  const shortfallHasCustomer = posHasCustomerSelected(clientId, customerName);
   const moreOptionsGap = posMoreOptionsFocusOnComplete({
     cashShortBy: cashShortfall,
     dueDate,
@@ -609,6 +668,88 @@ export default function PosCheckout({
     payerPhone,
     payerPhoneRequired: false,
   });
+
+  const posRestoreAppliedRef = useRef(false);
+
+  useEffect(() => {
+    if (posRestoreAppliedRef.current) {
+      return;
+    }
+    const restoreId = searchParams.get(POS_MANUAL_SALE_RESTORE_PARAM)?.trim() ?? "";
+    if (!restoreId) {
+      return;
+    }
+    posRestoreAppliedRef.current = true;
+    const payload = consumePosManualSaleHandoff(restoreId);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete(POS_MANUAL_SALE_RESTORE_PARAM);
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    if (!payload) {
+      return;
+    }
+    const restore = payload.posRestore;
+    setCartLines(restore.cartLines.map((line) => ({ ...line })));
+    setClientId(restore.clientId);
+    setCustomerName(restore.customerName);
+    setSalesRepId(restore.salesRepId || defaultSalesRepId);
+    setPaymentMethod(restore.paymentMethod);
+    setAmountTendered(restore.amountTendered);
+    setDueDate(restore.dueDate || todayIsoDate());
+    setNotes(restore.notes);
+    setAppliedPromoCode(restore.appliedPromoCode);
+    setPromoDiscount(restore.promoDiscount);
+    setLoyaltyDiscount(restore.loyaltyDiscount);
+    setLoyaltyPointsRedeemed(restore.loyaltyPointsRedeemed);
+    setLoyaltyRedeemInput(restore.loyaltyRedeemInput);
+    setSelectedStoreCredit(restore.selectedStoreCredit);
+    setPayerPhone(restore.payerPhone);
+  }, [
+    searchParams,
+    pathname,
+    router,
+    defaultSalesRepId,
+  ]);
+
+  function continueAsManualSale() {
+    if (cartLines.length === 0 || cashShortfall == null) {
+      return;
+    }
+    if (!posHasCustomerSelected(clientId, customerName)) {
+      openMoreOptions({ id: POS_CUSTOMER_FIELD_ID });
+      return;
+    }
+    const amountReceived = parsedAmountTendered ?? 0;
+    const id = createPosManualSaleHandoffId();
+    const payload = buildPosManualSaleHandoffPayload({
+      cartLines,
+      clientSelect: clientId,
+      walkInName: customerName,
+      dueDate,
+      todayIso: todayIsoDate(),
+      dueDateSet: showDueDate && dueDate.trim().length > 0,
+      notes,
+      salesRepId,
+      paymentMethod: paymentMethod.trim() || "Cash",
+      amountReceived,
+      saleDate: todayIsoDate(),
+      businessUnitId: stampBusinessUnit.ok
+        ? stampBusinessUnit.businessUnitId
+        : activeBusinessUnitId,
+      promoCode: appliedPromoCode,
+      promoDiscount,
+      loyaltyDiscount,
+      loyaltyPointsRedeemed,
+      loyaltyRedeemInput,
+      amountTendered,
+      selectedStoreCredit,
+      payerPhone,
+    });
+    writePosManualSaleHandoff(payload, id);
+    router.push(
+      `/dashboard/crm/sales?view=manual&${POS_MANUAL_SALE_HANDOFF_PARAM}=${encodeURIComponent(id)}`,
+    );
+  }
 
   useEffect(() => {
     if (!moreOptionsOpen || receipt) {
@@ -632,39 +773,90 @@ export default function PosCheckout({
     }
   }
 
-  function openMoreOptions(focus?: { id: string; message?: string | null }) {
+  function measureMoreOptions() {
     const buttonRect = moreOptionsButtonRef.current?.getBoundingClientRect();
     const formRect = checkoutFormRef.current?.getBoundingClientRect();
-    const wide =
-      window.matchMedia("(min-width: 1024px)").matches &&
-      (buttonRect?.top ?? 0) > 220;
-    setMoreOptionsWide(wide);
-    if (buttonRect && formRect) {
-      setMoreOptionsAnchor({
-        top: buttonRect.top,
-        left: formRect.left,
-        width: formRect.width,
+    if (!buttonRect || !formRect) {
+      setMoreOptionsPlacement({
+        mode: "modal",
+        maxHeight: Math.max(200, window.innerHeight - 32),
       });
+      return;
     }
+    setMoreOptionsAnchor({
+      top: buttonRect.top,
+      bottom: buttonRect.bottom,
+      left: Math.max(8, formRect.left),
+      width: Math.min(formRect.width, window.innerWidth - 16),
+    });
+    setMoreOptionsPlacement(
+      posMoreOptionsPlacement({
+        anchorTop: buttonRect.top,
+        anchorBottom: buttonRect.bottom,
+        viewportHeight: window.innerHeight,
+      }),
+    );
+  }
+
+  function openMoreOptions(focus?: { id: string; message?: string | null }) {
+    measureMoreOptions();
     setMoreOptionsFocus(
       focus ? { id: focus.id, message: focus.message ?? null } : null,
     );
     setMoreOptionsOpen(true);
   }
 
+  useEffect(() => {
+    if (!moreOptionsOpen) {
+      return;
+    }
+    function onResize() {
+      measureMoreOptions();
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moreOptionsOpen]);
+
+  /** Clears every value that shows as a chip next to More options (sales rep stays). */
+  function resetMoreOptionsValues() {
+    setClientId("");
+    setCustomerName("");
+    setPayerEmail("");
+    setPayerPhone("");
+    setDueDate(todayIsoDate());
+    setNotes("");
+    clearCheckoutAdjustments();
+    clearStoreCredit();
+    persistMoreOptions(false);
+  }
+
   useLayoutEffect(() => {
     if (!moreOptionsOpen || !moreOptionsFocus) {
       return;
     }
-    const field = document.getElementById(moreOptionsFocus.id);
+    const target = document.getElementById(moreOptionsFocus.id);
+    const field =
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      target instanceof HTMLButtonElement
+        ? target
+        : (target?.querySelector(
+            "input:not(:disabled), select:not(:disabled), textarea:not(:disabled), button:not(:disabled)",
+          ) ?? null);
     if (
       !(field instanceof HTMLInputElement) &&
       !(field instanceof HTMLTextAreaElement) &&
-      !(field instanceof HTMLSelectElement)
+      !(field instanceof HTMLSelectElement) &&
+      !(field instanceof HTMLButtonElement)
     ) {
       return;
     }
     field.focus();
+    if (field instanceof HTMLButtonElement) {
+      return;
+    }
     if (!moreOptionsFocus.message) {
       field.setCustomValidity("");
       return;
@@ -674,6 +866,10 @@ export default function PosCheckout({
   }, [moreOptionsOpen, moreOptionsFocus]);
 
   function selectCheckoutMethod(nextMethod: string) {
+    if (nextMethod === POS_MOMO_PAYMENT_METHOD && !mobileMoneyCollectionReady) {
+      setMomoNotSetupOpen(true);
+      return;
+    }
     if (nextMethod === POS_MOMO_PAYMENT_METHOD && selectedStoreCredit) {
       showActionError(STORE_CREDIT_MOMO_BLOCK_MESSAGE);
       return;
@@ -682,6 +878,14 @@ export default function PosCheckout({
     if (nextMethod === "Cash") {
       requestAnimationFrame(() => cashReceivedRef.current?.focus());
     }
+  }
+
+  function closeMomoNotSetupModal() {
+    setMomoNotSetupOpen(false);
+    setPaymentMethod("Cash");
+    requestAnimationFrame(() => {
+      cashMethodButtonRef.current?.focus();
+    });
   }
 
   function bumpCashReceived(add: number | "exact" | "clear") {
@@ -1280,8 +1484,7 @@ export default function PosCheckout({
     if (cartLines.length === 0) {
       return;
     }
-    clearCheckoutAdjustments();
-    clearStoreCredit();
+    resetMoreOptionsValues();
     setCartLines([]);
     setActiveRecalledHeldCartId(null);
   }
@@ -1351,11 +1554,8 @@ export default function PosCheckout({
         heldBy: user.id,
       });
       setHoldLabelDialogOpen(false);
-      clearCheckoutAdjustments();
-      clearStoreCredit();
+      resetMoreOptionsValues();
       setCartLines([]);
-      setClientId("");
-      setCustomerName("");
       setPaymentMethod("");
       setAmountTendered("");
       setNotes("");
@@ -1669,6 +1869,7 @@ export default function PosCheckout({
       pendingSync: input.pendingSync,
     });
     setCartLines([]);
+    resetMoreOptionsValues();
     setShowRequestPayment(false);
     setRequestPaymentDraft(null);
     void deleteActiveHeldCartIfAny();
@@ -1989,35 +2190,36 @@ export default function PosCheckout({
         initialClients,
       );
 
-      await openPaystackInlineWithAccessCode(accessCode, {
-        onSuccess: async (transaction) => {
-          try {
-            const confirmResponse = await fetch(
-              "/api/sales/paystack/momo/confirm",
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  payment_request_id: paymentRequestId,
-                  reference: extractPaystackInlineReference(
-                    transaction,
-                    initPayload.reference,
-                  ),
-                }),
-              },
-            );
-            const confirmPayload =
-              (await confirmResponse.json()) as MomoConfirmResponse;
+      // Popup success, close and error all go through the server confirm route,
+      // which verifies with Paystack before anything is applied.
+      const popup = await runPaystackPopupWithConfirm({
+        accessCode,
+        paymentRequestId,
+        initReference: initPayload.reference,
+      });
 
-            if (!confirmResponse.ok || !confirmPayload.ok) {
-              showActionError(
-                confirmPayload.error ??
-                  "Payment succeeded but sale confirmation failed. Retry or check Sales.",
-              );
-              setMomoWaiting(false);
-              setLoading(false);
-              return;
-            }
+      if (popup.status === "not_confirmed") {
+        showActionError(popup.message);
+        setMomoWaiting(false);
+        setLoading(false);
+        return;
+      }
+      if (popup.status === "failed") {
+        showActionError(
+          popup.message ||
+            "Mobile Money payment failed. Your cart is unchanged — you can retry.",
+        );
+        setMomoWaiting(false);
+        setLoading(false);
+        return;
+      }
+
+      {
+        try {
+          const confirmPayload = {
+              invoice_no: popup.confirm.invoiceNo,
+              income_ids: popup.confirm.incomeIds,
+            };
 
             if (!confirmPayload.invoice_no) {
               showActionError("Payment confirmed but no invoice number was returned.");
@@ -2067,23 +2269,7 @@ export default function PosCheckout({
             setMomoWaiting(false);
             setLoading(false);
           }
-        },
-        onCancel: () => {
-          showActionError(
-            "Mobile Money payment was cancelled. Your cart is unchanged — you can retry.",
-          );
-          setMomoWaiting(false);
-          setLoading(false);
-        },
-        onError: (paystackError) => {
-          showActionError(
-            paystackError.message?.trim() ||
-              "Mobile Money payment failed. Your cart is unchanged — you can retry.",
-          );
-          setMomoWaiting(false);
-          setLoading(false);
-        },
-      });
+      }
     } catch (momoError) {
       showActionError(
         momoError instanceof Error
@@ -2215,6 +2401,7 @@ export default function PosCheckout({
 
   function handleRequestPaymentLinkSent() {
     setCartLines([]);
+    resetMoreOptionsValues();
   }
 
   const cartLineCount = cartLines.length;
@@ -2261,38 +2448,36 @@ export default function PosCheckout({
   }
 
   function renderCheckoutForm() {
-    const summaryParts: string[] = [];
+    let customerChipLabel: string | null = null;
     if (clientId === POS_CUSTOMER_OTHER_VALUE) {
-      summaryParts.push(`Customer: ${customerName.trim() || "Walk-in"}`);
+      customerChipLabel = customerName.trim() || "Walk-in";
     } else if (clientId) {
       const selected = initialClients.find((client) => client.client_id === clientId);
-      summaryParts.push(`Customer: ${selected?.client_name ?? "Selected"}`);
+      customerChipLabel = selected?.client_name ?? "Selected";
     }
-    if (salesRepId) {
-      const rep = employees.find((employee) => employee.employee_id === salesRepId);
-      if (rep?.full_name) {
-        summaryParts.push(`Sales rep: ${rep.full_name}`);
-      }
-    }
-    if (payerEmail.trim()) {
-      summaryParts.push(`Email: ${payerEmail.trim()}`);
-    }
-    if (payerPhone.trim()) {
-      summaryParts.push(`Phone: ${payerPhone.trim()}`);
-    }
-    if (appliedPromoCode) {
-      summaryParts.push(`Promo ${appliedPromoCode}`);
-    }
-    if (selectedStoreCredit && storeCreditApplyAmount > 0) {
-      summaryParts.push(`Store credit −${storeCreditApplyAmount.toFixed(2)}`);
-    }
-    if (notes.trim()) {
-      summaryParts.push("Notes");
-    }
+    const salesRepChipName = salesRepId
+      ? (employees.find((employee) => employee.employee_id === salesRepId)
+          ?.full_name ?? null)
+      : null;
+    const todayIso = todayIsoDate();
+    const moreOptionsChips = posMoreOptionsChips({
+      customerLabel: customerChipLabel,
+      salesRepName: salesRepChipName,
+      dueDate,
+      todayIso,
+      promoCode: appliedPromoCode,
+      storeCreditAmount:
+        selectedStoreCredit && storeCreditApplyAmount > 0
+          ? storeCreditApplyAmount
+          : null,
+      payerPhone,
+      notes,
+    });
+    const showDueDateField = showDueDate || (dueDate.trim() !== "" && dueDate !== todayIso);
 
     const moreOptionsFields = (
         <div className="space-y-4">
-        <div>
+        <div id={POS_PROMO_FIELD_ID}>
             <PromoCodeField
               supabase={supabase}
               clientId={clientId || null}
@@ -2383,7 +2568,10 @@ export default function PosCheckout({
           </div>
         ) : null}
 
-        <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-4">
+        <div
+          id={POS_STORE_CREDIT_FIELD_ID}
+          className="rounded-md border border-slate-200 bg-slate-50 px-4 py-4"
+        >
           <p className="text-sm font-medium text-[#0f2744]">Store credit</p>
           {storeCreditUrlBootstrapLoading ? (
             <p className="mt-2 text-sm text-slate-600">
@@ -2486,10 +2674,14 @@ export default function PosCheckout({
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
+            <label
+              className="mb-1 block text-sm font-medium text-slate-700"
+              htmlFor={POS_CUSTOMER_FIELD_ID}
+            >
               Customer
             </label>
             <select
+              id={POS_CUSTOMER_FIELD_ID}
               value={clientId}
               disabled={customerLockedByStoreCredit}
               onChange={(event) => {
@@ -2552,6 +2744,7 @@ export default function PosCheckout({
           ) : null}
           <SalesRepSelect
             employees={employees}
+            id={POS_SALES_REP_FIELD_ID}
             value={salesRepId}
             onChange={setSalesRepId}
             className={inputClassName}
@@ -2589,17 +2782,21 @@ export default function PosCheckout({
             />
           </div>
           <div className="md:col-span-2 2xl:col-span-2">
-            <label className="mb-1 block text-sm font-medium text-slate-700">
+            <label
+              className="mb-1 block text-sm font-medium text-slate-700"
+              htmlFor={POS_NOTES_FIELD_ID}
+            >
               Notes
             </label>
             <textarea
+              id={POS_NOTES_FIELD_ID}
               rows={2}
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
               className={inputClassName}
             />
           </div>
-          {showDueDate ? (
+          {showDueDateField ? (
             <div className="max-w-[12rem]">
               <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor={POS_DUE_DATE_FIELD_ID}>
                 Due Date
@@ -2619,15 +2816,6 @@ export default function PosCheckout({
               />
             </div>
           ) : null}
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => persistMoreOptions(false)}
-              className="rounded-md bg-[#0f2744] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#1a3a5c]"
-            >
-              Done
-            </button>
-          </div>
         </div>
         </div>
     );
@@ -2638,7 +2826,7 @@ export default function PosCheckout({
         onSubmit={handleCompleteSale}
         className="relative shrink-0 rounded-lg border border-slate-200 bg-white shadow-sm"
       >
-        <div className="flex items-center gap-2 px-4 pt-3">
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
           <button
             ref={moreOptionsButtonRef}
             type="button"
@@ -2648,11 +2836,17 @@ export default function PosCheckout({
           >
             More options
           </button>
-          {summaryParts.length > 0 ? (
-            <span className="min-w-0 truncate rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-[#0f2744]">
-              {summaryParts.join(" · ")}
-            </span>
-          ) : null}
+          {moreOptionsChips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={() => openMoreOptions({ id: chip.fieldId })}
+              title={`Edit: ${chip.label}`}
+              className="min-w-0 max-w-full truncate rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-[#0f2744] hover:bg-slate-200"
+            >
+              {chip.label}
+            </button>
+          ))}
         </div>
         {moreOptionsOpen && typeof document !== "undefined"
           ? createPortal(
@@ -2664,24 +2858,47 @@ export default function PosCheckout({
                   onClick={() => persistMoreOptions(false)}
                 />
                 <div
-                  className="fixed z-[90] max-h-[min(70vh,28rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white p-4 shadow-xl"
+                  role="dialog"
+                  aria-label="More options"
+                  className="fixed z-[90] flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl"
                   style={
-                    moreOptionsWide && moreOptionsAnchor
+                    moreOptionsPlacement && moreOptionsPlacement.mode !== "modal" && moreOptionsAnchor
                       ? {
-                          top: moreOptionsAnchor.top - 8,
+                          ...(moreOptionsPlacement.mode === "above"
+                            ? {
+                                bottom:
+                                  window.innerHeight -
+                                  moreOptionsAnchor.top +
+                                  8,
+                              }
+                            : { top: moreOptionsAnchor.bottom + 8 }),
                           left: moreOptionsAnchor.left,
                           width: moreOptionsAnchor.width,
-                          transform: "translateY(-100%)",
+                          maxHeight: moreOptionsPlacement.maxHeight,
                         }
                       : {
                           top: "50%",
                           left: "50%",
                           width: "min(32rem, calc(100vw - 2rem))",
+                          maxHeight:
+                            moreOptionsPlacement?.maxHeight ??
+                            "calc(100dvh - 2rem)",
                           transform: "translate(-50%, -50%)",
                         }
                   }
                 >
-                  {moreOptionsFields}
+                  <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                    {moreOptionsFields}
+                  </div>
+                  <div className="sticky bottom-0 flex shrink-0 justify-end border-t border-slate-200 bg-white px-4 py-2">
+                    <button
+                      type="button"
+                      onClick={() => persistMoreOptions(false)}
+                      className="rounded-md bg-[#0f2744] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#1a3a5c]"
+                    >
+                      Done
+                    </button>
+                  </div>
                 </div>
               </>,
               document.body,
@@ -2698,25 +2915,59 @@ export default function PosCheckout({
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          {/* Phone: stacked, Cash payment on top. sm+: Mobile Money left (~40%), Cash payment right (~60%). */}
+          <div className="flex flex-col gap-2 sm:flex-row-reverse sm:items-center">
             {POS_CHECKOUT_PAYMENT_METHODS.map((method) => {
               const selected = paymentMethod === method;
+              const isCashMethod = method === "Cash";
+              const momoNotReady =
+                method === POS_MOMO_PAYMENT_METHOD && !mobileMoneyCollectionReady;
               const help =
                 method === "Cash"
                   ? "Cash sales are recorded as fully paid for the cart total. Request Payment (link) charges first — no sale or stock change until the customer pays."
                   : "Mobile Money payments are remitted through Paystack. Paystack charges apply, and remittance to your account may take up to 24 hours. Sale and stock update only after payment is confirmed.";
               return (
-                <div key={method} className="flex items-center gap-1">
+                <div
+                  key={method}
+                  className={`flex items-center gap-1 ${
+                    isCashMethod ? "sm:w-[60%]" : "sm:w-[40%]"
+                  }`}
+                >
                   <button
                     type="button"
+                    ref={isCashMethod ? cashMethodButtonRef : undefined}
                     onClick={() => selectCheckoutMethod(method)}
-                    className={`rounded-md px-4 py-3 text-base font-semibold ${
-                      selected
-                        ? "bg-[#0f2744] text-white"
-                        : "border border-slate-300 bg-white text-[#0f2744] hover:bg-slate-50"
+                    aria-pressed={selected}
+                    aria-disabled={momoNotReady || undefined}
+                    className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-md px-3 ${
+                      isCashMethod
+                        ? "border-2 border-[#0f2744] py-4 text-lg font-medium"
+                        : "border py-3 text-base font-normal"
+                    } ${
+                      momoNotReady
+                        ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                        : selected
+                          ? `bg-[#0f2744] text-white ${isCashMethod ? "" : "border-[#0f2744]"}`
+                          : `bg-white text-[#0f2744] hover:bg-slate-50 ${
+                              isCashMethod ? "" : "border-slate-300"
+                            }`
                     }`}
                   >
-                    {method}
+                    <span className="flex min-w-0 items-center justify-center gap-2">
+                      {isCashMethod ? (
+                        <PosCashIcon className="h-6 w-6 shrink-0" />
+                      ) : (
+                        <PosMobileMoneyIcon className="h-5 w-5 shrink-0" />
+                      )}
+                      <span className="truncate">
+                        {posPaymentMethodDisplayLabel(method)}
+                      </span>
+                    </span>
+                    {momoNotReady ? (
+                      <span className="text-xs font-normal text-slate-500">
+                        Not set up
+                      </span>
+                    ) : null}
                   </button>
                   <Tooltip content={help} variant="info">
                     <button
@@ -2750,7 +3001,7 @@ export default function PosCheckout({
                   if (event.key !== "Enter") {
                     return;
                   }
-                  if (amountTenderBlocked && !moreOptionsGap) {
+                  if (amountTenderBlocked) {
                     return;
                   }
                   event.preventDefault();
@@ -2767,14 +3018,37 @@ export default function PosCheckout({
               />
               {cashShortfall != null ? (
                 <p className="mt-2 text-sm text-amber-800">
-                  {posPartPaymentShortLine(cashShortfall)}{" "}
-                  <button
-                    type="button"
-                    className="font-medium text-[#0f2744] underline"
-                    onClick={() => openMoreOptions({ id: POS_DUE_DATE_FIELD_ID })}
-                  >
-                    Set due date
-                  </button>
+                  {shortfallHasCustomer ? (
+                    <>
+                      {posShortfallShortByPrefix(cashShortfall)}
+                      <button
+                        type="button"
+                        onClick={() => continueAsManualSale()}
+                        className="font-semibold text-amber-900 underline decoration-amber-700/60 underline-offset-2 hover:text-[#0f2744]"
+                      >
+                        Continue as manual sale
+                      </button>
+                    </>
+                  ) : (
+                    (() => {
+                      const prompt = posShortfallChooseCustomerPrompt(cashShortfall);
+                      return (
+                        <>
+                          {prompt.full.slice(0, prompt.linkStart)}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openMoreOptions({ id: POS_CUSTOMER_FIELD_ID })
+                            }
+                            className="font-semibold text-amber-900 underline decoration-amber-700/60 underline-offset-2 hover:text-[#0f2744]"
+                          >
+                            {prompt.linkText}
+                          </button>
+                          {prompt.full.slice(prompt.linkEnd)}
+                        </>
+                      );
+                    })()
+                  )}
                 </p>
               ) : null}
               <div className="mt-2 flex flex-wrap gap-1.5">
@@ -2828,7 +3102,7 @@ export default function PosCheckout({
                 busy ||
                 cartLines.length === 0 ||
                 (isOffline && isMobileMoney) ||
-                (amountTenderBlocked && !moreOptionsGap)
+                amountTenderBlocked
               }
             >
               {momoWaiting
@@ -2940,15 +3214,22 @@ export default function PosCheckout({
         ) : null}
       </div>
 
+      {momoNotSetupOpen ? (
+        <MobileMoneyNotSetupModal
+          viewerRole={viewerRole}
+          onClose={closeMomoNotSetupModal}
+        />
+      ) : null}
+
       {paymentSettingsRequired ? (
         <p className="text-sm text-slate-700">
           <Link
-            href="/dashboard/administration/billing?tab=payment"
+            href="/dashboard/administration/online-payments"
             className="font-medium text-[#0f2744] underline"
           >
-            Set up Payment Settings
+            Set up Online Payments
           </Link>{" "}
-          (Administration → Billing Settings → Payment Settings) to accept Mobile
+          (Administration → Finance Settings → Online Payments) to accept Mobile
           Money checkout.
         </p>
       ) : null}

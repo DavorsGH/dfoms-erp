@@ -84,6 +84,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import FilteredListCount from "../filtered-list-count";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import {
+  ATTENDANCE_MODES,
+  attendanceModeLabel,
+  attendanceModeToStored,
+  roleDefaultOptionLabel,
+} from "@/lib/attendance-mode";
+import RemoteWorkArrangementsManager from "../hr-payroll/remote-work-arrangements-manager";
+import {
   useBusinessUnitReadScope,
   useStampBusinessUnitId,
 } from "@/app/dashboard/business-unit-view-context";
@@ -143,6 +150,11 @@ type EmployeesDirectoryProps = {
   canUseEmployeeBulkImport: boolean;
   canViewSalary: boolean;
   canEditRemoteAttendance?: boolean;
+  /** super_admin, director, hr: may set the attendance mode and manage arrangements. */
+  canEditAttendanceMode?: boolean;
+  tenantId?: string | null;
+  /** employee_id → linked user role, for the "Role default (X)" label. */
+  roleByEmployeeId?: Record<string, string>;
   /** Tenant default from HR Settings → Salary Settings; pre-fills new employee form only. */
   defaultWelfareDeductionRate?: number | null;
   /** Active business-unit context for create-only stamping; null = All Businesses. */
@@ -467,6 +479,9 @@ export default function EmployeesDirectory({
   canUseEmployeeBulkImport,
   canViewSalary,
   canEditRemoteAttendance = false,
+  canEditAttendanceMode = false,
+  tenantId = null,
+  roleByEmployeeId = {},
   defaultWelfareDeductionRate = null,
   activeBusinessUnitId = null,
 }: EmployeesDirectoryProps) {
@@ -479,6 +494,8 @@ export default function EmployeesDirectory({
   const formRef = useRef<HTMLElement>(null);
   const [employees, setEmployees] = useState(initialEmployees);
   const [remoteAttendanceAllowed, setRemoteAttendanceAllowed] = useState(false);
+  /** "" = role default (stored as NULL). */
+  const [attendanceModeChoice, setAttendanceModeChoice] = useState("");
   const [lookups] = useState(initialLookups);
   const [payConfig] = useState(initialPayConfig);
   const [netPayByEmployeeId] = useState(initialNetPayByEmployeeId);
@@ -504,6 +521,10 @@ export default function EmployeesDirectory({
     null,
   );
   const [form, setForm] = useState(emptyForm);
+  // Role default needs a linked user; a new employee has none yet.
+  const roleDefaultAttendanceLabel = roleDefaultOptionLabel(
+    editingEmployeeId ? (roleByEmployeeId[editingEmployeeId] ?? null) : null,
+  );
   const [changeReason, setChangeReason] = useState("");
   const [employmentHistory, setEmploymentHistory] = useState<
     EmploymentHistoryEntry[]
@@ -980,6 +1001,7 @@ export default function EmployeesDirectory({
     });
     setChangeReason("");
     setRemoteAttendanceAllowed(false);
+    setAttendanceModeChoice("");
     setEmploymentHistory([]);
     setShowForm(true);
     scrollToForm();
@@ -990,6 +1012,7 @@ export default function EmployeesDirectory({
     setEditingEmployeeId(null);
     setForm(emptyForm);
     setRemoteAttendanceAllowed(false);
+    setAttendanceModeChoice("");
     setChangeReason("");
     setEmploymentHistory([]);
     setShowForm(false);
@@ -1006,6 +1029,7 @@ export default function EmployeesDirectory({
       ),
     });
     setRemoteAttendanceAllowed(employee.remote_attendance_allowed === true);
+    setAttendanceModeChoice(attendanceModeToStored(employee.attendance_mode) ?? "");
     setChangeReason("");
     setShowForm(true);
     scrollToForm();
@@ -1219,6 +1243,9 @@ export default function EmployeesDirectory({
         ...(canEditRemoteAttendance
           ? { remote_attendance_allowed: remoteAttendanceAllowed }
           : {}),
+        ...(canEditAttendanceMode
+          ? { attendance_mode: attendanceModeToStored(attendanceModeChoice) }
+          : {}),
       };
       if (!canEditEmployeePayFields && prior) {
         payload = {
@@ -1292,6 +1319,9 @@ export default function EmployeesDirectory({
         ),
         ...(canEditRemoteAttendance
           ? { remote_attendance_allowed: remoteAttendanceAllowed }
+          : {}),
+        ...(canEditAttendanceMode
+          ? { attendance_mode: attendanceModeToStored(attendanceModeChoice) }
           : {}),
       };
 
@@ -1942,6 +1972,23 @@ export default function EmployeesDirectory({
                     Remote/hybrid attendance allowed
                   </label>
                 ) : null}
+                <Field label="Attendance mode">
+                  <select
+                    value={attendanceModeChoice}
+                    disabled={!canEditAttendanceMode}
+                    onChange={(event) => setAttendanceModeChoice(event.target.value)}
+                    className={inputClassName}
+                  >
+                    <option value="">
+                      {roleDefaultAttendanceLabel}
+                    </option>
+                    {ATTENDANCE_MODES.map((mode) => (
+                      <option key={mode} value={mode}>
+                        {attendanceModeLabel(mode)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
                 <Field label="Employment Status">
                   <select
                     required
@@ -2301,6 +2348,19 @@ export default function EmployeesDirectory({
               </button>
             </div>
           </form>
+          {editingEmployeeId && tenantId && form.staff_id ? (
+            <div className="mt-8 space-y-4">
+              <SectionHeading title="Remote Work Arrangements" />
+              <RemoteWorkArrangementsManager
+                key={form.staff_id}
+                tenantId={tenantId}
+                staff={[{ staff_id: form.staff_id, full_name: form.full_name }]}
+                initialArrangements={[]}
+                canEdit={canEditAttendanceMode}
+                lockedStaffId={form.staff_id}
+              />
+            </div>
+          ) : null}
         </section>
       )}
 

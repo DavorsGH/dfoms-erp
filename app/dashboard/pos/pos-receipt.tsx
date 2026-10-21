@@ -16,9 +16,21 @@ import {
 } from "@/utils/device-print-layout";
 import type { ReceiptPaper } from "@/utils/tenant-device-settings";
 import { useToast } from "@/components/feedback/feedback-context";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+
+const RECEIPT_PREVIEW_MIN_HEIGHT_PX = 360;
+
+export { receiptPreviewFingerprint };
 import {
   formatReceiptListedPayment,
+  receiptPreviewFingerprint,
   receiptBalanceDue,
   receiptChangeDue,
   settleIncomeReceiptLines,
@@ -65,6 +77,8 @@ export type PosReceiptData = {
   pendingSync?: boolean;
   /** Every recorded tender. When present, these replace the single method line. */
   paymentLines?: ReceiptListedPayment[];
+  /** Active / Cancelled etc. Shown after payment status when set. */
+  saleStatus?: string | null;
 };
 
 export function ReceiptPaymentsList({
@@ -77,7 +91,7 @@ export function ReceiptPaymentsList({
   }
   return (
     <div className="space-y-1">
-      <p className="font-medium text-slate-900">Payments</p>
+      <p className="font-bold text-slate-900">Payments</p>
       {lines.map((line, index) => (
         <p key={`${line.date}-${line.method}-${line.reference ?? "none"}-${index}`}>
           {formatReceiptListedPayment(line)}
@@ -177,11 +191,14 @@ export function ReceiptPreviewFrame({
   paper,
   printAreaId,
   onClose,
+  fingerprint = "",
   children,
 }: {
   paper: ReceiptPaper;
   printAreaId: string;
   onClose: () => void;
+  /** Invoice no. + line count + totals. Re-measure only when this changes. */
+  fingerprint?: string;
   children: ReactNode;
 }) {
   const { toast } = useToast();
@@ -190,7 +207,10 @@ export function ReceiptPreviewFrame({
   const widthMm = receiptPrintableWidthMm(paper);
   const outerRef = useRef<HTMLDivElement>(null);
   const paperRef = useRef<HTMLDivElement>(null);
-  const [screenBox, setScreenBox] = useState({ scale: 1, height: 0 });
+  // null until the first measurement; the body stays hidden (space reserved).
+  const [screenBox, setScreenBox] = useState<{ scale: number; height: number } | null>(
+    null,
+  );
 
   useEffect(() => {
     openRef.current = true;
@@ -225,27 +245,82 @@ export function ReceiptPreviewFrame({
     return () => window.removeEventListener("afterprint", onAfterPrint);
   }, [onClose, toast]);
 
+  // The body is rebuilt only when the receipt content fingerprint or paper changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const body = useMemo(() => children, [fingerprint, paper]);
+
+  // Measure on mount, then only when the paper width or the content fingerprint
+  // changes. Container resizes under 1px are ignored and measuring is batched.
   useLayoutEffect(() => {
     const outer = outerRef.current;
     const paperNode = paperRef.current;
     if (!outer || !paperNode) {
       return;
     }
+    let frame: number | null = null;
+    let lastOuterWidth = -1;
+    let lastPaperWidth = -1;
+    let lastPaperHeight = -1;
+
     function measure() {
+      frame = null;
+      const outerWidth = outer?.clientWidth ?? 0;
       const paperWidth = paperNode?.offsetWidth ?? 0;
-      const target = outer?.clientWidth ?? 0;
-      const scale = paperWidth > 0 ? target / paperWidth : 1;
-      setScreenBox({
-        scale,
-        height: (paperNode?.offsetHeight ?? 0) * scale,
-      });
+      const paperHeight = paperNode?.offsetHeight ?? 0;
+      if (outerWidth <= 0 || paperWidth <= 0) {
+        return;
+      }
+      if (
+        lastOuterWidth >= 0 &&
+        Math.abs(outerWidth - lastOuterWidth) < 1 &&
+        Math.abs(paperWidth - lastPaperWidth) < 1 &&
+        Math.abs(paperHeight - lastPaperHeight) < 1
+      ) {
+        return;
+      }
+      lastOuterWidth = outerWidth;
+      lastPaperWidth = paperWidth;
+      lastPaperHeight = paperHeight;
+      const scale = outerWidth / paperWidth;
+      setScreenBox({ scale, height: paperHeight * scale });
     }
+
+    function schedule() {
+      if (frame != null) {
+        return;
+      }
+      frame = window.requestAnimationFrame(measure);
+    }
+
+    // First measurement is synchronous so the preview never paints unscaled.
     measure();
-    const observer = new ResizeObserver(measure);
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const box = entry.contentRect;
+        if (entry.target === outer && Math.abs(box.width - lastOuterWidth) >= 1) {
+          schedule();
+          return;
+        }
+        if (
+          entry.target === paperNode &&
+          (Math.abs(paperNode.offsetHeight - lastPaperHeight) >= 1 ||
+            Math.abs(paperNode.offsetWidth - lastPaperWidth) >= 1)
+        ) {
+          schedule();
+          return;
+        }
+      }
+    });
     observer.observe(outer);
     observer.observe(paperNode);
-    return () => observer.disconnect();
-  }, [widthMm, children]);
+    return () => {
+      observer.disconnect();
+      if (frame != null) {
+        window.cancelAnimationFrame(frame);
+      }
+    };
+  }, [widthMm, fingerprint]);
 
   return (
     <div
@@ -276,16 +351,22 @@ export function ReceiptPreviewFrame({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
           <div ref={outerRef} className="mx-auto w-full max-w-[460px]">
-            <div style={{ height: screenBox.height || undefined }}>
+            <div
+              style={{
+                height: screenBox ? screenBox.height : undefined,
+                minHeight: screenBox ? undefined : RECEIPT_PREVIEW_MIN_HEIGHT_PX,
+                visibility: screenBox ? "visible" : "hidden",
+              }}
+            >
               <div
                 ref={paperRef}
                 className="origin-top-left"
                 style={{
                   width: `${widthMm}mm`,
-                  transform: `scale(${screenBox.scale})`,
+                  transform: `scale(${screenBox?.scale ?? 1})`,
                 }}
               >
-                {children}
+                {body}
               </div>
             </div>
           </div>
@@ -349,11 +430,29 @@ export function PosReceiptPanel({
   const showsTenderedChange =
     receipt.amountTendered != null &&
     (receipt.amountTendered > 0 || (receipt.storeCreditApplied ?? 0) > 0);
+  const fingerprint = receiptPreviewFingerprint({
+    invoiceNo: receipt.invoiceNo,
+    lineCount:
+      receipt.lines.length +
+      (receipt.returnLines?.length ?? 0) +
+      (receipt.paymentLines?.length ?? 0),
+    totals: [
+      subtotal,
+      netTotal,
+      receipt.amountReceived,
+      balanceDue,
+      receipt.storeCreditApplied,
+      receipt.pendingSync ? "pending" : "",
+      receipt.saleStatus,
+      standing,
+    ],
+  });
   return (
     <ReceiptPreviewFrame
       paper={receiptPaper}
       printAreaId={POS_PRINT_AREA_ID}
       onClose={onClose}
+      fingerprint={fingerprint}
     >
       <PosReceiptPrintStyles paper={receiptPaper} />
 
@@ -384,18 +483,6 @@ export function PosReceiptPanel({
           <p>
             <span className="font-medium text-slate-900">Customer:</span>{" "}
             {receipt.customerLabel}
-          </p>
-          {receipt.paymentLines && receipt.paymentLines.length > 0 ? (
-            <ReceiptPaymentsList lines={receipt.paymentLines} />
-          ) : (
-            <p>
-              <span className="font-medium text-slate-900">Payment method:</span>{" "}
-              {receipt.paymentMethod}
-            </p>
-          )}
-          <p>
-            <span className="font-medium text-slate-900">Payment status:</span>{" "}
-            {standing}
           </p>
         </div>
 
@@ -463,12 +550,20 @@ export function PosReceiptPanel({
               </span>
             </div>
           ) : null}
+          <div className="receipt-body text-[13px] font-normal text-slate-700">
+            {receipt.paymentLines && receipt.paymentLines.length > 0 ? (
+              <ReceiptPaymentsList lines={receipt.paymentLines} />
+            ) : (
+              <div className="space-y-1">
+                <p className="font-bold text-slate-900">Payments</p>
+                <p>
+                  {receipt.paymentMethod === "—" ? "No payment recorded" : receipt.paymentMethod}
+                </p>
+              </div>
+            )}
+          </div>
           <div className="receipt-total flex items-start justify-between gap-2 font-bold">
-            <span className="min-w-0 break-words text-slate-700">
-              {receipt.paymentLines && receipt.paymentLines.length > 0
-                ? "Total paid"
-                : "Amount received"}
-            </span>
+            <span className="min-w-0 break-words text-slate-700">Total paid</span>
             <span className="shrink-0 text-[#0f2744]">
               <ReceiptMoney paper={receiptPaper} value={receipt.amountReceived} />
             </span>
@@ -489,14 +584,12 @@ export function PosReceiptPanel({
               </span>
             </div>
           ) : null}
-          {balanceDue > 0 ? (
-            <div className="receipt-total flex items-start justify-between gap-2 font-bold">
-              <span className="min-w-0 break-words text-slate-700">Balance due</span>
-              <span className="shrink-0 text-[#0f2744]">
-                <ReceiptMoney paper={receiptPaper} value={balanceDue} />
-              </span>
-            </div>
-          ) : null}
+          <div className="receipt-total flex items-start justify-between gap-2 font-bold">
+            <span className="min-w-0 break-words text-slate-700">Balance due</span>
+            <span className="shrink-0 text-[#0f2744]">
+              <ReceiptMoney paper={receiptPaper} value={balanceDue} />
+            </span>
+          </div>
           {balanceDue > 0 && dueDate?.trim() ? (
             <div className="flex items-start justify-between gap-2">
               <span className="min-w-0 break-words font-medium text-slate-700">Due date</span>
@@ -559,6 +652,18 @@ export function PosReceiptPanel({
               </span>
             </div>
           ) : null}
+          <div className="receipt-body space-y-1 text-[13px] font-normal text-slate-700">
+            <p>
+              <span className="font-medium text-slate-900">Payment status:</span>{" "}
+              {standing}
+            </p>
+            {receipt.saleStatus?.trim() ? (
+              <p>
+                <span className="font-medium text-slate-900">Sale status:</span>{" "}
+                {receipt.saleStatus}
+              </p>
+            ) : null}
+          </div>
         </div>
         <SaleReceiptFooter />
       </div>

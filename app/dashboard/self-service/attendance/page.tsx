@@ -3,8 +3,10 @@ import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
   getCurrentUserEmployeeId,
+  getCurrentUserRole,
   getCurrentUserTenantId,
 } from "@/utils/dashboard-auth";
+import { resolveAttendanceMode } from "@/lib/attendance-mode";
 import type { AttendanceRegisterEntry } from "../../hr-payroll/attendance-register-utils";
 import type { AttendanceContractRef } from "../my-attendance-utils";
 import MyAttendance from "../my-attendance";
@@ -28,9 +30,13 @@ export default async function SelfServiceAttendancePage() {
 
   const { data: employee, error: employeeError } = await supabase
     .from("employees")
-    .select("staff_id, contract_project")
+    .select("staff_id, contract_project, attendance_mode")
     .eq("employee_id", employeeId)
     .maybeSingle();
+  const attendanceMode = resolveAttendanceMode(
+    employee,
+    await getCurrentUserRole(),
+  );
 
   let fetchError = employeeError?.message ?? null;
   let entries: AttendanceRegisterEntry[] = [];
@@ -64,6 +70,7 @@ export default async function SelfServiceAttendancePage() {
         fetchError={fetchError}
         employeeContract={employee?.contract_project ?? null}
         projects={projects}
+        attendanceMode={attendanceMode}
       />
     </SelfServiceShell>
   );

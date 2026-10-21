@@ -1,7 +1,8 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
-import { useAlert } from "@/components/feedback/feedback-context";
+import { useAlert, useToast } from "@/components/feedback/feedback-context";
+import { confirmPaystackPayment } from "@/utils/paystack-confirm-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   SALES_CRM_ALERT_TITLE,
@@ -37,7 +38,10 @@ import type { FinishedProductRecord } from "@/app/dashboard/inventory/finished-p
 import type { HrEmployee } from "@/app/dashboard/hr-payroll/employee-utils";
 import ProductSales from "../product-sales";
 import PaystackAttentionList from "./paystack-attention-list";
-import { canResolvePaystackAttention } from "@/utils/rbac-access";
+import {
+  canResolvePaystackAttention,
+  PRODUCT_SALE_PAYSTACK_ROLES,
+} from "@/utils/rbac-access";
 import {
   buildVoidProductSaleConfirmMessage,
   getProductSaleProductLabel,
@@ -70,7 +74,10 @@ import {
 } from "./sales-utils";
 import { loadSalesLogReceiptData } from "./sales-log-receipt-utils";
 import { useQueryTab } from "@/hooks/use-query-tab";
-import { SalesRegisterLayout } from "./sales-register-layout";
+import {
+  PaystackCheckContext,
+  SalesRegisterLayout,
+} from "./sales-register-layout";
 import {
   buildReturnedQtyByIncomeId,
   buildSalesRegisterRows,
@@ -117,12 +124,14 @@ type SalesRegisterProps = {
   activeBusinessUnitId?: string | null;
   tenantId: string;
   viewerRole?: string | null;
+  mobileMoneyCollectionReady?: boolean;
 };
 
 export default function SalesRegister(props: SalesRegisterProps) {
   const router = useRouter();
   const supabase = createClient();
   const { alertError } = useAlert();
+  const { toast } = useToast();
   const buReadScope = useBusinessUnitReadScope();
   const { viewAllBusinessUnits } = useBusinessUnitView();
 
@@ -221,6 +230,7 @@ export default function SalesRegister(props: SalesRegisterProps) {
           paymentsByIncomeId,
         }),
         pendingPaystack,
+        props.initialClients,
       ),
     [
       incomeEntries,
@@ -327,6 +337,44 @@ export default function SalesRegister(props: SalesRegisterProps) {
         created_at: row.created_at,
       })),
     );
+  }
+
+  const [checkingRequestId, setCheckingRequestId] = useState<string | null>(null);
+  const canCheckPaystackPayment = (
+    PRODUCT_SALE_PAYSTACK_ROLES as readonly string[]
+  ).includes(props.viewerRole ?? "");
+
+  /** Same verify-and-apply as the popup, the webhook and the nightly run. */
+  async function handleCheckPayment(row: SalesRegisterReceiptRow) {
+    const requestId = row.paystackRequestId;
+    if (!requestId || checkingRequestId) {
+      return;
+    }
+    setCheckingRequestId(requestId);
+    try {
+      const result = await confirmPaystackPayment({
+        paymentRequestId: requestId,
+        source: "check_payment",
+      });
+      if (result.kind === "applied" || result.kind === "already_applied") {
+        await refreshAll();
+        toast(
+          result.kind === "already_applied"
+            ? "Payment was already applied"
+            : `Payment confirmed${result.invoiceNo ? ` — ${result.invoiceNo}` : ""}`,
+        );
+        return;
+      }
+      if (result.kind === "not_paid") {
+        toast(result.message);
+        return;
+      }
+      await alertError(clientFacingSalesCrmError(result.message), {
+        title: "Payment not applied",
+      });
+    } finally {
+      setCheckingRequestId(null);
+    }
   }
 
   async function refreshAll() {
@@ -736,6 +784,16 @@ export default function SalesRegister(props: SalesRegisterProps) {
   return (
     <div className="min-w-0 space-y-4">
       <PaystackAttentionList canResolve={canResolvePaystackAttention(props.viewerRole)} />
+      <PaystackCheckContext.Provider
+        value={
+          canCheckPaystackPayment && !registerViewOnly
+            ? {
+                onCheck: (row) => void handleCheckPayment(row),
+                checkingRequestId,
+              }
+            : null
+        }
+      >
       <SalesRegisterLayout
         view={view}
         onView={(next) => {
@@ -812,6 +870,8 @@ export default function SalesRegister(props: SalesRegisterProps) {
           fetchError={null}
           activeBusinessUnitId={props.activeBusinessUnitId}
           tenantId={props.tenantId}
+          viewerRole={props.viewerRole}
+          mobileMoneyCollectionReady={props.mobileMoneyCollectionReady ?? true}
           controlledEntries={incomeEntries}
           onControlledEntriesChange={setIncomeEntries}
           controlledShowForm={showForm}
@@ -830,6 +890,7 @@ export default function SalesRegister(props: SalesRegisterProps) {
           }}
         />
       </SalesRegisterLayout>
+      </PaystackCheckContext.Provider>
 
       {activeReceipt?.kind === "pos" ? (
         <PosReceiptPanel

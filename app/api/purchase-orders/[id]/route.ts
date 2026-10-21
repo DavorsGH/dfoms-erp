@@ -15,6 +15,7 @@ import {
   type PurchaseOrderDeleteConfirmBody,
   type PurchaseOrderDetailRow,
 } from "@/utils/purchase-orders-types";
+import { resolveApiDeleteErrorMessage } from "@/utils/postgres-fk-violation";
 import { createClient } from "@/utils/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -275,7 +276,14 @@ export async function DELETE(request: Request, context: RouteContext) {
   });
 
   if (deleteError) {
-    return NextResponse.json({ error: deleteError.message }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: resolveApiDeleteErrorMessage(deleteError, {
+          itemName: "This purchase order",
+        }),
+      },
+      { status: 400 },
+    );
   }
 
   return NextResponse.json({ success: true });

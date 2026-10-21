@@ -20,6 +20,7 @@ import {
   lateByLabel,
   leftEarlyLabel,
 } from "@/lib/shift-attendance";
+import { formatDate } from "@/app/dashboard/finance/income-register-utils";
 
 type ExceptionView = "pending" | "decided" | "all";
 
@@ -295,7 +296,7 @@ export default function AttendanceExceptionsPanel() {
                 const showChoices = !decided || changingId === row.id;
                 return (
                   <tr key={row.id}>
-                    <td className="px-4 py-3">{row.date.slice(0, 10)}</td>
+                    <td className="px-4 py-3">{formatDate(row.date)}</td>
                     <td className="px-4 py-3">
                       <div>{row.employee_name || "—"}</div>
                       <div className="text-xs text-slate-500">{row.staff_id}</div>

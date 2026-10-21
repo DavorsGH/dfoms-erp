@@ -10,11 +10,13 @@ import {
   type ApproverContext,
 } from "@/lib/attendance-requests/rules";
 import type { SessionActor } from "@/lib/attendance-requests/session";
+import { loadAttendanceModeForStaff } from "@/lib/attendance-mode-service";
 import {
   loadShiftScheduleContext,
   rosterAssignmentsForEmployee,
   scheduleColumnsForEmployee,
 } from "@/lib/shift-attendance-context";
+import { formatDate } from "@/app/dashboard/finance/income-register-utils";
 
 export type AttendanceRequestRow = {
   id: string;
@@ -268,6 +270,93 @@ export async function loadEmployeeForAttendance(
   return data ?? null;
 }
 
+/** Exempt staff never get late / early-leave / pending exceptions from a remote day. */
+async function isStaffExemptFromExceptions(
+  admin: SupabaseClient,
+  tenantId: string,
+  staffId: string,
+): Promise<boolean> {
+  try {
+    return (
+      (await loadAttendanceModeForStaff(admin, tenantId, staffId)) === "exempt"
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Record a remote request that needs no approver: insert it, then approve it
+ * immediately so the register row is written. If the day cannot be recorded
+ * (for example a device row already exists) the request is cancelled so it does
+ * not sit in the approver queue.
+ */
+export async function submitAutoApprovedRemoteRequest(input: {
+  admin: SupabaseClient;
+  actor: SessionActor;
+  row: Parameters<typeof insertPendingRequest>[1];
+  approvalNote: string;
+}): Promise<
+  | { ok: true; id: string }
+  | { ok: false; status: number; error: string; duplicate?: boolean }
+> {
+  const { admin, actor, row, approvalNote } = input;
+  const inserted = await insertPendingRequest(admin, row);
+  if ("error" in inserted) {
+    return {
+      ok: false,
+      status: inserted.duplicate ? 409 : 500,
+      error: inserted.error,
+      duplicate: inserted.duplicate,
+    };
+  }
+
+  const approved = await approveAttendanceRequest({
+    admin,
+    actor: { ...actor, fullName: "Auto-approved" },
+    request: {
+      id: inserted.id,
+      tenant_id: row.tenant_id,
+      request_type: row.request_type,
+      staff_id: row.staff_id,
+      work_date: row.work_date,
+      clock_in: row.clock_in,
+      clock_out: row.clock_out,
+      location_note: row.location_note,
+      reason: row.reason,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      location_accuracy_m: row.location_accuracy_m,
+      device_id: row.device_id,
+      site_code: row.site_code,
+      status: "pending",
+      submitted_by: row.submitted_by,
+      submitted_by_name: row.submitted_by_name,
+      submitted_at: new Date().toISOString(),
+      decided_by: null,
+      decided_by_name: null,
+      decided_at: null,
+      decision_note: null,
+      self_approved: false,
+      attendance_register_id: null,
+    },
+    selfApproved: false,
+    decisionNote: approvalNote,
+    notify: false,
+  });
+
+  if (!approved.ok) {
+    await admin
+      .from("attendance_requests")
+      .update({ status: "cancelled", updated_at: new Date().toISOString() })
+      .eq("tenant_id", actor.tenantId)
+      .eq("id", inserted.id)
+      .eq("status", "pending");
+    return { ok: false, status: approved.status, error: approved.error };
+  }
+  return { ok: true, id: inserted.id };
+}
+
 async function scheduleColumnsForRequest(
   admin: SupabaseClient,
   tenantId: string,
@@ -302,6 +391,7 @@ async function scheduleColumnsForRequest(
     clockIn: registerTimeFromIso(request.clock_in),
     clockOut: request.clock_out ? registerTimeFromIso(request.clock_out) : null,
     existingExceptionStatus,
+    exempt: await isStaffExemptFromExceptions(admin, tenantId, request.staff_id),
   });
   return columns ?? {};
 }
@@ -385,8 +475,11 @@ export async function approveAttendanceRequest(input: {
   request: AttendanceRequestRow;
   selfApproved: boolean;
   decisionNote: string | null;
+  /** Default true. Auto-approved remote days skip the "request approved" notice. */
+  notify?: boolean;
 }): Promise<{ ok: true } | { ok: false; status: number; error: string; code?: string; source?: string }> {
   const { admin, actor, request } = input;
+  const notify = input.notify !== false;
   const { data: existing, error: existingError } = await admin
     .from("attendance_register")
     .select("id, source")
@@ -427,13 +520,15 @@ export async function approveAttendanceRequest(input: {
     if (updateError) {
       return { ok: false, status: 500, error: updateError.message };
     }
-    await notifyEmployeeOfDecision({
-      admin,
-      tenantId: actor.tenantId,
-      staffId: request.staff_id,
-      title: "Attendance request approved",
-      body: `Your ${request.request_type} attendance for ${request.work_date} was approved.`,
-    });
+    if (notify) {
+      await notifyEmployeeOfDecision({
+        admin,
+        tenantId: actor.tenantId,
+        staffId: request.staff_id,
+        title: "Attendance request approved",
+        body: `Your ${request.request_type} attendance for ${formatDate(request.work_date)} was approved.`,
+      });
+    }
     return { ok: true };
   }
 
@@ -481,6 +576,11 @@ export async function approveAttendanceRequest(input: {
       date: request.work_date,
       clockIn,
       clockOut,
+      exempt: await isStaffExemptFromExceptions(
+        admin,
+        actor.tenantId,
+        request.staff_id,
+      ),
     });
     if (columns) {
       scheduleColumns = columns;
@@ -556,13 +656,15 @@ export async function approveAttendanceRequest(input: {
     return { ok: false, status: 500, error: updateError.message };
   }
 
-  await notifyEmployeeOfDecision({
-    admin,
-    tenantId: actor.tenantId,
-    staffId: request.staff_id,
-    title: "Attendance request approved",
-    body: `Your ${request.request_type} attendance for ${request.work_date} was approved.`,
-  });
+  if (notify) {
+    await notifyEmployeeOfDecision({
+      admin,
+      tenantId: actor.tenantId,
+      staffId: request.staff_id,
+      title: "Attendance request approved",
+      body: `Your ${request.request_type} attendance for ${formatDate(request.work_date)} was approved.`,
+    });
+  }
 
   return { ok: true };
 }

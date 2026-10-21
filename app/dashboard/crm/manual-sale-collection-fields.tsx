@@ -19,6 +19,9 @@ export default function ManualSaleCollectionFields({
   onEmail,
   phone,
   onPhone,
+  /** When false, Paystack collection for Mobile Money is blocked (plain record stays allowed). */
+  paystackCollectAllowed = true,
+  onPaystackBlocked,
 }: {
   method: string;
   amount: number;
@@ -30,10 +33,15 @@ export default function ManualSaleCollectionFields({
   onEmail: (value: string) => void;
   phone: string;
   onPhone: (value: string) => void;
+  paystackCollectAllowed?: boolean;
+  onPaystackBlocked?: () => void;
 }) {
   if (!(amount > 0) || !isPaystackCollectMethod(method)) {
     return null;
   }
+
+  const momoPaystackBlocked =
+    method === "Mobile Money" && !paystackCollectAllowed;
 
   return (
     <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
@@ -50,14 +58,26 @@ export default function ManualSaleCollectionFields({
           />
           Already received
         </label>
-        <label className="flex items-center gap-2 text-sm text-slate-800">
+        <label
+          className={`flex items-center gap-2 text-sm ${
+            momoPaystackBlocked ? "text-slate-400" : "text-slate-800"
+          }`}
+        >
           <input
             type="radio"
             name="manual_sale_collection"
             checked={mode === "paystack"}
-            onChange={() => onMode("paystack")}
+            disabled={momoPaystackBlocked}
+            onChange={() => {
+              if (momoPaystackBlocked) {
+                onPaystackBlocked?.();
+                return;
+              }
+              onMode("paystack");
+            }}
           />
           Collect now with Paystack
+          {momoPaystackBlocked ? " (not set up)" : ""}
         </label>
       </fieldset>
       {mode === "received" ? (

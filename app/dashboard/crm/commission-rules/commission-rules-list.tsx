@@ -23,6 +23,7 @@ import {
   type CommissionRuleListRow,
 } from "@/utils/commission-types";
 import type { HrEmployee } from "@/app/dashboard/hr-payroll/employee-utils";
+import { formatDate } from "@/app/dashboard/finance/income-register-utils";
 
 type CommissionRulesListProps = {
   initialEmployees: HrEmployee[];
@@ -183,9 +184,9 @@ export default function CommissionRulesList({
                       {formatCommissionRate(rule.commission_rate)}
                     </td>
                     <td className="px-4 py-3 text-sm">
-                      {rule.effective_start.slice(0, 10)}
+                      {formatDate(rule.effective_start)}
                       {rule.effective_end
-                        ? ` – ${rule.effective_end.slice(0, 10)}`
+                        ? ` – ${formatDate(rule.effective_end)}`
                         : " – open"}
                     </td>
                     <td className="px-4 py-3 text-sm">

@@ -69,7 +69,13 @@ export function isProductSalePaystackContext(
  */
 export async function processProductSalePaystackEvent(
   data: JsonRecord,
-): Promise<{ detail: string; ignored?: boolean; needsAttention?: boolean }> {
+): Promise<{
+  detail: string;
+  ignored?: boolean;
+  needsAttention?: boolean;
+  /** Another path (webhook, popup, Check payment, nightly) applied it first. */
+  alreadyApplied?: boolean;
+}> {
   const meta = metadataObject(data);
   const reference = asString(data.reference);
   const paymentRequestId = asString(meta.payment_request_id);
@@ -120,6 +126,7 @@ export async function processProductSalePaystackEvent(
       });
     }
     return {
+      alreadyApplied: true,
       detail: `product_sale charge.success ${reference ?? ""} — request ${requestRow.id} already paid (idempotent).`,
     };
   }
@@ -142,6 +149,7 @@ export async function processProductSalePaystackEvent(
         },
       );
       return {
+        alreadyApplied: fulfilled.alreadyFulfilled,
         detail: `product_sale charge.success created POS sale invoice ${fulfilled.invoiceNo} from cart_snapshot (${fulfilled.incomeIds.length} line(s), method=${fulfilled.paymentMethod}, request ${requestRow.id}, ref=${reference ?? "n/a"}).`,
       };
     } catch (error) {
@@ -233,6 +241,7 @@ export async function processProductSalePaystackEvent(
         incomeIds: atomic.incomeIds.length > 0 ? atomic.incomeIds : incomeIds,
       });
       return {
+        alreadyApplied: atomic.alreadyApplied,
         detail: `product_sale charge.success applied ${reference} on request ${requestRow.id} in one transaction (invoice ${appliedInvoice}).`,
       };
     }

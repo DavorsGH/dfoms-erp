@@ -3,12 +3,19 @@ import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { PAYMENT_AND_LEAVE_APPROVER_ROLES } from "@/utils/rbac-access";
 import {
+  countPaymentAccountUsage,
   linkPaymentAccountToBusinessUnit,
   loadPaymentAccountById,
   loadPaymentAccountsForTenant,
   replacePaymentAccountBusinessUnits,
   unlinkPaymentAccountFromBusinessUnit,
 } from "@/utils/payment-accounts-server";
+import {
+  PAYMENT_ACCOUNT_FK_TABLE_LABELS,
+  PAYMENT_ACCOUNT_IN_USE_CODE,
+  PAYMENT_ACCOUNT_IN_USE_TITLE,
+  formatPaymentAccountInUseBody,
+} from "@/utils/payment-account-usage";
 import {
   PAYMENT_ACCOUNT_SELECT,
   normalizePaymentAccountBusinessUnitIds,
@@ -18,6 +25,12 @@ import {
   type PaymentAccountInput,
   type PaymentAccountUpdateBody,
 } from "@/utils/payment-accounts-types";
+import {
+  extractPostgresForeignKeyConstraintName,
+  extractPostgresForeignKeyReferencingTable,
+  formatFriendlyForeignKeyDeleteMessage,
+  isPostgresForeignKeyViolation,
+} from "@/utils/postgres-fk-violation";
 import { createClient } from "@/utils/supabase/server";
 
 async function getTenantSupabase() {
@@ -280,29 +293,77 @@ export async function DELETE(request: Request) {
 
   const supabase = await getTenantSupabase();
 
-  const { data: existing, error: fetchError } = await supabase
-    .from("payment_accounts")
-    .select("id")
-    .eq("id", body.id)
-    .eq("tenant_id", auth.tenantId)
-    .maybeSingle();
-
-  if (fetchError) {
-    return NextResponse.json({ error: fetchError.message }, { status: 400 });
-  }
+  const accountId = body.id.trim();
+  const existing = await loadPaymentAccountById(
+    supabase,
+    auth.tenantId,
+    accountId,
+  );
 
   if (!existing) {
     return NextResponse.json({ error: "Payment account not found" }, { status: 404 });
   }
 
+  const usage = await countPaymentAccountUsage(
+    supabase,
+    auth.tenantId,
+    accountId,
+  );
+
+  if (usage.total > 0) {
+    const errorBody = formatPaymentAccountInUseBody({
+      accountName: existing.account_name,
+      usage,
+    });
+    return NextResponse.json(
+      {
+        error: errorBody,
+        code: PAYMENT_ACCOUNT_IN_USE_CODE,
+        title: PAYMENT_ACCOUNT_IN_USE_TITLE,
+        accountName: existing.account_name,
+        usageCount: usage.total,
+        usageLabels: usage.labels,
+        canDeactivate: true,
+      },
+      { status: 409 },
+    );
+  }
+
   const { error } = await supabase
     .from("payment_accounts")
     .delete()
-    .eq("id", body.id)
+    .eq("id", accountId)
     .eq("tenant_id", auth.tenantId);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    if (isPostgresForeignKeyViolation(error)) {
+      const constraint = extractPostgresForeignKeyConstraintName(error.message);
+      const onTable = extractPostgresForeignKeyReferencingTable(error.message);
+      const linkedLabel =
+        (constraint && PAYMENT_ACCOUNT_FK_TABLE_LABELS[constraint]) ||
+        (onTable && PAYMENT_ACCOUNT_FK_TABLE_LABELS[onTable]) ||
+        null;
+      const friendly = formatFriendlyForeignKeyDeleteMessage(error.message, {
+        itemName: existing.account_name,
+        linkedLabel,
+        canDeactivateHint: true,
+      });
+      return NextResponse.json(
+        {
+          error: friendly,
+          code: PAYMENT_ACCOUNT_IN_USE_CODE,
+          title: PAYMENT_ACCOUNT_IN_USE_TITLE,
+          accountName: existing.account_name,
+          canDeactivate: true,
+        },
+        { status: 409 },
+      );
+    }
+
+    return NextResponse.json(
+      { error: "Unable to delete payment account. Try again." },
+      { status: 400 },
+    );
   }
 
   return NextResponse.json({ success: true });

@@ -12,6 +12,10 @@ import {
   type SupplierInput,
   type SupplierRow,
 } from "@/utils/suppliers-types";
+import {
+  isPostgresForeignKeyViolation,
+  tryFormatRawForeignKeyDeleteMessage,
+} from "@/utils/postgres-fk-violation";
 import { createClient } from "@/utils/supabase/server";
 
 type RouteContext = {
@@ -177,7 +181,17 @@ export async function DELETE(request: Request, context: RouteContext) {
   });
 
   if (deleteError) {
-    return NextResponse.json({ error: deleteError.message }, { status: 400 });
+    const friendly =
+      tryFormatRawForeignKeyDeleteMessage(deleteError.message, {
+        itemName: "This supplier",
+      }) ??
+      (isPostgresForeignKeyViolation(deleteError)
+        ? "This supplier is linked to other records and can't be deleted."
+        : null);
+    return NextResponse.json(
+      { error: friendly ?? "Unable to delete this supplier. Try again." },
+      { status: friendly ? 409 : 400 },
+    );
   }
 
   return NextResponse.json({ success: true });

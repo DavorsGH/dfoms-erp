@@ -6,6 +6,9 @@ import {
   type RegisterColumnFilterValue,
   type RegisterDateRangeFilterValue,
 } from "./finance/register-column-filter";
+import { pluraliseWord } from "@/utils/pluralise";
+
+export { formatCountNoun, pluraliseWord } from "@/utils/pluralise";
 
 type FilteredListCountLabelOptions = {
   filteredCount: number;
@@ -15,10 +18,6 @@ type FilteredListCountLabelOptions = {
   hasActiveFilters?: boolean;
 };
 
-const FILTERED_LIST_IRREGULAR_PLURALS: Record<string, string> = {
-  entry: "entries",
-};
-
 export function formatFilteredListCountLabel({
   filteredCount,
   totalCount,
@@ -26,10 +25,7 @@ export function formatFilteredListCountLabel({
   itemPlural,
   hasActiveFilters = false,
 }: FilteredListCountLabelOptions): string {
-  const plural =
-    itemPlural ??
-    FILTERED_LIST_IRREGULAR_PLURALS[itemSingular] ??
-    `${itemSingular}s`;
+  const plural = pluraliseWord(itemSingular, itemPlural);
   const filteredNoun = filteredCount === 1 ? itemSingular : plural;
   const totalNoun = totalCount === 1 ? itemSingular : plural;
 

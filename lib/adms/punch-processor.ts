@@ -32,6 +32,10 @@ import {
   scheduleColumnsForEmployee,
 } from "@/lib/shift-attendance-context";
 import { isReviewedException } from "@/lib/shift-attendance";
+import {
+  loadAttendanceModeForStaff,
+  loadAttendanceModesForStaff,
+} from "@/lib/attendance-mode-service";
 
 type DeviceRow = {
   id: string;
@@ -83,6 +87,25 @@ async function loadEmployeeAttendanceDefaults(
     position: data?.position ?? null,
     shift: data?.shift ?? null,
   };
+}
+
+/**
+ * Exempt staff (attendance mode) never get missing-clock, late or early-leave
+ * exceptions. A failed lookup keeps the standard behaviour so punches still
+ * process.
+ */
+async function isStaffAttendanceExempt(
+  admin: SupabaseClient,
+  tenantId: string,
+  staffId: string,
+): Promise<boolean> {
+  try {
+    return (
+      (await loadAttendanceModeForStaff(admin, tenantId, staffId)) === "exempt"
+    );
+  } catch {
+    return false;
+  }
 }
 
 const recentProcessingErrorLogs: { key: string; atMs: number }[] = [];
@@ -340,6 +363,11 @@ export async function processBiometricPunchesForTenant(
             employeeDefaults.employee_id,
           )
         : [];
+    const exemptFromExceptions = await isStaffAttendanceExempt(
+      admin,
+      tenantId,
+      staffId,
+    );
 
     for (const session of sessions) {
       const { data: existing } = await admin
@@ -429,7 +457,9 @@ export async function processBiometricPunchesForTenant(
         deviceContractProject: sessionDevice?.contract_project,
         employeeContractProject: employeeDefaults.project_assignment,
         missingClockOut:
-          missingClockOut && sessionWindowHasClosed(clockInIso, nowMs),
+          !exemptFromExceptions &&
+          missingClockOut &&
+          sessionWindowHasClosed(clockInIso, nowMs),
         projects: staffGroupProjects,
       });
 
@@ -446,6 +476,7 @@ export async function processBiometricPunchesForTenant(
         clockIn,
         clockOut,
         existingExceptionStatus: null,
+        exempt: exemptFromExceptions,
       });
       const schedulePayload: Record<string, unknown> | null = scheduleColumns
         ? { ...scheduleColumns }
@@ -584,7 +615,7 @@ async function syncOpenSessionReviewNotes(
 ): Promise<void> {
   const { data, error } = await admin
     .from("attendance_register")
-    .select("id, date, clock_in, clock_out, source")
+    .select("id, date, clock_in, clock_out, source, staff_id")
     .eq("tenant_id", tenantId)
     .eq("source", "device")
     .is("clock_out", null);
@@ -592,7 +623,30 @@ async function syncOpenSessionReviewNotes(
     return;
   }
 
+  // Exempt staff are never flagged for a missing clock-out.
+  const exemptStaff = new Set<string>();
+  try {
+    const openStaffIds = [
+      ...new Set(
+        data
+          .map((row) => (row.staff_id ? String(row.staff_id) : ""))
+          .filter(Boolean),
+      ),
+    ];
+    const modes = await loadAttendanceModesForStaff(admin, tenantId, openStaffIds);
+    for (const [staffId, mode] of modes) {
+      if (mode === "exempt") {
+        exemptStaff.add(staffId);
+      }
+    }
+  } catch {
+    // Keep the standard behaviour when the mode lookup fails.
+  }
+
   for (const row of data) {
+    if (row.staff_id && exemptStaff.has(String(row.staff_id))) {
+      continue;
+    }
     const startIso = registerSessionStartIso(
       String(row.date ?? ""),
       row.clock_in == null ? null : String(row.clock_in),

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EmployeeRecord } from "./employee-record-utils";
+import { loadExemptStaffIds } from "@/lib/attendance-mode-service";
 import {
   buildManualInputsFromRow,
   calculateLoanRepaymentForEmployee,
@@ -94,6 +95,8 @@ export function buildDirectoryNetPayByEmployee(
   taxConfigs: PayrollTaxConfigs,
   compensationPolicyConfig: PayrollCompensationPolicyConfig,
   hrPayrollSettingsRows: HrPayrollSettingsRow[],
+  /** staff_ids with attendance mode exempt; never deducted for absence. */
+  exemptStaffIds: readonly string[] = [],
 ): Omit<DirectoryNetPayContext, "period" | "periodLabel"> {
   const processingByEmployee = new Map(
     processingRows.map((row) => [row.employee_id, row]),
@@ -116,6 +119,8 @@ export function buildDirectoryNetPayByEmployee(
         source.staff_id,
         period.year,
         period.month,
+        [],
+        exemptStaffIds,
       ),
       overtimeAmount: sumOvertimeForEmployeeInPeriod(
         overtime,
@@ -272,6 +277,16 @@ export async function loadDirectoryNetPayContext(
       : Promise.resolve({ data: null, error: null }),
   ]);
 
+  // Best effort so the directory still loads where attendance_mode is absent.
+  let exemptStaffIds: string[] = [];
+  if (tenantId) {
+    try {
+      exemptStaffIds = await loadExemptStaffIds(supabase, tenantId);
+    } catch {
+      exemptStaffIds = [];
+    }
+  }
+
   const taxConfigs = statutoryTaxBundle.taxConfigs;
   const hrPayrollSettingsRows = (
     (hrPayrollSettingsResult.data as HrPayrollSettingsRow[] | null) ?? []
@@ -297,6 +312,7 @@ export async function loadDirectoryNetPayContext(
         [],
     },
     hrPayrollSettingsRows,
+    exemptStaffIds,
   );
 
   return {

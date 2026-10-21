@@ -95,11 +95,14 @@ const TimePickerField = forwardRef<HTMLInputElement, TimePickerFieldProps>(
     const hourColumnRef = useRef<HTMLDivElement>(null);
     const minuteColumnRef = useRef<HTMLDivElement>(null);
     const meridiemColumnRef = useRef<HTMLDivElement>(null);
+    const openRef = useRef(false);
+    const draftRef = useRef<TimePickerParts>(emptyTimePickerParts());
+    const valueRef = useRef(value);
     const reactId = useId();
     const [open, setOpen] = useState(false);
     const [editing, setEditing] = useState(false);
     const [text, setText] = useState("");
-    const [draft, setDraft] = useState<TimePickerParts>(emptyTimePickerParts);
+    const [draft, setDraft] = useState<TimePickerParts>(() => emptyTimePickerParts());
     const [placement, setPlacement] = useState({
       top: 0,
       left: 0,
@@ -108,9 +111,18 @@ const TimePickerField = forwardRef<HTMLInputElement, TimePickerFieldProps>(
     const display = formatTimePickerDisplay(value);
     const shown = editing ? text : display;
 
+    valueRef.current = value;
+    openRef.current = open;
+    draftRef.current = draft;
+
     function setInputNode(node: HTMLInputElement | null) {
       inputRef.current = node;
       assignRef(ref, node);
+    }
+
+    function replaceDraft(next: TimePickerParts) {
+      draftRef.current = next;
+      setDraft(next);
     }
 
     function commit(next: string) {
@@ -122,7 +134,7 @@ const TimePickerField = forwardRef<HTMLInputElement, TimePickerFieldProps>(
         return false;
       }
       input?.setCustomValidity("");
-      if (next !== value) {
+      if (next !== valueRef.current) {
         flushSync(() => onChange(next));
       }
       setEditing(false);
@@ -131,20 +143,22 @@ const TimePickerField = forwardRef<HTMLInputElement, TimePickerFieldProps>(
     }
 
     function closeCancel() {
+      openRef.current = false;
       setOpen(false);
       setEditing(false);
       setText("");
-      setDraft(timePickerPartsFromValue(value));
+      replaceDraft(timePickerPartsFromValue(valueRef.current));
     }
 
     function applyDraft() {
-      const next = valueFromTimePickerParts(draft);
+      const next = valueFromTimePickerParts(draftRef.current);
       if (!next) {
         inputRef.current?.setCustomValidity("Choose hour, minute, and AM/PM.");
         inputRef.current?.reportValidity();
         return;
       }
       if (commit(next)) {
+        openRef.current = false;
         setOpen(false);
       }
     }
@@ -155,7 +169,8 @@ const TimePickerField = forwardRef<HTMLInputElement, TimePickerFieldProps>(
       flushSync(() => onChange(""));
       setEditing(false);
       setText("");
-      setDraft(emptyTimePickerParts());
+      replaceDraft(emptyTimePickerParts());
+      openRef.current = false;
       setOpen(false);
     }
 
@@ -163,8 +178,19 @@ const TimePickerField = forwardRef<HTMLInputElement, TimePickerFieldProps>(
       if (disabled) {
         return;
       }
-      const parsed = editing ? parseTimePickerText(text) : value;
-      setDraft(timePickerPartsFromValue(parsed && parsed !== null ? parsed : value));
+      // Prefer the committed HH:mm value. Only use typed text when it parses to a
+      // real time — never invent a default such as 08:00 for an empty field.
+      let seed = valueRef.current;
+      if (editing) {
+        const parsed = parseTimePickerText(text);
+        if (parsed) {
+          seed = parsed;
+        } else if (parsed === "") {
+          seed = "";
+        }
+      }
+      replaceDraft(timePickerPartsFromValue(seed));
+      openRef.current = true;
       setOpen(true);
     }
 
@@ -197,7 +223,10 @@ const TimePickerField = forwardRef<HTMLInputElement, TimePickerFieldProps>(
         minuteColumnRef.current,
         meridiemColumnRef.current,
       ]) {
-        scrollColumnToValue(column, column?.querySelector<HTMLElement>("[data-selected='true']")?.dataset.value);
+        scrollColumnToValue(
+          column,
+          column?.querySelector<HTMLElement>("[data-selected='true']")?.dataset.value,
+        );
       }
       hourColumnRef.current?.focus();
     }, [open]);
@@ -227,7 +256,7 @@ const TimePickerField = forwardRef<HTMLInputElement, TimePickerFieldProps>(
         window.removeEventListener("scroll", onPlace, true);
         document.removeEventListener("pointerdown", onPointerDown, true);
       };
-    }, [open, value]);
+    }, [open]);
 
     function moveInColumn(
       items: readonly string[],
@@ -274,21 +303,27 @@ const TimePickerField = forwardRef<HTMLInputElement, TimePickerFieldProps>(
             ? TIME_PICKER_MINUTES
             : (["AM", "PM"] as const);
       const current =
-        column === "hour" ? draft.hour : column === "minute" ? draft.minute : draft.meridiem;
+        column === "hour"
+          ? draftRef.current.hour
+          : column === "minute"
+            ? draftRef.current.minute
+            : draftRef.current.meridiem;
       const next = moveInColumn(items, current, event.key);
       if (!next) {
         return;
       }
       event.preventDefault();
-      setDraft((currentDraft) => {
-        if (column === "hour") {
-          return { ...currentDraft, hour: next };
-        }
-        if (column === "minute") {
-          return { ...currentDraft, minute: next };
-        }
-        return { ...currentDraft, meridiem: next === "PM" ? "PM" : "AM" };
-      });
+      const currentDraft = draftRef.current;
+      const updated: TimePickerParts =
+        column === "hour"
+          ? { ...currentDraft, hour: next }
+          : column === "minute"
+            ? { ...currentDraft, minute: next }
+            : {
+                ...currentDraft,
+                meridiem: next === "PM" ? "PM" : "AM",
+              };
+      replaceDraft(updated);
       const columnNode =
         column === "hour"
           ? hourColumnRef.current
@@ -311,11 +346,17 @@ const TimePickerField = forwardRef<HTMLInputElement, TimePickerFieldProps>(
       } else if (event.key === "Tab") {
         return;
       } else if (event.key.length === 1) {
+        openRef.current = false;
         setOpen(false);
       }
     }
 
     function onBlur(event: React.FocusEvent<HTMLInputElement>) {
+      // Panel is open (or focus is moving into it): never commit from the text
+      // field — that race was re-applying the old value (often 08:00) after OK.
+      if (openRef.current) {
+        return;
+      }
       const next = event.relatedTarget;
       if (next instanceof Node && panelRef.current?.contains(next)) {
         return;
@@ -346,7 +387,12 @@ const TimePickerField = forwardRef<HTMLInputElement, TimePickerFieldProps>(
                 left: placement.left,
                 width: placement.width,
               }}
-              onMouseDown={(event) => event.preventDefault()}
+              onMouseDown={(event) => {
+                // Keep the text field from blurring (which used to re-commit the
+                // old value). Selection itself happens on pointerdown below so it
+                // still works when this preventDefault suppresses click.
+                event.preventDefault();
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Escape") {
                   event.preventDefault();
@@ -361,7 +407,9 @@ const TimePickerField = forwardRef<HTMLInputElement, TimePickerFieldProps>(
                   label="Hour"
                   items={TIME_PICKER_HOURS}
                   selected={draft.hour}
-                  onSelect={(hour) => setDraft((current) => ({ ...current, hour }))}
+                  onSelect={(hour) =>
+                    replaceDraft({ ...draftRef.current, hour })
+                  }
                   onKeyDown={(event) => onColumnKey(event, "hour")}
                 />
                 <Column
@@ -369,7 +417,9 @@ const TimePickerField = forwardRef<HTMLInputElement, TimePickerFieldProps>(
                   label="Min"
                   items={TIME_PICKER_MINUTES}
                   selected={draft.minute}
-                  onSelect={(minute) => setDraft((current) => ({ ...current, minute }))}
+                  onSelect={(minute) =>
+                    replaceDraft({ ...draftRef.current, minute })
+                  }
                   onKeyDown={(event) => onColumnKey(event, "minute")}
                 />
                 <Column
@@ -378,10 +428,10 @@ const TimePickerField = forwardRef<HTMLInputElement, TimePickerFieldProps>(
                   items={["AM", "PM"]}
                   selected={draft.meridiem}
                   onSelect={(meridiem) =>
-                    setDraft((current) => ({
-                      ...current,
+                    replaceDraft({
+                      ...draftRef.current,
                       meridiem: meridiem === "PM" ? "PM" : "AM",
-                    }))
+                    })
                   }
                   onKeyDown={(event) => onColumnKey(event, "meridiem")}
                 />
@@ -390,7 +440,11 @@ const TimePickerField = forwardRef<HTMLInputElement, TimePickerFieldProps>(
                 <button
                   type="button"
                   className="px-2 py-1.5 text-sm font-medium text-[#0f2744] hover:underline"
-                  onClick={clearValue}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    clearValue();
+                  }}
                 >
                   Clear
                 </button>
@@ -398,14 +452,22 @@ const TimePickerField = forwardRef<HTMLInputElement, TimePickerFieldProps>(
                   <button
                     type="button"
                     className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700"
-                    onClick={closeCancel}
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      closeCancel();
+                    }}
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
                     className="rounded-md bg-[#0f2744] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#1a3a5c]"
-                    onClick={applyDraft}
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      applyDraft();
+                    }}
                   >
                     OK
                   </button>
@@ -509,7 +571,12 @@ const Column = forwardRef<
                   ? "bg-[#0f2744] font-medium text-white"
                   : "text-slate-800 hover:bg-slate-100"
               }`}
-              onClick={() => onSelect(item)}
+              onPointerDown={(event) => {
+                // Parent panel preventDefault can suppress click; select here.
+                event.preventDefault();
+                event.stopPropagation();
+                onSelect(item);
+              }}
             >
               {item}
             </button>

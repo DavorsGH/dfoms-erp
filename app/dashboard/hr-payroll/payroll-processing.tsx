@@ -1,8 +1,15 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
-import { useAlert } from "@/components/feedback/feedback-context";
-import { PendingAttendanceExceptionsError } from "@/lib/shift-attendance";
+import { useAlert, useToast } from "@/components/feedback/feedback-context";
+import {
+  PendingAttendanceExceptionsError,
+  pendingExceptionLockRefusal,
+} from "@/lib/shift-attendance";
+import {
+  permanentLockMonthEndMessage,
+  payrollTodayIso,
+} from "@/lib/payroll-full-lock-guard";
 import Tooltip from "@/components/ui/tooltip";
 import { LoadingState } from "@/components/loading-indicator";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -101,6 +108,8 @@ type PayrollProcessingProps = {
   initialLoans: LoanRegisterEntry[];
   initialSalaryAdvances: SalaryAdvanceRegisterEntry[];
   initialMaternityLeaves: MaternityLeaveAbsenceExclusion[];
+  /** staff_ids with attendance mode exempt; never deducted for absence. */
+  initialExemptStaffIds?: string[];
   taxConfigs: PayrollTaxConfigs;
   compensationPolicyConfig: PayrollCompensationPolicyConfig;
   canManagePayrollPeriod: boolean;
@@ -160,6 +169,7 @@ export default function PayrollProcessing({
   initialLoans,
   initialSalaryAdvances,
   initialMaternityLeaves,
+  initialExemptStaffIds = [],
   taxConfigs,
   compensationPolicyConfig,
   canManagePayrollPeriod,
@@ -169,6 +179,7 @@ export default function PayrollProcessing({
 }: PayrollProcessingProps) {
   const supabase = createClient();
   const { alert } = useAlert();
+  const { toast } = useToast();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const workspaceLoadGenerationRef = useRef(0);
@@ -184,6 +195,7 @@ export default function PayrollProcessing({
   const [loans, setLoans] = useState(initialLoans);
   const [salaryAdvances, setSalaryAdvances] = useState(initialSalaryAdvances);
   const [maternityLeaves] = useState(initialMaternityLeaves);
+  const [exemptStaffIds] = useState(() => new Set(initialExemptStaffIds));
   const [selectedPeriodKey, setSelectedPeriodKey] = useState(() => {
     const { year, month } = getDefaultReportPeriod();
     return buildPeriodKey(year, month);
@@ -340,12 +352,6 @@ export default function PayrollProcessing({
     );
   }, [currentPeriod, periodEmployeeIds, rows]);
 
-  const canFullLock =
-    isFullMonthLockAvailable &&
-    isPayrollMonthEndedForPeriod &&
-    !isPeriodClosed &&
-    rows.length > 0;
-
   /** Promote Partially Locked → Locked once the period month has ended. */
   const canPromoteToFullLock =
     canManagePayrollPeriod &&
@@ -394,6 +400,7 @@ export default function PayrollProcessing({
         period.year,
         period.month,
         maternityLeaves,
+        exemptStaffIds,
       ),
       overtimeAmount: sumOvertimeForEmployeeInPeriod(
         overtimeRows,
@@ -719,6 +726,8 @@ export default function PayrollProcessing({
           employee.staff_id,
           period.year,
           period.month,
+          [],
+          exemptStaffIds,
         );
         const overtimeAmount = sumOvertimeForEmployeeInPeriod(
           overtimeRows,
@@ -1463,7 +1472,70 @@ export default function PayrollProcessing({
   }
 
   async function handleLockPeriod() {
-    if (!currentPeriod || !canManagePayrollPeriod || isPeriodClosed || !canFullLock) {
+    if (!currentPeriod || !canManagePayrollPeriod || isPeriodClosed) {
+      return;
+    }
+
+    setError(null);
+
+    // (1) Month-end rule — same message as the lock API; do not early-lock.
+    const monthEndBlock = permanentLockMonthEndMessage(
+      currentPeriod.year,
+      currentPeriod.month,
+      payrollTodayIso(),
+    );
+    if (monthEndBlock) {
+      await alert({
+        title: "Permanent lock not available yet",
+        message: monthEndBlock,
+        variant: "error",
+      });
+      return;
+    }
+
+    // (2) Pending attendance exceptions — same modal as Partial Lock.
+    const pendingCount = attendance.filter(
+      (row) => row.exception_status === "pending",
+    ).length;
+    const pendingRefusal = pendingExceptionLockRefusal(pendingCount, {
+      year: currentPeriod.year,
+      month: currentPeriod.month,
+    });
+    if (pendingRefusal) {
+      await alert({
+        title: "Attendance exceptions still pending",
+        message: pendingRefusal.error,
+        href: pendingRefusal.exceptionsHref,
+        hrefLabel: "Review exceptions",
+        variant: "error",
+      });
+      return;
+    }
+
+    // (3) Other existing lock checks (rows / full-month / statutory).
+    if (rows.length === 0) {
+      await alert({
+        title: "Cannot lock period",
+        message: "Add payroll rows for this period before locking.",
+        variant: "error",
+      });
+      return;
+    }
+    if (!isFullMonthLockAvailable) {
+      await alert({
+        title: "Cannot lock period",
+        message:
+          "Not available — add payroll rows for every employee in this period first.",
+        variant: "error",
+      });
+      return;
+    }
+    if (statutoryLockBlockMessage) {
+      await alert({
+        title: "Cannot lock period",
+        message: statutoryLockBlockMessage,
+        variant: "error",
+      });
       return;
     }
 
@@ -1478,11 +1550,11 @@ export default function PayrollProcessing({
     }
 
     setLocking(true);
-    setError(null);
 
     try {
       const rowsToLock = await prepareRowsToLock();
       await executeLockPeriod(rowsToLock, PAYROLL_STATUS_LOCKED, null);
+      toast(`${label} locked.`);
     } catch (lockError) {
       reportLockFailure(lockError, "Failed to lock payroll period.");
     } finally {
@@ -1496,7 +1568,7 @@ export default function PayrollProcessing({
         title: "Attendance exceptions still pending",
         message: lockError.message,
         href: lockError.href,
-        hrefLabel: "Open Attendance exceptions",
+        hrefLabel: "Review exceptions",
         variant: "error",
       });
       return;
@@ -1690,14 +1762,7 @@ export default function PayrollProcessing({
                   <button
                     type="button"
                     onClick={handleLockPeriod}
-                    disabled={
-                      locking ||
-                      loading ||
-                      reopening ||
-                      releasing ||
-                      rows.length === 0 ||
-                      !canFullLock
-                    }
+                    disabled={locking || loading || reopening || releasing}
                     className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {locking ? "Locking…" : "Lock Period"}
@@ -1707,14 +1772,7 @@ export default function PayrollProcessing({
                 <button
                   type="button"
                   onClick={handleLockPeriod}
-                  disabled={
-                    locking ||
-                    loading ||
-                    reopening ||
-                    releasing ||
-                    rows.length === 0 ||
-                    !canFullLock
-                  }
+                  disabled={locking || loading || reopening || releasing}
                   className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {locking ? "Locking…" : "Lock Period"}

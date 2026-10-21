@@ -13,6 +13,7 @@ import {
 } from "@/utils/business-unit-view";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canManagePayrollPeriod } from "@/utils/rbac-access";
+import { loadExemptStaffIds } from "@/lib/attendance-mode-service";
 import HrPayrollShell from "../hr-payroll-shell";
 import PayrollProcessing from "../payroll-processing";
 import { fetchStatutoryPayrollTaxConfigs } from "../statutory-payroll-config-utils";
@@ -201,9 +202,28 @@ export default async function PayrollProcessingPage() {
       : Promise.resolve({ data: null, error: null }),
   ]);
 
+  // Exempt attendance mode: never deducted for absence.
+  let initialExemptStaffIds: string[] = [];
+  let exemptStaffError: string | null = null;
+  if (tenantId) {
+    try {
+      initialExemptStaffIds = await loadExemptStaffIds(
+        admin,
+        tenantId,
+        scopedStaffIds,
+      );
+    } catch (exemptError) {
+      exemptStaffError =
+        exemptError instanceof Error
+          ? exemptError.message
+          : "Could not load attendance modes.";
+    }
+  }
+
   const fetchError =
     (!tenantId ? "Unable to resolve tenant for payroll." : null) ??
     payrollEmployeeScopeError ??
+    exemptStaffError ??
     processingMonthsError?.message ??
     historyMonthsError?.message ??
     monthEndCloseError?.message ??
@@ -287,6 +307,7 @@ export default async function PayrollProcessingPage() {
           (salaryAdvances as SalaryAdvanceRegisterEntry[] | null) ?? []
         }
         initialMaternityLeaves={initialMaternityLeaves}
+        initialExemptStaffIds={initialExemptStaffIds}
         taxConfigs={statutoryTaxBundle.taxConfigs}
         compensationPolicyConfig={{
           salaryRates: (salaryRates as SalaryRateConfig[] | null) ?? [],

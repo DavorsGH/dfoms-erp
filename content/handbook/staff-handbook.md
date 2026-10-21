@@ -8,18 +8,17 @@ DavSuite ERP
 
 **For Customer Use**
 
-Version 3.1 | October 2026
+Version 3.3 | 21 October 2026
 
 *Covers: Getting Started · Bulk Import · User Roles (incl. Director) ·
-Business Units · Finance (incl. Budget, Tax Settings, Client Receipts, Staff
-Welfare Fund) ·
-Sales & CRM (Pipeline, Product Quotes, Client Quotations, Returns &
-Credit Notes, Discounts & Loyalty, Targets & Commissions) · Point of
-Sale · Email & Promotions · HR Management · Operations (incl. Duty
-Roster Approvals) · Inventory (Production & Purchasing, Stock
-Adjustments, Barcode Scanning) · Real Estate (Davors Technologies only) · Reports ·
-Administration
-· Your Subscription*
+Business Units · Finance (incl. Year-end Carry-forward, Budget, Tax Settings,
+Client Receipts, Staff Welfare Fund) · Sales & CRM (Pipeline, Product Quotes,
+Client Quotations, Returns & Credit Notes, Discounts & Loyalty, Targets &
+Commissions) · Point of Sale · Email & Promotions · HR Management · Operations
+(incl. Duty Roster Approvals) · Inventory (Production & Purchasing, Stock
+Adjustments, Barcode Scanning) · Real Estate (Davors platform) · Reports ·
+Directors Board (Scorecard, Dividends, Shareholders) · Attendance Scanners,
+Shifts & Remote Work · Administration · Your Subscription*
 
 # **Table of Contents**
 
@@ -48,6 +47,8 @@ Administration
 11\. Self-Service
 
 12\. Reports
+
+12A\. Directors Board
 
 13\. Administration
 
@@ -1129,8 +1130,10 @@ are on **All Businesses**) digital webhook sales.
 
   **Row actions**
   ---------------
-  **Print**, **Pay** (when money is still owed), **Return**, and **Cancel sale**
-  (when the sale was entered by mistake --- see Section 7.10).
+  **Print**, **Record payment** (when money is still owed), **Check
+  payment** (when a Paystack payment is awaited), **Return**, and
+  **Cancel sale** (when the sale was entered by mistake --- see Section
+  7.10).
 
   **Add Sale**
   ------------
@@ -1145,12 +1148,92 @@ are on **All Businesses**) digital webhook sales.
 
   **All Businesses is view-only**
   -------------------------------
-  You cannot add, cancel sales, return, or import while **All Businesses** is
-  selected --- switch to your workspace default or a named business unit
-  first.
+  You cannot add, cancel sales, return, or import while **All
+  Businesses** is selected --- switch to your workspace default or a
+  named business unit first.
 
 Completed POS checkouts and Add Sale entries both flow into the Income
 Register automatically.
+
+### **Sales register tabs**
+
+The register is split into tabs so each kind of sale is easy to find.
+The number on each tab is how many records it holds.
+
+  **Tab**                      **What it shows**
+  ---------------------------- --------------------------------------------------
+  **Manual sales**             Sales entered with **Add sale** --- usually
+                               credit, part-payment or institutional sales.
+
+  **POS sales log**            Every till checkout from Point of Sale.
+
+  **Returns and credit notes** Returns and the credit notes they created
+                               (Section 7.10).
+
+  **Digital**                  Online (webhook) sales --- visible on **All
+                               Businesses**.
+
+  **All**                      Everything together, with **Source**,
+                               **Status** and **Date range** filters.
+
+### **Recording a later payment**
+
+When a customer pays part of a balance, click **Record payment** on the
+row, enter the amount, date and method, and save. The outstanding
+balance and status (**Part-paid** or **Paid**) update straight away.
+
+### **Receipts that list every payment**
+
+Product-sale and POS receipts now show a **Payments** section with one
+line per payment --- the payment taken when the sale was made, then each
+later payment --- for example \"20 Oct · Mobile Money · GHS 20.00 · ref
+…\" and \"21 Oct · Cash · GHS 5.00\". Below it you will always see
+**Total paid** and **Balance due** (GHS 0.00 when fully paid). The
+payment lines always add up to Total paid. The same layout is used on
+screen and on 80 mm thermal paper.
+
+### **Mobile Money on manual sales (Paystack)**
+
+On **Add sale**, choosing **Mobile Money** opens the Paystack payment
+popup. You can collect the full amount or part of it now (for example
+GHS 5 of an 8.50 sale); the rest stays outstanding with its due date.
+Before the popup opens, DavSuite re-checks stock, so a customer is never
+charged for an item that has run out. Every manual sale gets a real
+**PSI** invoice number when the payment is set up.
+
+If no Mobile Money account is connected yet, the **Mobile Money** option
+on Add sale shows **(not set up)** and cannot be chosen --- see Section
+7.3.
+
+After the customer pays, DavSuite confirms the payment with Paystack
+itself and records it once --- even if Paystack also sends its own
+notice later, the payment is never recorded twice.
+
+### **Check payment**
+
+If a sale still shows **Awaiting payment** after the customer has paid
+(for example the internet dropped while the popup was open), click
+**Check payment** on the row. DavSuite asks Paystack directly and, if
+the money arrived, records it and updates the sale. A nightly check also
+picks up any payment that was missed.
+
+### **Payments needing attention**
+
+Occasionally a customer pays but the sale cannot be recorded --- most
+often because the item sold out while they were paying, or the customer
+paid more than was owed. The money is never lost: the payment appears
+under **Payments needing attention** in Sales, and Administrators,
+Directors and Finance & Admin Officers receive a notification. Choose
+one of:
+
+-   **Record as customer credit** --- turns the payment into store credit
+    the customer can use later (needs a contract customer).
+
+-   **Mark refunded** --- once you have refunded the customer in
+    Paystack.
+
+A sale is never recorded against stock you do not have, so stock and
+cost figures stay accurate.
 
 ## **7.3 Point of Sale (POS)**
 
@@ -1182,25 +1265,40 @@ email or SMS instead, with the same protection --- stock and the sale
 record are only created once they actually pay. Card payment is not yet
 available until in-person card-tap terminal hardware is set up.
 
-**Amount Tendered and Change Due (Cash).** When Payment Method is Cash,
-enter **Amount Tendered** --- the cash the customer handed over. **Change
-Due** is calculated live (tendered minus amount due). Complete Sale is
-blocked until tendered is at least the full amount due. Amount Received
-on the receipt and in the ledger still records the sale total, not the
-tendered amount.
+**Cash payment and Mobile Money.** The payment block sits under the
+cart. **Cash payment** is the large navy card on the right --- most
+sales are cash --- and **Mobile Money** is the smaller card on the left.
+On a phone, Cash payment sits on top.
+
+**When Mobile Money is not set up.** Mobile Money payments need a Mobile
+Money account connected and confirmed by Paystack. Until it is (or if
+Paystack reports a problem with it), the Mobile Money card is greyed out
+and shows **Not set up**. Clicking it shows \"Mobile Money isn't set up
+yet --- Payments can't be received by Mobile Money until a Mobile Money
+account is connected. Use Cash payment for now.\" Administrators and
+Directors also see where to connect it: **Administration → Finance
+Settings → Online Payments**. The same applies to Mobile Money on **Add
+sale** and payment links. Recording a Mobile Money payment that was
+received outside DavSuite, with Record payment, is still allowed.
+
+**Cash received and Change due.** For a cash sale, type the cash the
+customer handed over in **Cash received**, or use the quick buttons
+**Exact**, **+5**, **+10**, **+20**, **+50**, **+100**, **+200** and
+**Clear**. **Change due** is calculated live. The sale and the ledger
+still record the sale total, not the cash handed over.
 
 **Customer-facing display.** Click **Open Customer Display** on POS
 checkout to open a second-screen view for dual-monitor setups (or a
 separate browser window). It shows your business branding, the customer
 name (defaults to **Walk-in Customer** when none is selected), cart
-lines, totals, and --- for cash sales --- Amount Tendered and Change Due
+lines, totals, and --- for cash sales --- Cash received and Change due
 updating live as you type. **Served by** shows the sales rep selected on
 the checkout.
 
 **Store credit at checkout.** Enter a credit note number in the Store
 credit box, or open POS from **Credit Notes** using **Apply at POS** or
 **Load returned items**. The system applies available balance to the cart;
-any remainder can be paid in **Cash** with **Amount Tendered** and
+any remainder can be paid in **Cash** with **Cash received** and
 **Change Due** calculated as usual. **Mobile Money cannot be combined**
 with store credit --- use Cash (or pay the full balance on MoMo without
 store credit). Store credit checkout requires an **online** connection;
@@ -1227,6 +1325,40 @@ for till work (uses the browser full-screen API when available). Press
 example **Return**, payment popup, or **Held carts**), in which case Esc
 closes that layer first. **Exit full screen** is also on the checkout
 toolbar.
+
+### **More options and the option chips**
+
+**More options** holds the less-used fields: Promo code, Store credit,
+Customer, Sales rep, Payer email and phone, Notes and Due date. The
+panel always fits on screen, scrolls inside itself, and keeps **Done**
+at the bottom. It opens only when you click it --- never while you are
+typing an amount.
+
+After you click **Done**, small chips next to More options show what you
+set --- for example **Caanta Market**, **Due 24 Oct** or **Note** ---
+beside the **Sales rep** chip. Click a chip to jump straight to that
+field. Chips clear when the sale completes or the cart is cleared.
+
+### **When the customer is short of cash --- Continue as manual sale**
+
+The till only takes full payment. If **Cash received** is less than the
+amount due, an amber line shows how much is short, and **Complete Sale**
+stays unavailable.
+
+-   If a customer is selected, the line offers **Continue as manual
+    sale**. It opens **Add sale** already filled in with the cart items,
+    customer, due date, note, sales rep, payment method and the cash
+    received now. Check it and save --- the balance becomes outstanding
+    with its due date.
+
+-   If no customer is selected, the line asks you to **choose a
+    customer** first --- a part payment must know who owes the balance.
+
+-   The POS cart is cleared only after the manual sale is saved. If you
+    cancel, you return to POS with the cart exactly as you left it.
+
+After saving you will see, for example, \"Saved as DF-PSI-0010 ---
+balance GHS 5.00 due 24 Oct 2026\".
 
 ## **Sales register (Add Sale) vs. Point of Sale --- which do I use?**
 
@@ -1703,10 +1835,48 @@ the Bulk Import button on the Employee Directory --- see Section 2.4.
     up with different, inconsistent pay.
 
 -   **Welfare Deduction Rate** --- set a default percentage under Salary
-    Settings (applied to gross pay each period). Override per employee on
-    the Employee Directory if needed. Locked payroll accrues the total to
+    Settings. Override per employee on the Employee Directory if needed.
+    From October 2026 payroll, welfare is worked out on **earned** gross
+    pay (after any unpaid absence). Locked payroll accrues the total to
     the Staff Welfare Fund (see Section 6.6a) --- welfare no longer feeds
     DEDSAV Other Income.
+
+-   **Locking payroll** --- **Partial Lock**, **Full Lock** (marks
+    salaries as paid and posts the cash), **Release** and **Reopen** are
+    available only to the Admin, Director and HR roles. The Finance role
+    can prepare payroll but cannot lock or release it, so pay is always
+    approved by someone else.
+
+-   **Salary advances** --- record advances under HR Operations → Loans
+    while the month is open. They are deducted automatically from the
+    employee's pay when payroll is locked.
+
+-   **Overtime tax** --- from October 2026 payroll, approved overtime
+    follows the GRA overtime rule: a 5% or 10% final tax for qualifying
+    junior staff, and 5% for casual workers. Only approved overtime
+    entries are paid and taxed. A per-business-unit setting, **Include
+    overtime in welfare deduction**, decides whether overtime counts
+    towards the welfare deduction.
+
+-   **Unpaid absence comes off before tax** --- from October 2026
+    payroll, absence days reduce gross pay first, and SSNIT and PAYE are
+    worked out on what the employee actually earned. Welfare is taken
+    after tax. Example: basic GHS 589.47, 27 days to pay, one half day →
+    absence GHS 10.92, gross GHS 578.55. Months locked before October
+    2026 are unchanged.
+
+-   **Absence from attendance decisions** --- each **Absent** decision
+    counts as one day and each **Half day** as half a day (never both
+    for the same day). Lateness on its own does not reduce pay --- only
+    the decision you make on the attendance exception does (Section
+    8.5).
+
+-   **Lock Period checks** --- Lock Period always tells you why it
+    cannot lock: before the last day of the month you see \"Permanent
+    lock is available on or after {date}\", and while any attendance
+    exception for the month is still **pending** you see \"Attendance
+    exceptions still pending\" with a link to review them. Partial Lock
+    applies the same pending-exceptions check.
 
 ## **8.2a Ghana statutory payroll rates (platform-wide)**
 
@@ -1731,7 +1901,11 @@ blocked** until rates are available.
 
 ## **8.3 HR Operations**
 
--   Attendance --- record and review attendance
+-   Attendance --- the attendance register, scanner punches and the
+    **Attendance exceptions** panel (see Section 8.5)
+
+-   **Remote Work** --- remote work arrangements for staff who work away
+    from site on set days (see Section 8.5)
 
 -   Leave --- requests and day-to-day leave handling. When a **new
     company workspace** is created, **Annual Leave** (15 days default),
@@ -1768,6 +1942,11 @@ is your inbox for leave requests waiting on you. The table shows each
 When a request **exceeds remaining balance**, the employee sees an amber
 warning on **My Leave** (and a **⚠** hint); approvers still see the
 request and can use their judgment.
+
+The leave approver for your workspace is chosen by an **Administrator**
+only, from the list of active staff who have a login (**Administration →
+HR Settings → Leave Settings**). Other roles can see who the approver is
+but cannot change it.
 
 ## **8.4 Employee Announcements**
 
@@ -1842,6 +2021,156 @@ bell are all live.
 | Admin --- talk to your administrator if a payroll period needs        |
 | correction after processing.                                          |
 +-----------------------------------------------------------------------+
+
+## **8.5 Attendance, Shifts, Fingerprint Scanners & Remote Work**
+
+DavSuite records attendance from fingerprint scanners, from remote
+clock-ins, and from manual entries, checks each day against the
+employee's shift, and flags late arrivals and early leaving for a
+manager to decide. Only those decisions affect pay.
+
+### **Shift times**
+
+Set shift times per contract under **Administration → Roster & Shift
+Settings → Shift times**. Each contract has two tabs: **Weekdays
+(Mon–Fri)** and **Weekend & holidays (Sat, Sun, public holidays)**. For
+each shift (Full Day, Morning, Afternoon, Night, Supervisor) enter a
+start and end time; an end earlier than the start means the shift
+crosses midnight. Leave a shift blank if the contract does not use it,
+and leave the Weekend tab blank if the contract does not work weekends
+--- attendance is still recorded but not flagged. **Copy weekday times**
+fills the weekend tab as a starting point.
+
+Times are picked with the DavSuite time picker: click the field, choose
+hour, minute and AM/PM, then **OK** (or **Cancel** / **Clear**). You can
+also type a time such as \"4:30 am\".
+
+**Public holidays** are added on the same page; a public holiday uses
+the weekend shift times even when it falls on a weekday.
+
+### **Grace periods**
+
+Each shift has a **Late grace** and an **Early-leave grace** in minutes.
+Leave the box blank to use the company default (30 minutes each). A
+longer early-leave grace suits flexible finishes --- for example a
+weekend shift of 04:30–10:00 with a 120-minute early-leave grace lets
+staff finish any time from 08:00 without being flagged.
+
+Which shift applies: rotating staff follow the duty roster for that day;
+other staff use the shift on their employee record; supervisors use the
+Supervisor row. Weekend and holiday times apply on Saturdays, Sundays
+and public holidays.
+
+### **Attendance exceptions --- Full day, Half day or Absent**
+
+When someone arrives later than their start time plus late grace, or
+leaves earlier than their end time minus early-leave grace, the day
+appears in the **Attendance exceptions** panel at the top of **HR
+Management → Attendance** (filter **Pending**, **Decided** or **All**).
+Lateness stays on the record but does **not** reduce pay until you
+decide:
+
+  **Decision**   **Effect on pay**
+  -------------- --------------------------------------------------------
+  **Full day**   Paid as a normal day.
+
+  **Half day**   Half a day's pay is deducted (basic ÷ days to pay ×
+                 0.5).
+
+  **Absent**     A full day's pay is deducted.
+
+The deduction reduces gross pay before PAYE and SSNIT (from October 2026
+payroll) --- see 8.2.
+
+Add a short note with the decision. **Change decision** lets you correct
+it later; pay is recalculated and a day is never counted twice. Any
+exception still **pending** blocks the payroll lock for that month.
+
+### **Fingerprint scanners (Scanners & Devices)**
+
+**Scanners & Devices** (sidebar) has three tabs: **Barcode Scanners**,
+**Attendance Devices** and **Printers**. Attendance devices are
+ZKTeco-compatible fingerprint scanners that send punches to DavSuite
+over the internet (ADMS cloud push) --- no software on a PC is needed.
+
+-   **Add device** --- register the scanner by its serial number, give it
+    a name and location, and choose which staff group it serves (for
+    example company-wide). A scanner that contacts DavSuite before it is
+    registered appears under **Unclaimed devices**.
+
+-   **Employee PIN mapping** --- every employee gets a scanner PIN
+    automatically; enrol their fingerprint on the scanner under that PIN.
+
+-   **Live status** --- each scanner shows **Online** or **Offline** and
+    when it last checked in. You are alerted if a scanner goes offline.
+
+-   **Needs review** --- punches that cannot be matched (for example an
+    unknown PIN) wait here for you to map or dismiss.
+
+-   **Outage attendance** --- if a scanner is down, record that day's
+    attendance with a reason so nobody is marked absent unfairly.
+
+How punches become attendance: the first punch of a working session is
+the clock-in and the last is the clock-out, whatever order they arrive
+in --- so a scanner that uploads a backlog after being offline still
+produces the right day. Repeat punches within two minutes are ignored,
+re-sent punches are never counted twice, and punch times are kept
+exactly as the scanner reports them. If a scanner's clock is 5 minutes
+or more off, the punch is kept and flagged \"Scanner clock is X minutes
+off; check the scanner time\".
+
+### **Attendance modes**
+
+Not everyone needs to clock in the same way. Each employee has an
+**Attendance mode** on their record; **Role default** uses their role:
+
+  **Mode**           **Who by default**     **What it means**
+  ------------------ ---------------------- -----------------------------
+  **Exempt**         Administrators,        Attendance is not required ---
+                     Directors              never flagged late or absent,
+                                            and attendance never reduces
+                                            their pay. They may still
+                                            clock in.
+
+  **Quick remote**   HR, Finance,           Can clock in and out remotely
+                     Operations, Finance &  in one step; automatically
+                     Admin                  approved and recorded with a
+                                            location.
+
+  **Standard**       Everyone else          Clocks in on site. Remote
+                                            clock-ins need approval unless
+                                            covered by a remote work
+                                            arrangement.
+
+Administrators, Directors and HR can change an employee's mode on the
+Employee Directory record.
+
+### **Remote attendance**
+
+Staff allowed to work remotely use **Self-Service → My Attendance** (or
+**Remote attendance**) to clock in and out. They choose a location ---
+Working from home, Head office, Client site / contract site, Client or
+supplier meeting, Field visit / inspection, Travelling, or Other (type
+it in) --- and may add an optional reason. Requests that need approval
+go to **Attendance Approvals**, where the approver gets an in-app badge
+and a push notification.
+
+### **Remote work arrangements**
+
+For staff who regularly work away on set days, add an arrangement under
+**HR Management → Remote Work → Add arrangement**: choose the staff
+member, the weekdays, a start date and optional end date, the location,
+an optional reason, and whether remote clock-ins on those days are
+**auto-approved**. Arrangements can be edited or deactivated. Two active
+arrangements for the same person cannot cover the same weekday and dates
+--- DavSuite tells you which one overlaps.
+
+### **Testing scanners**
+
+On test (staging) workspaces only, a **Simulate scanner** panel sends
+sample punches so the whole flow can be checked without a real device.
+It never appears in live workspaces. Ask DavSuite must not mention this
+simulator when helping users on live workspaces.
 
 # **Section 9 --- Operations**
 
@@ -2301,7 +2630,10 @@ The four tabs are:
 
 -   **My Payslip** --- your payslips
 
--   **My Attendance** --- your attendance
+-   **My Attendance** --- your attendance days, any exceptions and
+    decisions, and (if you may work remotely) **clock in / clock out**
+    with a location. If your role is exempt you will see \"Attendance
+    not required for your role.\"
 
 -   **My Leave** --- **Request Leave** at the top (show/hide the form),
     then **Leave Balance ({year})** with **Entitled**, **Used**, and
@@ -2359,6 +2691,71 @@ browser.
 | as PDF\" option from the print dialog if you need a PDF copy.         |
 +-----------------------------------------------------------------------+
 
+# **Section 12A --- Directors Board**
+
+The Directors Board is where the company's directors check whether the
+business is ready to pay its owners, declare and pay dividends, and keep
+the shareholder register. It appears in the sidebar just above
+Administration, and only users with the **Admin** or **Director** role
+can see it. Other roles, including Finance, cannot open it.
+
+## **12A.1 Scorecard**
+
+The Scorecard checks, in one place, whether it is safe to pay a
+dividend. It looks at whether the Balance Sheet balances, whether
+statutory taxes (PAYE, SSNIT, VAT and withholding tax) are up to date
+with no arrears, whether a tax reserve has been set aside, and whether
+there is enough cash and enough retained earnings. Each check shows
+whether it passes. A short version appears as the Director's summary
+card on the Dashboard.
+
+## **12A.2 Shareholders**
+
+The shareholder register lists each owner with their shareholding and
+payment details. A person can be registered only once --- DavSuite tells
+you if you try to add the same shareholder twice. When someone stops
+being a shareholder, deactivate them rather than deleting them, so past
+dividend records stay complete.
+
+## **12A.3 Dividends**
+
+Dividends are declared for the business selected in the business unit
+switcher. Choose a specific business first.
+
+-   **Declare** --- enter the declaration month and the details of the
+    dividend. DavSuite refuses a declaration if the books do not balance
+    or if there are not enough retained earnings to cover it, and
+    explains why.
+
+-   **Declared** --- the dividend is now owed to the shareholders. It
+    reduces retained earnings and shows as Dividends Payable on the
+    Balance Sheet.
+
+-   **Pay** --- record each shareholder's payment when the money is
+    sent. Cash goes down and Dividends Payable is cleared.
+
+-   **Withholding tax** --- 8% dividend withholding tax is deducted from
+    each payment. It appears in the Statutory Ledger as owed to GRA until
+    you remit it.
+
+-   **Cancel** --- a declaration made in error is cancelled, not
+    deleted. Cancelling reverses its effect on the Balance Sheet and
+    keeps it in the history for audit.
+
++-----------------------------------------------------------------------+
+| **Note**                                                              |
+|                                                                       |
+| A dividend must first be agreed by the directors and recorded in the  |
+| minutes of a directors' meeting. Declare it in DavSuite only after    |
+| that decision.                                                        |
++-----------------------------------------------------------------------+
+
+## **12A.4 Settings**
+
+Directors Board Settings is where Admin and Director users set the
+targets the Scorecard checks against, such as the tax reserve and
+minimum cash to keep in the business.
+
 # **Section 13 --- Administration**
 
 Administration is where Admin-role users configure the workspace. It is
@@ -2369,8 +2766,8 @@ organized into the following groups:
   Finance Settings   Expense Categories; Expense Sub-Categories; Payment
                      Methods; Payment Accounts; VAT/WHT Calculation Basis
                      (Sales Tax Basis --- see also Section 6.9); Asset
-                     Categories; Depreciation Methods; Inventory Go-Live;
-                     Approvers
+                     Categories; Depreciation Methods; Online Payments;
+                     Inventory Go-Live; Approvers
 
   HR Settings        Salary Settings (default pay and allowances by
                      Position/Employment Type), Leave Settings (approver
@@ -2378,14 +2775,16 @@ organized into the following groups:
                      roster configuration. Ghana PAYE/SSNIT/casual rates
                      are platform-wide (Section 8.2a), not set here.
 
-  Operations         Service Categories, Contract & Project Assignments,
-  Settings           Roster & Shift Settings
+  Operations         Service Categories, Contract Assignments, Site
+  Settings           Assignments, Roster & Shift Settings (shift times,
+                     grace and public holidays)
 
   User Accounts      Create, edit, deactivate, reset passwords for, or
                      delete users in your workspace
 
   Workspace Settings Business Units; Workspace Settings (name, logo,
-                     address, signature); Billing Settings; Report a
+                     address, signature); Billing Settings (DavSuite
+                     subscription, invoices and SMS credits); Report a
                      Problem
 
   Platform Settings  Tenant Management; Tier Pricing; Platform Unit
@@ -2494,15 +2893,58 @@ app when something is wrong.
 
 ## **13.3 Payment Accounts**
 
-Save one or more payment profiles --- bank account and/or mobile money
-details --- so they can be selected when generating a Client Invoice.
-Add, edit, or deactivate payment accounts from Administration → Finance
-Settings → Payment Accounts.
+Your company's bank and Mobile Money accounts, kept under
+**Administration → Finance Settings → Payment Accounts**.
 
-**Payment Settlement.** When a customer pays by Mobile Money or card
-through POS, the payment settles directly to your own linked bank or
-mobile money account, not to Davors Technologies. Keep those profiles up to date
-under Payment Accounts / Billing Settings as applicable.
+**What they're for**
+
+-   **On invoices and quotations** --- your customer sees where to pay,
+    for example "Pay to: Republic Bank, 0410648591101" or "MTN MoMo
+    merchant 0547346731".
+
+-   **In your records** --- when you record money coming in or going out
+    (a sale, an expense, a salary advance), you pick which account it
+    went through, so you always know where your money is.
+
+**What they're not for**
+
+-   Taking Mobile Money at POS or in Sales. DavSuite can't see money
+    arriving in these accounts. For that, use **Online Payments**
+    (Section 13.3a).
+
+An account that is already linked to records cannot be deleted ---
+deactivate it instead, so it is no longer offered but past records stay
+intact.
+
+### **13.3a Online Payments**
+
+**Administration → Finance Settings → Online Payments** is where you
+connect the account that receives Mobile Money payments made through
+DavSuite (POS, Add sale and payment links). Money from those payments
+settles directly to your own bank or Mobile Money account, not to Davors.
+
+The page shows one of three statuses:
+
+-   **Connected** --- Paystack has confirmed the account; Mobile Money
+    works everywhere.
+
+-   **Not connected** --- no account yet; Mobile Money shows **Not set
+    up** and staff take Cash payment.
+
+-   **Needs attention** --- Paystack cannot find or use the account.
+    Mobile Money is paused until you update the settlement account.
+    Administrators and Directors receive a notification when this
+    happens.
+
+DavSuite re-checks the connection every night and whenever this page is
+opened or saved.
+
+**Which money setting is which?** **Payment Methods** --- how customers
+and suppliers pay you (cash, Mobile Money, bank). **Payment Accounts**
+--- your company accounts, used to record where money goes. **Online
+Payments** --- the Paystack connection for Mobile Money collected through
+DavSuite. **Billing Settings** (under Workspace Settings) --- only your
+DavSuite subscription, invoices and SMS credits.
 
 ## **13.4 Inventory Go-Live**
 
@@ -2835,6 +3277,48 @@ loyalty adjust automatically.
   Customer credits   Balance Sheet liability for unused store credit owed
                      to customers (see Section 6.6)
 
+  Directors Board    The area, visible only to Admin and Director users,
+                     for the Scorecard, Dividends, Shareholders and their
+                     Settings (Section 12A)
+
+  Dividend           A share of after-tax profit paid to the owners
+                     (shareholders), declared by the directors and paid
+                     from retained earnings
+
+  Dividend           The 8% tax deducted from each dividend payment and
+  withholding tax    paid to GRA; shown in the Statutory Ledger until
+                     remitted
+
+  Retained earnings  All profits the business has made since it started,
+                     less dividends declared. Carried into each new
+                     financial year automatically
+
+  Shareholder        The list of the company's owners and their
+  register           shareholdings, kept on the Directors Board
+
+  Attendance         A late arrival or early leave flagged for a manager
+  exception          to decide Full day, Half day, or Absent
+
+  Grace period       Minutes after start (late) or before end
+                     (early-leave) before an attendance exception is
+                     raised
+
+  Attendance mode    How an employee clocks in: Exempt, Quick remote, or
+                     Standard (role default or override on the employee
+                     record)
+
+  Remote work        Planned remote weekdays for a staff member, with
+  arrangement        optional auto-approve of remote clock-ins
+
+  Earned gross       Gross pay after unpaid absence is taken off, before
+                     SSNIT and PAYE (from October 2026 payroll)
+
+  Check payment      Sales register action that asks Paystack whether a
+                     payment already arrived for an awaiting sale
+
+  Payments needing   Paystack payments that arrived but could not be
+  attention          recorded as a sale (for example stock ran out)
+
 # **Section 19 --- AI Assistant (Ask DavSuite)**
 
 A built-in chat assistant (**Ask DavSuite**, floating button on
@@ -2854,3 +3338,9 @@ answer.
 It answers questions and points you to the right screen --- it does not
 create, edit, or delete records on your behalf. Any change still has to
 be made by you, the normal way.
+
+From version 3.3 it can also help with attendance and shifts (for
+example \"who has pending attendance exceptions this month\" or \"what
+are the weekend shift times at Central University\"), remote work
+arrangements, Paystack payments awaiting confirmation, and the new POS
+and payroll rules described in this handbook.

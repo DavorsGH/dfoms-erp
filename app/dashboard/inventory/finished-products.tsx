@@ -39,6 +39,7 @@ import {
   formatInventoryMoney,
   formatInventoryQuantity,
 } from "./inventory-utils";
+import { formatDate } from "../finance/income-register-utils";
 import { allocateProductBarcode, allocateProductCode } from "./inventory-ids-api";
 import ProductBarcodeLabelPrint from "./product-barcode-label-print";
 import {
@@ -2129,7 +2130,7 @@ export default function FinishedProducts({
                       className={getStripedRowClassName(index)}
                     >
                       <td className="px-4 py-3">
-                        {adjustment.created_at.slice(0, 10)}
+                        {formatDate(adjustment.created_at)}
                       </td>
                       <td className="px-4 py-3">
                         {adjustment.product?.product_name ??

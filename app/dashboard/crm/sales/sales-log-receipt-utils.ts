@@ -1,5 +1,8 @@
 import type { ClientEntry } from "../../operations/clients-utils";
-import { getIncomeCustomerDisplayName } from "../../finance/income-register-utils";
+import {
+  formatProductSaleStatusForDisplay,
+  getIncomeCustomerDisplayName,
+} from "../../finance/income-register-utils";
 import type { PosReceiptData } from "../../pos/pos-receipt";
 import {
   creditNoteNumberFromNotes,
@@ -24,8 +27,7 @@ import {
   withReceiptPaymentLines,
 } from "../product-sale-receipt";
 import {
-  incomeFallbackPaymentLine,
-  listedPaymentsFromRows,
+  buildReceiptPaymentLines,
   type ReceiptListedPayment,
 } from "../../pos/receipt-settlement";
 import { PRODUCT_SALE_PAYMENT_SELECT } from "@/utils/product-sale-payments-types";
@@ -156,6 +158,9 @@ export function buildPosReceiptFromProductSaleEntries(
     netTotal: settlement.netTotal,
     storeCreditIssued: settlement.storeCreditIssued,
     cashRefunded: settlement.cashRefunded,
+    saleStatus: formatProductSaleStatusForDisplay(
+      (saleEntries[0] ?? first).sale_status,
+    ),
   };
 }
 
@@ -175,19 +180,18 @@ async function loadListedPayments(
   if (error) {
     throw new Error(error.message);
   }
-  const recorded = listedPaymentsFromRows(data ?? []);
-  if (recorded.length > 0) {
-    return recorded;
-  }
-  return rows.flatMap((row) => {
-    const line = incomeFallbackPaymentLine({
+  return buildReceiptPaymentLines(
+    rows.map((row) => ({
+      id: row.id,
       date: row.date,
-      amount: Number(row.amount_received) || 0,
+      amount: Number(row.amount) || 0,
+      amount_received: Number(row.amount_received) || 0,
       notes: row.notes,
-      paymentMethod: row.payment_method,
-    });
-    return line ? [line] : [];
-  });
+      payment_method: row.payment_method,
+      is_sale_return: row.is_sale_return === true,
+    })),
+    data ?? [],
+  );
 }
 
 async function loadProductSaleRows(

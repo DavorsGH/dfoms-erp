@@ -3,6 +3,7 @@ import {
   PAYROLL_STATUS_LOCKED,
 } from "@/app/dashboard/hr-payroll/payroll-period-utils";
 import { pendingExceptionLockRefusal } from "@/lib/shift-attendance";
+import { formatDate } from "@/app/dashboard/finance/income-register-utils";
 
 export function payrollTodayIso(reference = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -23,7 +24,7 @@ export function permanentLockMonthEndMessage(
   if (todayIso.slice(0, 10) >= end) {
     return null;
   }
-  return `Permanent lock is available on or after ${end}.`;
+  return `Permanent lock is available on or after ${formatDate(end)}.`;
 }
 
 export type FullLockServerBlock =

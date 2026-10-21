@@ -2,6 +2,10 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  resolveAttendanceMode,
+  type AttendanceMode,
+} from "@/lib/attendance-mode";
 import { requireAuthenticated } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
@@ -25,6 +29,8 @@ export type SessionActor = {
   staffId: string | null;
   fullName: string;
   remoteAttendanceAllowed: boolean;
+  /** Employee override, else the default for the signed-in user's role. */
+  attendanceMode: AttendanceMode;
   assignedSiteId: string | null;
   employmentType: string | null;
   contractProject: string | null;
@@ -90,6 +96,7 @@ export async function requireSessionActor(): Promise<
     staffId: null,
     fullName: account.email?.trim() || "User",
     remoteAttendanceAllowed: false,
+    attendanceMode: resolveAttendanceMode(null, account.role),
     assignedSiteId: null,
     employmentType: null,
     contractProject: null,
@@ -99,7 +106,7 @@ export async function requireSessionActor(): Promise<
     const { data: employee } = await admin
       .from("employees")
       .select(
-        "staff_id, full_name, remote_attendance_allowed, assigned_site_id, employment_type, contract_project",
+        "staff_id, full_name, remote_attendance_allowed, attendance_mode, assigned_site_id, employment_type, contract_project",
       )
       .eq("tenant_id", actor.tenantId)
       .eq("employee_id", account.employee_id)
@@ -109,6 +116,7 @@ export async function requireSessionActor(): Promise<
       actor.staffId = employee.staff_id ?? null;
       actor.fullName = employee.full_name?.trim() || actor.fullName;
       actor.remoteAttendanceAllowed = employee.remote_attendance_allowed === true;
+      actor.attendanceMode = resolveAttendanceMode(employee, account.role);
       actor.assignedSiteId = employee.assigned_site_id ?? null;
       actor.employmentType = employee.employment_type ?? null;
       actor.contractProject = employee.contract_project ?? null;

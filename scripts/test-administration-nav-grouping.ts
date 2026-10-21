@@ -162,8 +162,8 @@ function run() {
     operationsSettings.items.map((item) => item.label),
     [
       "Service Categories",
-      "Contract & Project Assignments",
-      "Sites",
+      "Contract Assignments",
+      "Site Assignments",
       "Roster & Shift Settings",
     ],
   );
@@ -177,7 +177,9 @@ function run() {
   assert(!isDirectorAdministrationPath("/dashboard/user-accounts"));
   assert(!isDirectorAdministrationPath(""));
   assert(isDirectorAdministrationPath("/dashboard/administration/payment-accounts"));
+  assert(isDirectorAdministrationPath("/dashboard/administration/online-payments"));
   assert(isDirectorAdministrationPath("/dashboard/administration/leave-settings"));
+
   assert(isDirectorAdministrationPath("/dashboard/administration/projects"));
   assert.deepEqual([...PAYMENT_AND_LEAVE_APPROVER_ROLES], [
     "super_admin",

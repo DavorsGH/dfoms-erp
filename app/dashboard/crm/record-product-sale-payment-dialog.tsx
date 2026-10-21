@@ -21,6 +21,7 @@ import {
 import ManualSaleCollectionFields from "./manual-sale-collection-fields";
 import { openManualSalePaystackInline } from "./manual-sale-paystack-client";
 import RequestPaymentModal from "@/app/dashboard/pos/request-payment-modal";
+import MobileMoneyNotSetupModal from "@/components/mobile-money-not-setup-modal";
 
 type RecordProductSalePaymentDialogProps = {
   incomeId: string;
@@ -29,6 +30,8 @@ type RecordProductSalePaymentDialogProps = {
   paymentMethods: string[];
   defaultEmail?: string;
   defaultPhone?: string;
+  mobileMoneyCollectionReady?: boolean;
+  viewerRole?: string | null;
   onClose: () => void;
   onSuccess?: () => void;
 };
@@ -42,6 +45,8 @@ export default function RecordProductSalePaymentDialog({
   outstanding,
   defaultEmail = "",
   defaultPhone = "",
+  mobileMoneyCollectionReady = true,
+  viewerRole = null,
   onClose,
   onSuccess,
 }: RecordProductSalePaymentDialogProps) {
@@ -61,12 +66,20 @@ export default function RecordProductSalePaymentDialog({
   const [payerEmail, setPayerEmail] = useState(defaultEmail);
   const [payerPhone, setPayerPhone] = useState(defaultPhone);
   const [linkOpen, setLinkOpen] = useState(false);
+  const [momoNotSetupOpen, setMomoNotSetupOpen] = useState(false);
 
   function payerEmailReady(): boolean {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payerEmail.trim());
   }
 
   async function payNow() {
+    if (
+      paymentMethod === "Mobile Money" &&
+      !mobileMoneyCollectionReady
+    ) {
+      setMomoNotSetupOpen(true);
+      return;
+    }
     if (!payerEmailReady()) {
       setSubmitting(false);
       await alertError(
@@ -104,6 +117,13 @@ export default function RecordProductSalePaymentDialog({
   }
 
   async function sendLink() {
+    if (
+      paymentMethod === "Mobile Money" &&
+      !mobileMoneyCollectionReady
+    ) {
+      setMomoNotSetupOpen(true);
+      return;
+    }
     if (!payerEmailReady() && !payerPhone.trim()) {
       setSubmitting(false);
       await alertError(
@@ -320,6 +340,8 @@ export default function RecordProductSalePaymentDialog({
             onEmail={setPayerEmail}
             phone={payerPhone}
             onPhone={setPayerPhone}
+            paystackCollectAllowed={mobileMoneyCollectionReady}
+            onPaystackBlocked={() => setMomoNotSetupOpen(true)}
           />
 
           <div className="flex flex-wrap justify-end gap-2 pt-2">
@@ -380,6 +402,12 @@ export default function RecordProductSalePaymentDialog({
           />
         ) : null}
       </div>
+      {momoNotSetupOpen ? (
+        <MobileMoneyNotSetupModal
+          viewerRole={viewerRole}
+          onClose={() => setMomoNotSetupOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

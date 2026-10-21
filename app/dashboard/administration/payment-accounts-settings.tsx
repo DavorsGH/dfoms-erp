@@ -7,6 +7,10 @@ import { useRouter } from "next/navigation";
 import PaymentAccountFormFields from "@/components/payment-account-form-fields";
 import type { BusinessUnitRow } from "@/utils/business-units-types";
 import {
+  PAYMENT_ACCOUNT_IN_USE_CODE,
+  PAYMENT_ACCOUNT_IN_USE_TITLE,
+} from "@/utils/payment-account-usage";
+import {
   emptyPaymentAccountForm,
   formatPaymentAccountAvailabilityLabel,
   paymentAccountContactWarning,
@@ -181,6 +185,51 @@ export default function PaymentAccountsSettings({
     router.refresh();
   }
 
+  async function deactivateAccount(account: PaymentAccountRow) {
+    setDeletingId(account.id);
+    const response = await fetch("/api/payment-accounts", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: account.id,
+        account_name: account.account_name,
+        bank_name: account.bank_name,
+        bank_account_number: account.bank_account_number,
+        momo_provider: account.momo_provider,
+        momo_number: account.momo_number,
+        momo_merchant_name: account.momo_merchant_name,
+        momo_merchant_id: account.momo_merchant_id,
+        is_active: false,
+        availability:
+          account.business_unit_ids.length > 0 ? "selected" : "all",
+        business_unit_ids: account.business_unit_ids,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as
+      | { payment_account?: PaymentAccountRow; error?: string }
+      | null;
+
+    if (!response.ok) {
+      setDeletingId(null);
+      await alertError(payload?.error ?? "Unable to deactivate payment account.");
+      return;
+    }
+
+    const updated = payload?.payment_account;
+    if (updated) {
+      setAccounts((current) =>
+        current.map((entry) => (entry.id === updated.id ? updated : entry)),
+      );
+    } else {
+      await refreshAccounts();
+    }
+
+    toast("Account deactivated");
+    setDeletingId(null);
+    router.refresh();
+  }
+
   async function handleDelete(account: PaymentAccountRow) {
     const confirmed = await confirmDialog({
       message: `Delete payment account "${account.account_name}"? This cannot be undone.`,
@@ -201,12 +250,38 @@ export default function PaymentAccountsSettings({
     });
 
     const payload = (await response.json().catch(() => null)) as
-      | { error?: string }
+      | {
+          error?: string;
+          code?: string;
+          title?: string;
+          canDeactivate?: boolean;
+        }
       | null;
 
     if (!response.ok) {
       setDeletingId(null);
-      await alertError(payload?.error ?? "Unable to delete payment account.");
+      const inUse =
+        response.status === 409 ||
+        payload?.code === PAYMENT_ACCOUNT_IN_USE_CODE;
+
+      if (inUse && payload?.canDeactivate !== false) {
+        const deactivate = await confirmDialog({
+          title: payload?.title?.trim() || PAYMENT_ACCOUNT_IN_USE_TITLE,
+          message:
+            payload?.error?.trim() ||
+            `${account.account_name} is linked to other records, so it can't be deleted. Deactivate it instead — it will no longer be offered for new records, and past records stay intact.`,
+          confirmLabel: "Deactivate account",
+          cancelLabel: "Cancel",
+        });
+        if (deactivate) {
+          await deactivateAccount(account);
+        }
+        return;
+      }
+
+      await alertError(payload?.error ?? "Unable to delete payment account.", {
+        title: "Couldn't delete payment account",
+      });
       return;
     }
 
@@ -225,14 +300,9 @@ export default function PaymentAccountsSettings({
     <div className="space-y-6">
       <section className={cardClassName}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h3 className="text-sm font-medium text-slate-700">
-              Saved Payment Accounts
-            </h3>
-            <p className="mt-1 text-xs text-slate-500">
-              Company bank and mobile-money profiles used on customer invoices.
-            </p>
-          </div>
+          <h3 className="text-sm font-medium text-slate-700">
+            Saved Payment Accounts
+          </h3>
           <button
             type="button"
             onClick={openCreateForm}

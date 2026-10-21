@@ -13,6 +13,10 @@ import DashboardButton from "@/components/dashboard-button";
 import TimePickerField from "@/components/time-picker-field";
 import { useAlert, useToast } from "@/components/feedback/feedback-context";
 import {
+  EXEMPT_ATTENDANCE_MESSAGE,
+  type AttendanceMode,
+} from "@/lib/attendance-mode";
+import {
   pastDayFieldIssues,
   preselectRemoteLocation,
   recentCustomLocations,
@@ -28,6 +32,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import { formatDate } from "@/app/dashboard/finance/income-register-utils";
 
 type RemoteRequest = {
   id: string;
@@ -195,6 +200,10 @@ export default function RemoteAttendancePanel() {
   const { toast } = useToast();
   const { alertError } = useAlert();
   const [allowed, setAllowed] = useState<boolean | null>(null);
+  const [attendanceMode, setAttendanceMode] = useState<AttendanceMode>("standard");
+  const [exemptMessage, setExemptMessage] = useState<string | null>(null);
+  const [autoApprove, setAutoApprove] = useState(false);
+  const [approvalNote, setApprovalNote] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [requests, setRequests] = useState<RemoteRequest[]>([]);
   const [busy, setBusy] = useState(false);
@@ -217,12 +226,20 @@ export default function RemoteAttendancePanel() {
     const response = await fetch("/api/attendance/remote");
     const body = (await response.json().catch(() => null)) as {
       allowed?: boolean;
+      mode?: AttendanceMode;
+      message?: string;
+      auto_approve?: boolean;
+      approval_note?: string | null;
       requests?: RemoteRequest[];
       error?: string;
     } | null;
     if (!response.ok) {
       throw new Error(body?.error ?? "Could not load remote attendance.");
     }
+    setAttendanceMode(body?.mode ?? "standard");
+    setExemptMessage(body?.message ?? null);
+    setAutoApprove(body?.auto_approve === true);
+    setApprovalNote(body?.approval_note ?? null);
     setAllowed(Boolean(body?.allowed));
     setRequests(body?.requests ?? []);
     setLoadFailed(false);
@@ -325,6 +342,8 @@ export default function RemoteAttendancePanel() {
       });
       const body = (await response.json().catch(() => null)) as {
         error?: string;
+        message?: string;
+        auto_approved?: boolean;
       } | null;
       if (!response.ok) {
         const message = body?.error ?? "Could not save attendance.";
@@ -345,7 +364,7 @@ export default function RemoteAttendancePanel() {
         await alertError(new Error(message));
         return;
       }
-      toast(okMessage);
+      toast(body?.auto_approved && body.message ? body.message : okMessage);
       setBusy(false);
       await load();
     } catch (submitError) {
@@ -372,7 +391,7 @@ export default function RemoteAttendancePanel() {
         reason: reason.trim(),
         ...geo,
       },
-      "Clock-in request sent for approval",
+      autoApprove ? "Clocked in" : "Clock-in request sent for approval",
     );
   }
 
@@ -382,7 +401,7 @@ export default function RemoteAttendancePanel() {
         action: "clock_out",
         location_note: locationNote || todayClockIn?.location_note || undefined,
       },
-      "Clock-out request sent",
+      autoApprove ? "Clocked out" : "Clock-out request sent",
     );
   }
 
@@ -415,7 +434,7 @@ export default function RemoteAttendancePanel() {
         reason: reason.trim(),
         ...geo,
       },
-      "Past day request sent for approval",
+      autoApprove ? "Past day recorded" : "Past day request sent for approval",
     );
   }
 
@@ -452,6 +471,14 @@ export default function RemoteAttendancePanel() {
     return null;
   }
 
+  if (attendanceMode === "exempt") {
+    return (
+      <p className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+        {exemptMessage ?? EXEMPT_ATTENDANCE_MESSAGE}
+      </p>
+    );
+  }
+
   if (!allowed) {
     return (
       <p className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
@@ -468,8 +495,10 @@ export default function RemoteAttendancePanel() {
       >
         <h3 className="text-base font-semibold text-[#0f2744]">Today</h3>
         <p className="mt-1 text-sm text-slate-600">
-          Clock-in creates a pending request. Your approver records attendance
-          only after approval. Location is stored only if the browser allows it.
+          {autoApprove
+            ? `${approvalNote ?? "Approved automatically"}. Clock in and out in one step. `
+            : "Clock-in creates a pending request. Your approver records attendance only after approval. "}
+          Location is stored only if the browser allows it.
         </p>
         <LocationFields
           scope="today"
@@ -605,7 +634,7 @@ export default function RemoteAttendancePanel() {
               ) : (
                 requests.map((row) => (
                   <tr key={row.id} className="border-t border-slate-100">
-                    <td className="px-2 py-2">{row.work_date}</td>
+                    <td className="px-2 py-2">{formatDate(row.work_date)}</td>
                     <td className="px-2 py-2">{formatWhen(row.clock_in)}</td>
                     <td className="px-2 py-2">{formatWhen(row.clock_out)}</td>
                     <td className="px-2 py-2">{row.location_note?.trim() || "—"}</td>

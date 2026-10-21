@@ -57,6 +57,7 @@ import {
   tenantScopedUpdate,
 } from "@/utils/tenant-scoped-supabase";
 import { allocateProjectCode } from "./project-code-api";
+import { formatCountNoun } from "@/utils/pluralise";
 
 type ProjectsProps = {
   tenantId: string;
@@ -796,7 +797,7 @@ export default function Projects({
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        {getProjectClientName(project, sites)}
+                        {getProjectClientName(project, sites, initialClients)}
                       </td>
                       <td className="px-4 py-3">{getProjectSiteCount(project)}</td>
                       <RegisterRowActions
@@ -831,10 +832,13 @@ export default function Projects({
       </section>
 
       <section className="space-y-4">
+        <h2 className="text-lg font-semibold text-[#0f2744]">
+          Sites on this contract
+        </h2>
         <div className="flex flex-wrap items-end gap-4">
           <div className="min-w-[280px]">
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Site Assignment — Select Contract / Project
+              Contract
             </label>
             <select
               value={selectedProjectId}
@@ -852,7 +856,7 @@ export default function Projects({
           </div>
           {selectedProject ? (
             <p className="text-sm text-slate-600">
-              {assignedSites.length} site(s) linked to{" "}
+              {formatCountNoun(assignedSites.length, "site")} on{" "}
               <span className="font-medium text-[#0f2744]">
                 {selectedProject.project_name}
               </span>
@@ -895,7 +899,9 @@ export default function Projects({
                       <td className="px-4 py-3 font-medium text-[#0f2744]">
                         {site.site_name}
                       </td>
-                      <td className="px-4 py-3">{getSiteClientName(site)}</td>
+                      <td className="px-4 py-3">
+                        {getSiteClientName(site, initialClients)}
+                      </td>
                       <td className="px-4 py-3">{getSiteBuildingZone(site)}</td>
                       <td className="px-4 py-3">
                         {editingSiteCode === site.site_code ? (
@@ -940,7 +946,7 @@ export default function Projects({
                             onClick={() => openEditSiteStaff(site)}
                             className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                           >
-                            Edit Staff
+                            Required staff
                           </button>
                         )}
                       </td>

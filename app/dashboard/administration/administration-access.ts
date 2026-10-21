@@ -4,6 +4,7 @@ export const DIRECTOR_ADMINISTRATION_PREFIXES = [
   "/dashboard/administration/expense-subcategories",
   "/dashboard/administration/payment-methods",
   "/dashboard/administration/payment-accounts",
+  "/dashboard/administration/online-payments",
   "/dashboard/administration/sales-tax-basis",
   "/dashboard/administration/asset-categories",
   "/dashboard/administration/depreciation-methods",

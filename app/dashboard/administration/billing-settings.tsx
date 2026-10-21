@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQueryTab } from "@/hooks/use-query-tab";
 import {
   formatBillingCycle,
   formatProductPrice,
@@ -35,7 +34,6 @@ import {
 } from "@/utils/subscription-cancellation";
 import { formatTrialCountdownMessage } from "@/utils/subscription-date-display";
 import { subscriptionCancelledAccessActive } from "@/utils/subscription-access";
-import PaymentSettings from "./payment-settings";
 
 export type BillingTierOption = {
   id: string;
@@ -68,8 +66,6 @@ type BillingSettingsProps = {
   referralCode?: string | null;
   creditLedger?: AccountCreditLedgerRow[];
   fetchError: string | null;
-  /** Initial tab, e.g. from ?tab=payment deep links (POS Payment Settings). */
-  initialTab?: "billing" | "payment";
 };
 
 const inputClassName =
@@ -89,13 +85,6 @@ const dangerButtonClassName =
 
 const dangerSectionClassName =
   "space-y-4 rounded-lg border border-red-200 bg-red-50 p-6 shadow-sm";
-
-const tabClassName = (active: boolean) =>
-  `shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-    active
-      ? "bg-[#0f2744] text-white"
-      : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
-  }`;
 
 const TIER_RANK: Record<string, number> = {
   Starter: 0,
@@ -196,7 +185,6 @@ export default function BillingSettings({
   referralCode = null,
   creditLedger = [],
   fetchError,
-  initialTab = "billing",
 }: BillingSettingsProps) {
   const router = useRouter();
   const [form, setForm] = useState(() => toFormState(billingSettings));
@@ -212,10 +200,6 @@ export default function BillingSettings({
     null,
   );
   const [walletBalance, setWalletBalance] = useState(smsCreditBalance);
-  const { tab: activeTab, setTab: setActiveTab } = useQueryTab<"billing" | "payment">({
-    values: ["billing", "payment"],
-    defaultTab: initialTab === "payment" ? "payment" : "billing",
-  });
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [cancelReason, setCancelReason] =
     useState<SubscriptionCancellationReason>("too_expensive");
@@ -602,33 +586,8 @@ export default function BillingSettings({
 
   return (
     <div className="max-w-4xl space-y-8">
-      <nav className="border-b border-slate-200 pb-4" aria-label="Billing settings">
-        <div className="flex gap-2 overflow-x-auto pb-1" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "billing"}
-            onClick={() => setActiveTab("billing")}
-            className={tabClassName(activeTab === "billing")}
-          >
-            Billing Settings
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "payment"}
-            onClick={() => setActiveTab("payment")}
-            className={tabClassName(activeTab === "payment")}
-          >
-            Payment Settings
-          </button>
-        </div>
-      </nav>
-
-      <div hidden={activeTab !== "billing"} className="space-y-8">
       <p className="text-sm text-slate-600">
-        Manage your subscription, invoices, and billing contact details for this
-        workspace.
+        Your DavSuite subscription, invoices and SMS credits.
       </p>
 
       {error ? (
@@ -1437,12 +1396,6 @@ export default function BillingSettings({
           </div>
         </div>
       ) : null}
-      </div>
-
-      <PaymentSettings
-        initialStatus={billingSettings.paystack_subaccount_status}
-        hidden={activeTab !== "payment"}
-      />
     </div>
   );
 }

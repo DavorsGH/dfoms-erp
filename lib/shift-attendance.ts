@@ -508,13 +508,19 @@ export function attendanceScheduleColumns(input: {
   schedule: ExpectedSchedule | null;
   dayType?: ScheduleDayType | null;
   existingExceptionStatus?: string | null;
+  /**
+   * Attendance mode "exempt": never late, never left early, never a pending
+   * exception. The schedule is not stamped because nothing is measured.
+   */
+  exempt?: boolean;
 }): AttendanceScheduleColumns | null {
   if (isReviewedException(input.existingExceptionStatus)) {
     return null;
   }
 
-  const schedule = input.schedule;
-  const dayType = schedule?.dayType ?? input.dayType ?? null;
+  const schedule = input.exempt ? null : input.schedule;
+  const dayType =
+    (input.exempt ? null : input.schedule?.dayType) ?? input.dayType ?? null;
   if (!schedule) {
     return {
       scheduled_shift: null,

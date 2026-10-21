@@ -30,6 +30,7 @@ import {
 import { CLIENT_SELECT, type ClientEntry } from "../../operations/clients-utils";
 import CrmShell from "../crm-shell";
 import SalesRegister from "./sales-register";
+import { isMobileMoneyCollectionReady } from "@/utils/product-sale-settlement";
 import {
   normalizeProductSaleEntry,
   PRODUCT_SALES_SELECT,
@@ -137,6 +138,11 @@ export default async function SalesPage() {
     (webhookRows as WebhookSaleRow[] | null) ?? []
   ).map((row) => normalizeWebhookSale(row));
 
+  const mobileMoneyCollectionReady = await isMobileMoneyCollectionReady(
+    tenantId,
+    activeBusinessUnitId,
+  );
+
   return (
     <CrmShell sectionTitle="Sales" hideSectionTitle>
       <SalesRegister
@@ -157,6 +163,7 @@ export default async function SalesPage() {
         activeBusinessUnitId={activeBusinessUnitId}
         tenantId={tenantId}
         viewerRole={viewerRole}
+        mobileMoneyCollectionReady={mobileMoneyCollectionReady}
       />
     </CrmShell>
   );

@@ -93,6 +93,117 @@ export function incomeFallbackPaymentLine(input: {
   };
 }
 
+/** Stable key for a receipt preview: invoice no. + line count + totals. */
+export function receiptPreviewFingerprint(parts: {
+  invoiceNo: string;
+  lineCount: number;
+  totals: Array<number | string | null | undefined>;
+}): string {
+  return [
+    parts.invoiceNo,
+    parts.lineCount,
+    ...parts.totals.map((value) =>
+      typeof value === "number" ? value.toFixed(2) : (value ?? ""),
+    ),
+  ].join("|");
+}
+
+export type ReceiptPaymentIncomeRow = {
+  id?: string | null;
+  date?: string | null;
+  amount_received?: number | null;
+  notes?: string | null;
+  payment_method?: string | null;
+  amount?: number | null;
+  is_sale_return?: boolean | null;
+};
+
+export type ReceiptPaymentRecordRow = {
+  income_id?: string | null;
+  payment_date?: string | null;
+  payment_method?: string | null;
+  amount?: number | null;
+  notes?: string | null;
+};
+
+function mergeListedPayments(lines: ReceiptListedPayment[]): ReceiptListedPayment[] {
+  const merged: ReceiptListedPayment[] = [];
+  for (const line of lines) {
+    const existing = merged.find(
+      (candidate) =>
+        candidate.date.slice(0, 10) === line.date.slice(0, 10) &&
+        candidate.method === line.method &&
+        (candidate.reference ?? "") === (line.reference ?? ""),
+    );
+    if (existing) {
+      existing.amount = round2(existing.amount + line.amount);
+    } else {
+      merged.push({ ...line });
+    }
+  }
+  return merged;
+}
+
+/**
+ * Every tender on a receipt, so the lines add up to "Total paid".
+ *
+ * At-sale payment per income row = amount_received minus that row's recorded
+ * product_sale_payments (only when above zero). A Paystack payment that already
+ * has a payment row is therefore counted once, through the row. Later payments
+ * follow. Lines are in date order; at-sale lines lead on the same day.
+ */
+export function buildReceiptPaymentLines(
+  incomeRows: ReceiptPaymentIncomeRow[],
+  paymentRows: ReceiptPaymentRecordRow[],
+): ReceiptListedPayment[] {
+  const saleRows = incomeRows.filter(
+    (row) =>
+      row.is_sale_return !== true &&
+      (Number(row.amount) || 0) >= 0 &&
+      !/^Credit note\s+/i.test(row.notes?.trim() ?? ""),
+  );
+  const saleIds = new Set(
+    saleRows.map((row) => row.id?.trim()).filter((id): id is string => Boolean(id)),
+  );
+  const recorded = paymentRows.filter((row) => {
+    if ((Number(row.amount) || 0) <= 0.001) {
+      return false;
+    }
+    const incomeId = row.income_id?.trim();
+    return !incomeId || saleIds.size === 0 || saleIds.has(incomeId);
+  });
+
+  const atSale: ReceiptListedPayment[] = [];
+  for (const row of saleRows) {
+    const rowId = row.id?.trim();
+    const recordedSum = round2(
+      recorded
+        .filter((payment) => (payment.income_id?.trim() ?? "") === (rowId ?? "\u0000"))
+        .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0),
+    );
+    const residual = round2((Number(row.amount_received) || 0) - recordedSum);
+    if (residual <= 0.001) {
+      continue;
+    }
+    const fromNotes = row.notes?.match(/^Payment method:\s*(.+)$/m)?.[1]?.trim();
+    const column = canonicalReceiptPaymentMethod(row.payment_method);
+    atSale.push({
+      date: row.date?.trim() || "",
+      method: canonicalReceiptPaymentMethod(fromNotes) || column || "Cash",
+      amount: residual,
+      reference: receiptPaymentReference(row.notes),
+    });
+  }
+
+  const later = listedPaymentsFromRows(recorded);
+  const byDate = (left: ReceiptListedPayment, right: ReceiptListedPayment) =>
+    left.date.slice(0, 10).localeCompare(right.date.slice(0, 10));
+  return mergeListedPayments([
+    ...mergeListedPayments(atSale),
+    ...later,
+  ].sort(byDate));
+}
+
 /** Paid, Part-paid, or Unpaid from the amount received against the sale total. */
 export function receiptPaymentStanding(
   total: number,

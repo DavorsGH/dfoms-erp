@@ -1,4 +1,8 @@
-import { resolveIncomeOutstandingBalance } from "@/app/dashboard/finance/income-register-utils";
+import {
+  getIncomeCustomerDisplayName,
+  resolveIncomeOutstandingBalance,
+} from "@/app/dashboard/finance/income-register-utils";
+import type { ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import { formatInventoryQuantity } from "@/app/dashboard/inventory/inventory-utils";
 import type { HrEmployee } from "@/app/dashboard/hr-payroll/employee-utils";
 import {
@@ -67,6 +71,8 @@ export type SalesRegisterReceiptRow = {
   voided: boolean;
   /** Paystack link or popup is still open. No income lines means the sale is not created yet. */
   paystackPending?: boolean;
+  /** Open payment request behind the awaiting row. Drives Check payment. */
+  paystackRequestId?: string;
 };
 
 export type SalesRegisterReturnRow = {
@@ -840,23 +846,29 @@ export function salesRegisterRowStatusLabel(
 export function mergePaystackPendingRows(
   rows: SalesRegisterRow[],
   requests: OpenPaystackPaymentRequest[],
+  clients: ClientEntry[] = [],
 ): SalesRegisterRow[] {
   const open = requests.filter(
     (request) => request.status === "pending" || request.status === "sent",
   );
-  const pendingInvoices = new Set(
-    open
-      .filter((request) => request.income_ids.length > 0)
-      .map((request) => request.invoice_no.trim())
-      .filter(Boolean),
-  );
+  const pendingInvoices = new Map<string, string>();
+  for (const request of open) {
+    const invoice = request.invoice_no.trim();
+    if (request.income_ids.length > 0 && invoice && !pendingInvoices.has(invoice)) {
+      pendingInvoices.set(invoice, request.id);
+    }
+  }
   const flagged = rows.map((row) => {
     if (
       row.kind === "receipt" &&
       row.source === "manual" &&
       pendingInvoices.has(row.invoiceNo)
     ) {
-      return { ...row, paystackPending: true };
+      return {
+        ...row,
+        paystackPending: true,
+        paystackRequestId: pendingInvoices.get(row.invoiceNo),
+      };
     }
     return row;
   });
@@ -893,7 +905,14 @@ export function mergePaystackPendingRows(
           ? "Pending link"
           : request.invoice_no,
       date: (request.created_at || snapshot.saleDate || "").slice(0, 10),
-      customerLabel: snapshot.customerName?.trim() || snapshot.clientId?.trim() || "Customer",
+      customerLabel: getIncomeCustomerDisplayName(
+        {
+          client_id: snapshot.clientId ?? null,
+          customer_name: snapshot.customerName ?? null,
+          client: null,
+        },
+        clients,
+      ),
       clientId: snapshot.clientId ?? null,
       itemsSummary: productName,
       totalAmount: Math.round((quantity * unitPrice || total) * 100) / 100,
@@ -912,6 +931,7 @@ export function mergePaystackPendingRows(
       businessUnitId: snapshot.businessUnitId ?? null,
       voided: false,
       paystackPending: true,
+      paystackRequestId: request.id,
     });
   }
 

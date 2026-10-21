@@ -10,6 +10,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import { formatDate } from "@/app/dashboard/finance/income-register-utils";
 
 type ApprovalRow = {
   id: string;
@@ -148,7 +149,7 @@ export default function AttendanceApprovals() {
                     {row.employee_name ?? row.staff_id}
                   </td>
                   <td className="px-3 py-2 capitalize">{row.request_type}</td>
-                  <td className="px-3 py-2">{row.work_date}</td>
+                  <td className="px-3 py-2">{formatDate(row.work_date)}</td>
                   <td className="px-3 py-2">{formatWhen(row.clock_in)}</td>
                   <td className="px-3 py-2">{formatWhen(row.clock_out)}</td>
                   <td className="px-3 py-2">

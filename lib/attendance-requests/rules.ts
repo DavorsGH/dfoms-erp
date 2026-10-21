@@ -263,11 +263,15 @@ export function preselectRemoteLocation(latest: string | null | undefined): {
 export function remoteClockOutPlan(input: {
   status: "pending" | "approved";
   remoteAttendanceAllowed: boolean;
+  /** Quick remote mode or a covering auto-approve arrangement: no approver step. */
+  autoApprove?: boolean;
 }): "stamp_pending" | "auto_apply" | "reopen_pending" {
   if (input.status === "pending") {
     return "stamp_pending";
   }
-  return input.remoteAttendanceAllowed ? "auto_apply" : "reopen_pending";
+  return input.remoteAttendanceAllowed || input.autoApprove === true
+    ? "auto_apply"
+    : "reopen_pending";
 }
 
 export function pastDayFieldIssues(input: {

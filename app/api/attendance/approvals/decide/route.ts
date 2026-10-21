@@ -11,6 +11,7 @@ import {
   decideAttendanceRequest,
   isDirectorTierRole,
 } from "@/lib/attendance-requests/rules";
+import { formatDate } from "@/app/dashboard/finance/income-register-utils";
 
 export async function POST(request: Request) {
   const session = await requireSessionActor();
@@ -139,7 +140,7 @@ export async function POST(request: Request) {
     tenantId: actor.tenantId,
     staffId: row.staff_id,
     title: "Attendance request rejected",
-    body: `Your ${row.request_type} attendance for ${row.work_date} was rejected. ${decisionNote}`,
+    body: `Your ${row.request_type} attendance for ${formatDate(row.work_date)} was rejected. ${decisionNote}`,
   });
 
   return NextResponse.json({ ok: true });

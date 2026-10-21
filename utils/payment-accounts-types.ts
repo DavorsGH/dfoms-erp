@@ -1,6 +1,10 @@
 export const PAYMENT_ACCOUNT_SELECT =
   "id, tenant_id, account_name, bank_name, bank_account_number, momo_provider, momo_number, momo_merchant_name, momo_merchant_id, is_active, created_at, updated_at" as const;
 
+/** Canonical Payment Accounts page under Finance Settings. */
+export const PAYMENT_ACCOUNTS_HREF =
+  "/dashboard/administration/payment-accounts" as const;
+
 export type PaymentAccountAvailability = "all" | "selected";
 
 export type PaymentAccountRow = {
@@ -19,6 +23,54 @@ export type PaymentAccountRow = {
   /** Empty = available to all business units. */
   business_unit_ids: string[];
 };
+
+const SAMPLE_INVOICE_BANK_EXAMPLE = "Republic Bank, 0410648591101";
+const SAMPLE_INVOICE_MOMO_EXAMPLE = "MTN MoMo merchant 0547346731";
+
+/**
+ * Invoice/quotation "where to pay" example for the Payment Accounts intro.
+ * Uses the tenant's first active account when one exists; otherwise samples.
+ */
+export function paymentAccountsInvoicePayExample(
+  accounts: ReadonlyArray<
+    Pick<
+      PaymentAccountRow,
+      | "is_active"
+      | "bank_name"
+      | "bank_account_number"
+      | "momo_provider"
+      | "momo_number"
+    >
+  >,
+): string {
+  const active = accounts.find((account) => account.is_active);
+  if (!active) {
+    return `"Pay to: ${SAMPLE_INVOICE_BANK_EXAMPLE}" or "${SAMPLE_INVOICE_MOMO_EXAMPLE}"`;
+  }
+
+  const bankName = active.bank_name?.trim() ?? "";
+  const bankNumber = active.bank_account_number?.trim() ?? "";
+  const bank =
+    bankName && bankNumber ? `${bankName}, ${bankNumber}` : null;
+
+  const momoProvider = active.momo_provider?.trim() ?? "";
+  const momoNumber = active.momo_number?.trim() ?? "";
+  const momo = momoNumber
+    ? `${momoProvider || "Mobile Money"} MoMo merchant ${momoNumber}`
+    : null;
+
+  if (bank && momo) {
+    return `"Pay to: ${bank}" or "${momo}"`;
+  }
+  if (bank) {
+    return `"Pay to: ${bank}"`;
+  }
+  if (momo) {
+    return `"${momo}"`;
+  }
+
+  return `"Pay to: ${SAMPLE_INVOICE_BANK_EXAMPLE}" or "${SAMPLE_INVOICE_MOMO_EXAMPLE}"`;
+}
 
 export type PaymentAccountInput = {
   account_name?: string;

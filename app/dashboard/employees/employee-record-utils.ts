@@ -41,6 +41,8 @@ export type EmployeeRecord = {
   photo_url: string | null;
   business_unit_id?: string | null;
   remote_attendance_allowed?: boolean | null;
+  /** NULL = role default. Otherwise exempt | quick_remote | standard. */
+  attendance_mode?: string | null;
   department_ref?: {
     dept_code: string;
     department_name: string;

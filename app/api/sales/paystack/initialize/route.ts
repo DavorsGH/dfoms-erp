@@ -203,7 +203,7 @@ export async function POST(request: Request) {
   // Tenant fund routing: Request Payment links collect customer money owed to
   // the tenant, so every Paystack charge below (cart path AND invoice path)
   // must route into the tenant's settlement subaccount. BLOCK (never silently
-  // omit the subaccount) if Payment Settings is not active.
+  // omit the subaccount) if Online Payments settlement is not ready.
   const settlement = await requireActiveSettlementSubaccount(auth.tenantId);
   if (!settlement.ok) {
     return NextResponse.json(

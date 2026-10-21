@@ -3,6 +3,11 @@
 import { useMemo, useState } from "react";
 import type { AttendanceRegisterEntry } from "../hr-payroll/attendance-register-utils";
 import {
+  EXEMPT_ATTENDANCE_MESSAGE,
+  isExemptMode,
+  type AttendanceMode,
+} from "@/lib/attendance-mode";
+import {
   attendanceContractLabel,
   attendanceDayKind,
   attendanceExceptionLine,
@@ -30,6 +35,8 @@ type MyAttendanceProps = {
   fetchError: string | null;
   employeeContract: string | null;
   projects: AttendanceContractRef[];
+  /** Resolved mode. Exempt staff do not log attendance. */
+  attendanceMode?: AttendanceMode;
 };
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -99,6 +106,7 @@ export default function MyAttendance({
   fetchError,
   employeeContract,
   projects,
+  attendanceMode = "standard",
 }: MyAttendanceProps) {
   const today = accraToday();
   const [month, setMonth] = useState<MonthParts>(() => monthPartsFromIso(today));
@@ -167,6 +175,17 @@ export default function MyAttendance({
       <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
         Failed to load attendance: {fetchError}
       </div>
+    );
+  }
+
+  if (isExemptMode(attendanceMode)) {
+    return (
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <h2 className="text-xl font-semibold text-[#0f2744]">My attendance</h2>
+        <p className="mt-3 text-sm text-slate-600">
+          {EXEMPT_ATTENDANCE_MESSAGE}
+        </p>
+      </section>
     );
   }
 

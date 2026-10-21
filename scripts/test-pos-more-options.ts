@@ -3,8 +3,11 @@
  *   npx tsx scripts/test-pos-more-options.ts
  */
 import {
+  posMoreOptionsChips,
   posMoreOptionsFocusOnComplete,
+  posMoreOptionsPlacement,
   posPartPaymentShortLine,
+  posPaymentMethodDisplayLabel,
 } from "../app/dashboard/pos/pos-more-options";
 
 function eq(actual: unknown, expected: unknown, message: string) {
@@ -17,8 +20,61 @@ function eq(actual: unknown, expected: unknown, message: string) {
 
 eq(
   posPartPaymentShortLine(9),
-  "Short by GHS 9.00 — this will be a part payment",
+  "Short by GHS 9.00.",
   "shortfall line",
+);
+
+eq(posPaymentMethodDisplayLabel("Cash"), "Cash payment", "cash display label");
+eq(posPaymentMethodDisplayLabel("Mobile Money"), "Mobile Money", "momo display label");
+
+eq(
+  posMoreOptionsPlacement({ anchorTop: 600, anchorBottom: 640, viewportHeight: 800 }).mode,
+  "above",
+  "more room above opens above",
+);
+eq(
+  posMoreOptionsPlacement({ anchorTop: 100, anchorBottom: 140, viewportHeight: 800 }).mode,
+  "below",
+  "more room below opens below",
+);
+eq(
+  posMoreOptionsPlacement({ anchorTop: 300, anchorBottom: 340, viewportHeight: 600 }).mode,
+  "modal",
+  "under 420px either way opens a centred modal",
+);
+const above = posMoreOptionsPlacement({ anchorTop: 600, anchorBottom: 640, viewportHeight: 800 });
+eq(above.maxHeight, 600 - 16, "height capped to space above");
+
+const chipBase = {
+  customerLabel: null,
+  salesRepName: null,
+  dueDate: "2026-10-21",
+  todayIso: "2026-10-21",
+  promoCode: null,
+  storeCreditAmount: null,
+  payerPhone: "",
+  notes: "",
+};
+eq(posMoreOptionsChips(chipBase).length, 0, "no chips when nothing set");
+const allChips = posMoreOptionsChips({
+  customerLabel: "Ama Mensah",
+  salesRepName: "Kofi",
+  dueDate: "2026-10-24",
+  todayIso: "2026-10-21",
+  promoCode: "SAVE10",
+  storeCreditAmount: 5,
+  payerPhone: "0240000000",
+  notes: "Fragile",
+});
+eq(
+  allChips.map((chip) => chip.label).join("|"),
+  "Ama Mensah|Due 24 Oct|Promo SAVE10|Store credit −5.00|Phone 0240000000|Note|Sales rep: Kofi",
+  "chip labels",
+);
+eq(
+  posMoreOptionsChips({ ...chipBase, dueDate: "2026-10-21" }).some((c) => c.key === "due"),
+  false,
+  "due chip hidden when due today",
 );
 
 eq(

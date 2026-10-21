@@ -79,7 +79,9 @@ export default async function AdministrationSitesPage() {
 
   return (
     <>
-      <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">Sites</h2>
+      <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
+        Site Assignments
+      </h2>
       <Sites
         initialSites={normalizedSites}
         initialContracts={contracts}

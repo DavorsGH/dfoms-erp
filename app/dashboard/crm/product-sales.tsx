@@ -7,7 +7,7 @@ import {
   SALES_CRM_ALERT_TITLE,
   clientFacingSalesCrmError,
 } from "@/lib/crm/sales-crm-notifications";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import DashboardButton from "@/components/dashboard-button";
 import FinishedProductPhoto from "@/components/finished-product-photo";
@@ -27,6 +27,18 @@ import ManualSaleCollectionFields from "./manual-sale-collection-fields";
 import { openManualSalePaystackInline } from "./manual-sale-paystack-client";
 import RequestPaymentModal from "@/app/dashboard/pos/request-payment-modal";
 import type { PosCartLine } from "@/app/dashboard/pos/pos-utils";
+import {
+  POS_MANUAL_SALE_HANDOFF_MISSING_MESSAGE,
+  POS_MANUAL_SALE_HANDOFF_PARAM,
+  POS_MANUAL_SALE_RESTORE_PARAM,
+  allocateAmountReceivedAcrossLines,
+  consumePosManualSaleHandoff,
+  formatPosManualSaleSavedToast,
+  manualSaleLinesTotal,
+  writePosManualSaleHandoff,
+  type PosManualSaleHandoffLine,
+  type PosManualSaleHandoffPayload,
+} from "@/app/dashboard/pos/pos-manual-sale-handoff";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import { deleteTaxLedgerEntriesForSource } from "../finance/tax-ledger-sync";
 import {
@@ -101,7 +113,7 @@ import {
   withReceiptPaymentLines,
   type ProductSaleReceiptData,
 } from "./product-sale-receipt";
-import { listedPaymentsFromRows } from "../pos/receipt-settlement";
+import { buildReceiptPaymentLines } from "../pos/receipt-settlement";
 import { PRODUCT_SALE_PAYMENT_SELECT } from "@/utils/product-sale-payments-types";
 import ProductReturnModal from "./product-return-modal";
 import { ProductSaleReturnBadge } from "./product-return-badge";
@@ -113,6 +125,8 @@ import {
   resolveProductSaleCancelBlockReason,
 } from "./product-return-utils";
 import { buildReturnedQtyByIncomeId } from "./sales/sales-register-utils";
+import MobileMoneyNotSetupModal from "@/components/mobile-money-not-setup-modal";
+import { mobileMoneyPaymentMethodOptionLabel } from "@/utils/product-sale-paystack";
 
 function productSaleStatusLabel(entry: ProductSaleEntry): string {
   if (isProductSaleReturn(entry)) {
@@ -133,6 +147,9 @@ type ProductSalesProps = {
   activeBusinessUnitId?: string | null;
   /** Workspace id for BU-scoped finished-product stock overlay. */
   tenantId?: string | null;
+  viewerRole?: string | null;
+  /** False when Paystack settlement is not configured for MoMo collection. */
+  mobileMoneyCollectionReady?: boolean;
   /** When true, only forms/modals — list lives in Sales register. */
   embeddedInSalesRegister?: boolean;
   controlledShowForm?: boolean;
@@ -175,6 +192,8 @@ export default function ProductSales({
   fetchError,
   activeBusinessUnitId = null,
   tenantId = null,
+  viewerRole = null,
+  mobileMoneyCollectionReady = true,
   embeddedInSalesRegister = false,
   controlledShowForm,
   onControlledShowFormChange,
@@ -207,10 +226,17 @@ export default function ProductSales({
   }, [fetchError, alertError]);
 
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const skipFirstStockScopeRefresh = useRef(true);
+  const posHandoffAppliedRef = useRef(false);
+  const posHandoffSessionRef = useRef<{
+    id: string;
+    payload: PosManualSaleHandoffPayload;
+  } | null>(null);
   const [internalEntries, setInternalEntries] = useState(
     initialEntries.map(normalizeProductSaleEntry),
   );
@@ -239,6 +265,10 @@ export default function ProductSales({
     onControlledShowBulkImportChange ?? setInternalShowBulkImport;
   const [form, setForm] = useState(emptyForm);
   const [salesRepId, setSalesRepId] = useState(defaultSalesRepId);
+  const [posHandoffLines, setPosHandoffLines] = useState<
+    PosManualSaleHandoffLine[] | null
+  >(null);
+  const [posHandoffMissingOpen, setPosHandoffMissingOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [collectionMode, setCollectionMode] =
     useState<ManualSaleCollectionMode>("received");
@@ -279,8 +309,12 @@ export default function ProductSales({
   const [recordingPaymentId, setRecordingPaymentId] = useState<string | null>(
     null,
   );
+  const [momoNotSetupOpen, setMomoNotSetupOpen] = useState(false);
 
   const calculatedAmount = useMemo(() => {
+    if (posHandoffLines && posHandoffLines.length > 0) {
+      return manualSaleLinesTotal(posHandoffLines);
+    }
     const quantity = Number.parseFloat(form.sale_quantity);
     const unitPrice = Number.parseFloat(form.unit_price);
     if (Number.isNaN(quantity) || Number.isNaN(unitPrice)) {
@@ -288,7 +322,7 @@ export default function ProductSales({
     }
 
     return Math.round(quantity * unitPrice * 100) / 100;
-  }, [form.sale_quantity, form.unit_price]);
+  }, [form.sale_quantity, form.unit_price, posHandoffLines]);
 
   const previewOutstanding = calculateOutstanding(
     calculatedAmount,
@@ -586,9 +620,100 @@ export default function ProductSales({
     onRefreshEntriesReady?.(refreshEntries);
   });
 
+  function clearPosHandoffSession() {
+    posHandoffSessionRef.current = null;
+    setPosHandoffLines(null);
+  }
+
+  function returnToPosWithHandoffRestore() {
+    const session = posHandoffSessionRef.current;
+    if (!session) {
+      return false;
+    }
+    posHandoffSessionRef.current = null;
+    setPosHandoffLines(null);
+    writePosManualSaleHandoff(session.payload, session.id);
+    router.push(
+      `/dashboard/pos?${POS_MANUAL_SALE_RESTORE_PARAM}=${encodeURIComponent(session.id)}`,
+    );
+    return true;
+  }
+
+  function applyPosHandoffPrefill(payload: PosManualSaleHandoffPayload) {
+    const { prefill } = payload;
+    const first = prefill.lines[0];
+    setPosHandoffLines(
+      prefill.lines.length > 1
+        ? prefill.lines.map((line) => ({ ...line }))
+        : null,
+    );
+    setForm({
+      date: prefill.saleDate || emptyForm.date,
+      client_id: prefill.clientId ?? "",
+      customer_name: prefill.customerName ?? "",
+      product_id: first?.productId ?? "",
+      sale_quantity: first ? String(first.quantity) : "",
+      unit_price: first ? String(first.unitPrice) : "",
+      amount_received: String(prefill.amountReceived),
+      due_date: prefill.dueDate ?? "",
+      payment_method: prefill.paymentMethod || "",
+      notes: prefill.notes,
+    });
+    setSalesRepId(prefill.salesRepId ?? defaultSalesRepId);
+    setCollectionMode("received");
+  }
+
+  useEffect(() => {
+    if (posHandoffAppliedRef.current) {
+      return;
+    }
+    const handoffId =
+      searchParams.get(POS_MANUAL_SALE_HANDOFF_PARAM)?.trim() ?? "";
+    if (!handoffId) {
+      return;
+    }
+    posHandoffAppliedRef.current = true;
+    const payload = consumePosManualSaleHandoff(handoffId);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete(POS_MANUAL_SALE_HANDOFF_PARAM);
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    setShowBulkImport(false);
+    setShowForm(true);
+    setLoading(false);
+    if (!payload || payload.prefill.lines.length === 0) {
+      setForm(emptyForm);
+      setPosHandoffLines(null);
+      posHandoffSessionRef.current = null;
+      setPosHandoffMissingOpen(true);
+      return;
+    }
+    posHandoffSessionRef.current = { id: handoffId, payload };
+    applyPosHandoffPrefill(payload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time URL handoff
+  }, [searchParams, pathname, router]);
+
+  const posHandoffFormWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (showForm) {
+      posHandoffFormWasOpenRef.current = true;
+      return;
+    }
+    if (!posHandoffFormWasOpenRef.current) {
+      return;
+    }
+    posHandoffFormWasOpenRef.current = false;
+    if (!posHandoffSessionRef.current) {
+      return;
+    }
+    returnToPosWithHandoffRestore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- close form / Cancel returns to POS
+  }, [showForm]);
+
   function openAddForm() {
     setLoading(false);
     setShowBulkImport(false);
+    clearPosHandoffSession();
     setForm(emptyForm);
     setShowForm(true);
   }
@@ -605,6 +730,11 @@ export default function ProductSales({
     setLoading(false);
     setForm(emptyForm);
     resetCollection();
+    if (posHandoffSessionRef.current) {
+      setShowForm(false);
+      return;
+    }
+    clearPosHandoffSession();
     setShowForm(false);
   }
 
@@ -710,6 +840,10 @@ export default function ProductSales({
   }
 
   async function payNowWithPaystack() {
+    if (!mobileMoneyCollectionReady && form.payment_method === "Mobile Money") {
+      setMomoNotSetupOpen(true);
+      return;
+    }
     setLoading(true);
     const draft = await buildPaystackCart();
     if (!draft) {
@@ -732,6 +866,11 @@ export default function ProductSales({
     });
     setLoading(false);
     if (!result.ok) {
+      if (result.notConfirmed) {
+        // The request stays on the register as "Awaiting payment" with Check payment.
+        closeForm();
+        onRegisterMutationComplete?.();
+      }
       await alertError(clientFacingSalesCrmError(result.error), {
         title: SALES_CRM_ALERT_TITLE,
       });
@@ -744,6 +883,10 @@ export default function ProductSales({
   }
 
   async function openPaymentLink() {
+    if (!mobileMoneyCollectionReady && form.payment_method === "Mobile Money") {
+      setMomoNotSetupOpen(true);
+      return;
+    }
     setLoading(true);
     const draft = await buildPaystackCart("either");
     setLoading(false);
@@ -811,25 +954,48 @@ export default function ProductSales({
       return;
     }
 
-    const quantity = Number.parseFloat(form.sale_quantity);
-    const unitPrice = Number.parseFloat(form.unit_price);
+    const saleLines: PosManualSaleHandoffLine[] =
+      posHandoffLines && posHandoffLines.length > 0
+        ? posHandoffLines
+        : [
+            {
+              productId: form.product_id,
+              productCode: "",
+              productName: "",
+              unitOfMeasure: "",
+              quantity: Number.parseFloat(form.sale_quantity),
+              unitPrice: Number.parseFloat(form.unit_price),
+              availableStock: 0,
+            },
+          ];
 
-    if (!form.product_id) {
+    if (saleLines.some((line) => !line.productId)) {
       showActionError("Select a finished product.");
       return;
     }
 
-    if (Number.isNaN(quantity) || quantity <= 0) {
+    if (
+      saleLines.some(
+        (line) => Number.isNaN(line.quantity) || line.quantity <= 0,
+      )
+    ) {
       showActionError("Quantity must be greater than zero.");
       return;
     }
 
-    if (Number.isNaN(unitPrice) || unitPrice < 0) {
+    if (
+      saleLines.some(
+        (line) => Number.isNaN(line.unitPrice) || line.unitPrice < 0,
+      )
+    ) {
       showActionError("Unit price must be zero or greater.");
       return;
     }
 
-    const amount = Math.round(quantity * unitPrice * 100) / 100;
+    const lineTotals = saleLines.map(
+      (line) => Math.round(line.quantity * line.unitPrice * 100) / 100,
+    );
+    const amount = manualSaleLinesTotal(saleLines);
 
     if (Number.isNaN(amountReceived) || amountReceived < 0) {
       showActionError("Amount paid now must be zero or greater.");
@@ -849,62 +1015,100 @@ export default function ProductSales({
       return;
     }
 
-    const paymentStatus = deriveProductSalePaymentStatus(amount, amountReceived);
-
-    const product = finishedProducts.find((item) => item.id === form.product_id);
-    if (product && product.current_stock < quantity) {
-      showActionError(
-        `Only ${formatInventoryQuantity(product.current_stock)} ${product.unit_of_measure} of ${product.product_name} in stock, cannot sell ${formatInventoryQuantity(quantity)}.`,
-      );
-      return;
-    }
-
-    if (tenantId) {
-      const productBuCheck = await verifyFinishedProductMatchesWriteBusinessUnit({
-        supabase,
-        tenantId,
-        productId: form.product_id,
-        writeBusinessUnitId: stampResult.businessUnitId,
-        action: "sale",
-        knownProductBusinessUnitId: product?.business_unit_id ?? null,
-      });
-      if (!productBuCheck.ok) {
-        showActionError(productBuCheck.message);
+    for (const line of saleLines) {
+      const product = finishedProducts.find((item) => item.id === line.productId);
+      if (product && product.current_stock < line.quantity) {
+        showActionError(
+          `Only ${formatInventoryQuantity(product.current_stock)} ${product.unit_of_measure} of ${product.product_name} in stock, cannot sell ${formatInventoryQuantity(line.quantity)}.`,
+        );
         return;
+      }
+
+      if (tenantId) {
+        const productBuCheck = await verifyFinishedProductMatchesWriteBusinessUnit({
+          supabase,
+          tenantId,
+          productId: line.productId,
+          writeBusinessUnitId: stampResult.businessUnitId,
+          action: "sale",
+          knownProductBusinessUnitId: product?.business_unit_id ?? null,
+        });
+        if (!productBuCheck.ok) {
+          showActionError(productBuCheck.message);
+          return;
+        }
       }
     }
 
-    const { data: createdIncomeId, error: rpcError } = await supabase.rpc(
-      "create_product_sale",
-      {
-        p_date: form.date,
-        // Blank → create_product_sale allocates via generate_next_code(..., 'PSI', 4).
-        p_invoice_no: null,
-        p_client_id: clientId,
-        p_customer_name: clientId ? null : otherPayerName,
-        p_product_id: form.product_id,
-        p_quantity: quantity,
-        p_unit_price: unitPrice,
-        p_amount_received: amountReceived,
-        p_payment_status: paymentStatus,
-        p_due_date: outstanding > 0 ? form.due_date : form.due_date || form.date,
-        p_description: null,
-        p_notes:
-          amountReceived > 0 && isManualSalePaymentMethod(form.payment_method)
-            ? notesWithTransactionReference(
-                notesWithPaymentMethod(form.notes, form.payment_method),
-                collectionMode === "received" ? transactionReference : null,
-              )
-            : form.notes || null,
-        p_sales_rep_id: salesRepId.trim() || null,
-        p_business_unit_id: stampResult.businessUnitId,
-      },
+    const amountByLine = allocateAmountReceivedAcrossLines(
+      lineTotals,
+      amountReceived,
     );
+    const notesPayload =
+      amountReceived > 0 && isManualSalePaymentMethod(form.payment_method)
+        ? notesWithTransactionReference(
+            notesWithPaymentMethod(form.notes, form.payment_method),
+            collectionMode === "received" ? transactionReference : null,
+          )
+        : form.notes || null;
 
-    if (rpcError) {
-      showActionError(rpcError.message);
-      return;
+    const createdIncomeIds: string[] = [];
+    let sharedInvoiceNo: string | null = null;
+
+    for (let index = 0; index < saleLines.length; index += 1) {
+      const line = saleLines[index]!;
+      const lineAmount = lineTotals[index]!;
+      const lineReceived = amountByLine[index]!;
+      const paymentStatus = deriveProductSalePaymentStatus(
+        lineAmount,
+        lineReceived,
+      );
+      const invoiceNoForLine: string | null = sharedInvoiceNo;
+
+      const { data, error: rpcError } = await supabase.rpc(
+        "create_product_sale",
+        {
+          p_date: form.date,
+          // Blank on first line → allocate PSI; later lines reuse the same invoice.
+          p_invoice_no: invoiceNoForLine,
+          p_client_id: clientId,
+          p_customer_name: clientId ? null : otherPayerName,
+          p_product_id: line.productId,
+          p_quantity: line.quantity,
+          p_unit_price: line.unitPrice,
+          p_amount_received: lineReceived,
+          p_payment_status: paymentStatus,
+          p_due_date:
+            outstanding > 0 ? form.due_date : form.due_date || form.date,
+          p_description: null,
+          p_notes: notesPayload,
+          p_sales_rep_id: salesRepId.trim() || null,
+          p_business_unit_id: stampResult.businessUnitId,
+        },
+      );
+
+      if (rpcError) {
+        showActionError(rpcError.message);
+        return;
+      }
+
+      const createdIncomeId: string | null =
+        typeof data === "string" ? data : null;
+      if (createdIncomeId) {
+        createdIncomeIds.push(createdIncomeId);
+        if (!sharedInvoiceNo) {
+          const { data: incomeRow } = await supabase
+            .from("income_register")
+            .select("invoice_no")
+            .eq("id", createdIncomeId)
+            .maybeSingle();
+          const rawInvoice: unknown = incomeRow?.invoice_no;
+          sharedInvoiceNo =
+            typeof rawInvoice === "string" ? rawInvoice.trim() || null : null;
+        }
+      }
     }
+    const invoiceNo = sharedInvoiceNo;
 
     requestTenantAdminDirectorNotification({
       title: "Large product sale recorded",
@@ -917,13 +1121,34 @@ export default function ProductSales({
     // already posted, so a tax sync problem is surfaced as a warning.
     const { error: taxError } = await syncProductSaleVfrsTax(
       supabase,
-      typeof createdIncomeId === "string" ? [createdIncomeId] : [],
+      createdIncomeIds,
     );
 
+    const fromPosHandoff = Boolean(posHandoffSessionRef.current);
+    const savedDueDate = form.due_date.trim() || form.date;
+    clearPosHandoffSession();
     closeForm();
     await refreshEntries();
     onRegisterMutationComplete?.();
-    toast("Sale saved");
+    if (fromPosHandoff && outstanding > 0) {
+      toast(
+        formatPosManualSaleSavedToast({
+          invoiceNo: invoiceNo ?? "",
+          balance: outstanding,
+          dueDate: savedDueDate,
+        }),
+      );
+    } else if (fromPosHandoff) {
+      toast(
+        formatPosManualSaleSavedToast({
+          invoiceNo: invoiceNo ?? "",
+          balance: 0,
+          dueDate: savedDueDate,
+        }),
+      );
+    } else {
+      toast("Sale saved");
+    }
 
     if (taxError) {
       showActionError(
@@ -1112,6 +1337,8 @@ export default function ProductSales({
               (client) => client.client_id === recordPaymentEntry.client_id,
             )?.phone ?? ""
           }
+          mobileMoneyCollectionReady={mobileMoneyCollectionReady}
+          viewerRole={viewerRole}
           onClose={() => setRecordPaymentEntry(null)}
           onSuccess={() => {
             setRecordingPaymentId(recordPaymentEntry.id);
@@ -1121,6 +1348,13 @@ export default function ProductSales({
               })
               .finally(() => setRecordingPaymentId(null));
           }}
+        />
+      ) : null}
+
+      {momoNotSetupOpen ? (
+        <MobileMoneyNotSetupModal
+          viewerRole={viewerRole}
+          onClose={() => setMomoNotSetupOpen(false)}
         />
       ) : null}
 
@@ -1135,6 +1369,36 @@ export default function ProductSales({
             onRegisterMutationComplete?.();
           }}
         />
+      ) : null}
+
+      {posHandoffMissingOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pos-handoff-missing-title"
+        >
+          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-lg">
+            <h2
+              id="pos-handoff-missing-title"
+              className="text-lg font-semibold text-[#0f2744]"
+            >
+              Cart not loaded
+            </h2>
+            <p className="mt-3 text-sm text-slate-700">
+              {POS_MANUAL_SALE_HANDOFF_MISSING_MESSAGE}
+            </p>
+            <div className="mt-5 flex justify-end">
+              <DashboardButton
+                type="button"
+                variant="secondary"
+                onClick={() => setPosHandoffMissingOpen(false)}
+              >
+                OK
+              </DashboardButton>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {showForm && (
@@ -1210,6 +1474,54 @@ export default function ProductSales({
                   className={`${inputClassName}${form.client_id ? " bg-slate-50 text-slate-600" : ""}`}
                 />
               </div>
+              {posHandoffLines && posHandoffLines.length > 1 ? (
+                <div className="md:col-span-2 xl:col-span-3">
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                    Cart lines (from POS)
+                  </label>
+                  <div className="overflow-x-auto rounded-md border border-slate-200">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-slate-50 text-left text-slate-600">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">Product</th>
+                          <th className="px-3 py-2 font-medium">Qty</th>
+                          <th className="px-3 py-2 font-medium">Unit price</th>
+                          <th className="px-3 py-2 font-medium">Line total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {posHandoffLines.map((line) => (
+                          <tr
+                            key={`${line.productId}-${line.quantity}-${line.unitPrice}`}
+                            className="border-t border-slate-100"
+                          >
+                            <td className="px-3 py-2 text-slate-900">
+                              {line.productCode
+                                ? `${line.productCode} — ${line.productName}`
+                                : line.productName || line.productId}
+                            </td>
+                            <td className="px-3 py-2">
+                              {formatInventoryQuantity(line.quantity)}{" "}
+                              {line.unitOfMeasure}
+                            </td>
+                            <td className="px-3 py-2">
+                              {formatGHS(line.unitPrice)}
+                            </td>
+                            <td className="px-3 py-2">
+                              {formatGHS(
+                                Math.round(
+                                  line.quantity * line.unitPrice * 100,
+                                ) / 100,
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Finished Product
@@ -1265,6 +1577,8 @@ export default function ProductSales({
                   className={inputClassName}
                 />
               </div>
+                </>
+              )}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Total Amount
@@ -1322,11 +1636,23 @@ export default function ProductSales({
                   className={inputClassName}
                 >
                   <option value="">Choose how the customer paid</option>
-                  {MANUAL_SALE_PAYMENT_METHODS.map((method) => (
-                    <option key={method} value={method}>
-                      {method}
-                    </option>
-                  ))}
+                  {MANUAL_SALE_PAYMENT_METHODS.map((method) => {
+                    const momoBlocked =
+                      method === "Mobile Money" && !mobileMoneyCollectionReady;
+                    return (
+                      <option
+                        key={method}
+                        value={method}
+                        disabled={momoBlocked}
+                      >
+                        {method === "Mobile Money"
+                          ? mobileMoneyPaymentMethodOptionLabel(
+                              mobileMoneyCollectionReady,
+                            )
+                          : method}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
               ) : null}
@@ -1403,6 +1729,8 @@ export default function ProductSales({
               onEmail={setPayerEmail}
               phone={payerPhone}
               onPhone={setPayerPhone}
+              paystackCollectAllowed={mobileMoneyCollectionReady}
+              onPaystackBlocked={() => setMomoNotSetupOpen(true)}
             />
 
             <div className="flex flex-wrap gap-3">
@@ -1628,7 +1956,20 @@ export default function ProductSales({
                           setReceipt(
                             withReceiptPaymentLines(
                               buildProductSaleReceiptData(entry, initialClients),
-                              listedPaymentsFromRows(data ?? []),
+                              buildReceiptPaymentLines(
+                                [
+                                  {
+                                    id: entry.id,
+                                    date: entry.date,
+                                    amount: Number(entry.amount) || 0,
+                                    amount_received: Number(entry.amount_received) || 0,
+                                    notes: entry.notes,
+                                    payment_method: entry.payment_method,
+                                    is_sale_return: entry.is_sale_return === true,
+                                  },
+                                ],
+                                data ?? [],
+                              ),
                               entry.notes,
                             ),
                           );

@@ -1,5 +1,7 @@
 import type { SiteEntry } from "../operations/sites-utils";
 import type { ServiceContractListRow } from "@/utils/service-contracts-types";
+import type { ClientEntry } from "../operations/clients-utils";
+import { getIncomeCustomerDisplayName } from "../finance/income-register-utils";
 
 export type ProjectSite = {
   site_code: string;
@@ -163,19 +165,33 @@ export function duplicateContractNameMessage(
 export function getProjectClientName(
   project: ProjectEntry,
   sites: SiteEntry[],
+  clients?: ClientEntry[],
 ): string {
+  const fromProjectSites = project.sites ?? [];
+  const fromSitesList = sites.filter((site) => site.project_id === project.id);
+  // Prefer the sites register rows (they include the customer join) when present.
   const linkedSites =
-    project.sites ??
-    sites.filter((site) => site.project_id === project.id);
+    fromSitesList.length > 0 ? fromSitesList : fromProjectSites;
 
   const clientIds = new Set(
     linkedSites.map((site) => site.client_id).filter(Boolean) as string[],
   );
 
   if (clientIds.size === 1) {
-    const clientId = [...clientIds][0];
+    const clientId = [...clientIds][0]!;
     const site = linkedSites.find((entry) => entry.client_id === clientId);
-    return site?.client?.client_name ?? clientId;
+    const enriched =
+      site && "site_code" in site
+        ? sites.find((row) => row.site_code === site.site_code)
+        : undefined;
+    return getIncomeCustomerDisplayName(
+      {
+        client_id: clientId,
+        client: enriched?.client ?? site?.client ?? null,
+        customer_name: null,
+      },
+      clients,
+    );
   }
 
   if (clientIds.size > 1) {

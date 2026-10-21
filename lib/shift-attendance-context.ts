@@ -127,6 +127,8 @@ export function scheduleColumnsForEmployee(input: {
   clockIn: string | null;
   clockOut: string | null;
   existingExceptionStatus?: string | null;
+  /** Attendance mode "exempt": no late / early-leave / pending exceptions. */
+  exempt?: boolean;
 }): AttendanceScheduleColumns | null {
   const dayType = scheduleDayTypeForDate(input.date, input.context.holidayDates);
   const schedule = resolveExpectedSchedule({
@@ -146,5 +148,6 @@ export function scheduleColumnsForEmployee(input: {
     schedule,
     dayType,
     existingExceptionStatus: input.existingExceptionStatus,
+    exempt: input.exempt,
   });
 }

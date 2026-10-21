@@ -2,6 +2,12 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  PAYMENT_ACCOUNT_USAGE_SOURCES,
+  buildPaymentAccountUsageSummary,
+  type PaymentAccountUsageSourceLabel,
+  type PaymentAccountUsageSummary,
+} from "@/utils/payment-account-usage";
+import {
   PAYMENT_ACCOUNT_SELECT,
   normalizePaymentAccountBusinessUnitIds,
   type PaymentAccountAvailability,
@@ -234,4 +240,38 @@ export async function unlinkPaymentAccountFromBusinessUnit(
     .eq("business_unit_id", businessUnitId);
 
   return error?.message ?? null;
+}
+
+/**
+ * Count RESTRICT-style links that block deleting a payment account.
+ * Missing tables/columns are skipped (older environments).
+ */
+export async function countPaymentAccountUsage(
+  supabase: SupabaseClient,
+  tenantId: string,
+  paymentAccountId: string,
+): Promise<PaymentAccountUsageSummary> {
+  const countsByLabel: Partial<Record<PaymentAccountUsageSourceLabel, number>> =
+    {};
+
+  for (const source of PAYMENT_ACCOUNT_USAGE_SOURCES) {
+    const { count, error } = await supabase
+      .from(source.table)
+      .select(source.column, { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq(source.column, paymentAccountId);
+
+    if (error) {
+      // Table/column may not exist yet — don't block delete on probe failure.
+      console.warn(
+        `[payment-accounts] usage probe ${source.table} failed:`,
+        error.message,
+      );
+      continue;
+    }
+
+    countsByLabel[source.label] = count ?? 0;
+  }
+
+  return buildPaymentAccountUsageSummary(countsByLabel);
 }

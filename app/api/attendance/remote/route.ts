@@ -6,6 +6,7 @@ import {
   loadApproverContext,
   notifyAttendanceApprovers,
   REQUEST_COLUMNS,
+  submitAutoApprovedRemoteRequest,
   type AttendanceRequestRow,
 } from "@/lib/attendance-requests/service";
 import { requireSessionActor } from "@/lib/attendance-requests/session";
@@ -16,6 +17,17 @@ import {
   validateClockPair,
   validatePastWorkDate,
 } from "@/lib/attendance-requests/rules";
+import {
+  decideRemoteClock,
+  EXEMPT_ATTENDANCE_MESSAGE,
+  findCoveringArrangement,
+  hasOpenArrangement,
+  REMOTE_NOT_ENABLED_MESSAGE,
+  type RemoteWorkArrangement,
+} from "@/lib/attendance-mode";
+import { loadArrangementsForStaff } from "@/lib/attendance-mode-service";
+
+const loadArrangements = loadArrangementsForStaff;
 
 export async function GET(request: Request) {
   const session = await requireSessionActor();
@@ -25,15 +37,59 @@ export async function GET(request: Request) {
 
   const { actor, admin } = session;
   const summaryOnly = new URL(request.url).searchParams.get("summary") === "1";
-  const allowed = actor.remoteAttendanceAllowed && Boolean(actor.staffId);
+  const mode = actor.attendanceMode;
 
-  if (summaryOnly || !actor.staffId) {
-    return NextResponse.json({ allowed, requests: [] });
+  if (mode === "exempt") {
+    return NextResponse.json({
+      allowed: false,
+      mode,
+      message: EXEMPT_ATTENDANCE_MESSAGE,
+      requests: [],
+    });
+  }
+
+  if (!actor.staffId) {
+    return NextResponse.json({ allowed: false, mode, requests: [] });
   }
 
   try {
+    const today = todayInAccra();
+    const arrangements = await loadArrangements(
+      admin,
+      actor.tenantId,
+      actor.staffId,
+    );
+    const allowed =
+      mode === "quick_remote" ||
+      actor.remoteAttendanceAllowed ||
+      hasOpenArrangement(arrangements, {
+        tenantId: actor.tenantId,
+        staffId: actor.staffId,
+        todayIso: today,
+      });
+    const decision = decideRemoteClock({
+      mode,
+      remoteAttendanceAllowed: actor.remoteAttendanceAllowed,
+      arrangement: findCoveringArrangement(arrangements, {
+        tenantId: actor.tenantId,
+        staffId: actor.staffId,
+        dateIso: today,
+      }),
+    });
+    const autoApprove = decision.allowed && decision.autoApprove;
+    const approvalNote = decision.allowed ? decision.note : null;
+
+    if (summaryOnly) {
+      return NextResponse.json({ allowed, mode, requests: [] });
+    }
     const requests = await listOwnRequests(admin, actor.tenantId, actor.staffId);
-    return NextResponse.json({ allowed, requests });
+    return NextResponse.json({
+      allowed,
+      mode,
+      auto_approve: autoApprove,
+      approval_note: approvalNote,
+      requests,
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not load requests." },
@@ -68,11 +124,45 @@ export async function POST(request: Request) {
     );
   }
 
+  if (actor.attendanceMode === "exempt") {
+    return NextResponse.json(
+      { error: EXEMPT_ATTENDANCE_MESSAGE },
+      { status: 403 },
+    );
+  }
+
   let body: RemoteBody;
   try {
     body = (await request.json()) as RemoteBody;
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  let arrangements: RemoteWorkArrangement[];
+  try {
+    arrangements = await loadArrangements(admin, actor.tenantId, actor.staffId);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Could not load remote work arrangements.",
+      },
+      { status: 500 },
+    );
+  }
+
+  function decisionFor(dateIso: string) {
+    return decideRemoteClock({
+      mode: actor.attendanceMode,
+      remoteAttendanceAllowed: actor.remoteAttendanceAllowed,
+      arrangement: findCoveringArrangement(arrangements, {
+        tenantId: actor.tenantId,
+        staffId: actor.staffId as string,
+        dateIso,
+      }),
+    });
   }
 
   if (body.action === "clock_out") {
@@ -102,9 +192,11 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
     const locationNote =
       body.location_note?.trim() || open.location_note?.trim() || null;
+    const clockOutDecision = decisionFor(today);
     const plan = remoteClockOutPlan({
       status: open.status === "approved" ? "approved" : "pending",
       remoteAttendanceAllowed: actor.remoteAttendanceAllowed,
+      autoApprove: clockOutDecision.allowed && clockOutDecision.autoApprove,
     });
     const { error: updateError } = await admin
       .from("attendance_requests")
@@ -147,13 +239,6 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ ok: true, applied: false });
-  }
-
-  if (!actor.remoteAttendanceAllowed) {
-    return NextResponse.json(
-      { error: "Remote attendance is not enabled for your employee record." },
-      { status: 403 },
-    );
   }
 
   const locationNote = body.location_note?.trim() ?? "";
@@ -208,9 +293,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unknown action." }, { status: 400 });
   }
 
-  const inserted = await insertPendingRequest(admin, {
+  // Standard staff need the remote flag or an arrangement covering this day.
+  const decision = decisionFor(workDate);
+  if (!decision.allowed) {
+    return NextResponse.json(
+      {
+        error:
+          decision.code === "exempt"
+            ? EXEMPT_ATTENDANCE_MESSAGE
+            : REMOTE_NOT_ENABLED_MESSAGE,
+      },
+      { status: 403 },
+    );
+  }
+
+  const requestRow = {
     tenant_id: actor.tenantId,
-    request_type: "remote",
+    request_type: "remote" as const,
     staff_id: actor.staffId,
     work_date: workDate,
     clock_in: clockInIso,
@@ -224,7 +323,30 @@ export async function POST(request: Request) {
     site_code: actor.assignedSiteId,
     submitted_by: actor.authUid,
     submitted_by_name: actor.fullName,
-  });
+  };
+
+  if (decision.autoApprove && decision.note) {
+    const autoResult = await submitAutoApprovedRemoteRequest({
+      admin,
+      actor,
+      row: requestRow,
+      approvalNote: decision.note,
+    });
+    if (!autoResult.ok) {
+      return NextResponse.json(
+        { error: autoResult.error },
+        { status: autoResult.status },
+      );
+    }
+    return NextResponse.json({
+      ok: true,
+      id: autoResult.id,
+      auto_approved: true,
+      message: decision.note,
+    });
+  }
+
+  const inserted = await insertPendingRequest(admin, requestRow);
 
   if ("error" in inserted) {
     return NextResponse.json(

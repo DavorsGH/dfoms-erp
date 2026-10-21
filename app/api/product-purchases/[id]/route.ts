@@ -16,6 +16,7 @@ import {
 } from "@/utils/product-purchases-types";
 import { guardFinishedProductWriteBusinessUnit } from "@/lib/inventory/inventory-item-business-unit-guard.server";
 import { mapInventoryMutationErrorMessage } from "@/lib/inventory/inventory-mutation-error";
+import { resolveApiDeleteErrorMessage } from "@/utils/postgres-fk-violation";
 import { createClient } from "@/utils/supabase/server";
 
 type RouteContext = {
@@ -91,7 +92,14 @@ export async function DELETE(_request: Request, context: RouteContext) {
   });
 
   if (deleteError) {
-    return NextResponse.json({ error: deleteError.message }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: resolveApiDeleteErrorMessage(deleteError, {
+          itemName: "This purchase",
+        }),
+      },
+      { status: 400 },
+    );
   }
 
   return NextResponse.json({ success: true });

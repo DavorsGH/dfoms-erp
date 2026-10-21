@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { loadExemptStaffIds } from "@/lib/attendance-mode-service";
 import {
   applyBusinessUnitScope,
   type BusinessUnitReadScope,
@@ -342,6 +343,9 @@ export async function buildPayrollWorkspaceSnapshot(input: {
       .eq("tenant_id", tenantId),
   ]);
 
+  // Exempt attendance mode: never deducted for absence.
+  const exemptStaffIds = new Set(await loadExemptStaffIds(admin, tenantId));
+
   const hrPayrollSettingsRows = (
     (hrPayrollSettingsData as HrPayrollSettingsRow[] | null) ?? []
   )
@@ -466,6 +470,8 @@ export async function buildPayrollWorkspaceSnapshot(input: {
       employee.staff_id,
       period.year,
       period.month,
+      [],
+      exemptStaffIds,
     );
     const overtimeAmount = sumOvertimeForEmployeeInPeriod(
       overtime,

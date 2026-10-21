@@ -93,9 +93,9 @@ function testPatienceOctober() {
   assert.equal(row.gross_pay, 578.55);
   assert.equal(row.employee_ssnit, 0);
   assert.equal(row.paye_tax, 28.93);
-  assert.equal(row.welfare_deduction, 29.47);
-  assert.equal(row.total_deductions, 58.4);
-  assert.equal(row.net_pay, 520.15);
+  assert.equal(row.welfare_deduction, 28.93);
+  assert.equal(row.total_deductions, 57.86);
+  assert.equal(row.net_pay, 520.69);
 }
 
 function testFullTimeAbsentDay() {
@@ -210,7 +210,7 @@ function testLockedSeptemberUnchanged() {
   );
 }
 
-function testWelfareStaysOnPreAbsenceGross() {
+function testWelfareOnEarnedGrossFromOctober() {
   const row = calculatePayrollRow(
     employee({ employment_type: "Casual", welfare_deduction_rate: 5 }),
     period(2026, 10, 27),
@@ -219,7 +219,7 @@ function testWelfareStaysOnPreAbsenceGross() {
     { days_to_pay: 27, bonuses: 20 },
   );
   assert.equal(row.gross_pay, 598.55);
-  assert.equal(row.welfare_deduction, 30.47);
+  assert.equal(row.welfare_deduction, 29.93);
   assert.equal(row.paye_tax, 28.93);
 }
 
@@ -248,6 +248,6 @@ testPatienceOctober();
 testFullTimeAbsentDay();
 testNoAbsenceUnchanged();
 testLockedSeptemberUnchanged();
-testWelfareStaysOnPreAbsenceGross();
+testWelfareOnEarnedGrossFromOctober();
 testDeductionSavingsGate();
 console.log("OK: payroll absence-before-tax tests passed");

@@ -8,6 +8,7 @@ import {
   applyBusinessUnitScope,
   type BusinessUnitReadScope,
 } from "@/utils/business-unit-view";
+import { loadExemptStaffIds } from "@/lib/attendance-mode-service";
 import type { LoanRegisterEntry } from "./loan-register-utils";
 import {
   buildManualInputsFromRow,
@@ -67,6 +68,8 @@ export type PayrollLiveRecalcContext = {
   taxConfigs: PayrollTaxConfigs;
   compensationPolicyConfig: PayrollCompensationPolicyConfig;
   hrPayrollSettingsRows: HrPayrollSettingsRow[];
+  /** staff_ids with attendance mode exempt; never deducted for absence. */
+  exemptStaffIds?: string[];
 };
 
 export const PAYROLL_LIVE_RECALC_EMPLOYEE_SELECT =
@@ -186,9 +189,21 @@ export async function fetchPayrollLiveRecalcBundle(
     .map((row) => normalizeHrPayrollSettingsRow(row))
     .filter((row): row is HrPayrollSettingsRow => row !== null);
 
+  // Best effort: a failed lookup keeps the previous (no exemption) behaviour so
+  // finance pages still load before the attendance_mode column exists.
+  let exemptStaffIds: string[] = [];
+  if (tenantId) {
+    try {
+      exemptStaffIds = await loadExemptStaffIds(supabase, tenantId);
+    } catch {
+      exemptStaffIds = [];
+    }
+  }
+
   return {
     employees: (employees as PayrollLiveRecalcEmployee[] | null) ?? [],
     liveContext: {
+      exemptStaffIds,
       attendance: (attendance as PayrollAttendanceSource[] | null) ?? [],
       overtime: (overtime as PayrollOvertimeSource[] | null) ?? [],
       loans: (loans as LoanRegisterEntry[] | null) ?? [],
@@ -279,6 +294,8 @@ export function buildLiveOpenMonthPayrollWagesEntries(
           source.staff_id,
           period.year,
           period.month,
+          [],
+          liveContext.exemptStaffIds ?? [],
         ),
         overtimeAmount: sumOvertimeForEmployeeInPeriod(
           liveContext.overtime,

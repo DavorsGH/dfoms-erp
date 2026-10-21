@@ -136,13 +136,16 @@ export default function ShiftTimesCard({
     }
   }, [loadError]);
 
+  // Re-seed drafts only when the contract changes. Rebuilding from `rows` (or from
+  // a new `initialShiftTimes` array identity) on every update wiped in-progress
+  // TimePicker edits and snapped values back to the saved row (often 08:00).
   useEffect(() => {
     setRows(initialShiftTimes);
-  }, [initialShiftTimes]);
-
-  useEffect(() => {
-    setDraftsByDay(draftsByDayFromRows(clientId, rows));
-  }, [clientId, rows]);
+    setDraftsByDay(draftsByDayFromRows(clientId, initialShiftTimes));
+    // initialShiftTimes is read when the contract changes; omitting it avoids
+    // wiping edits when the parent passes a new array with the same contents.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId]);
 
   const drafts = draftsByDay[dayType];
 

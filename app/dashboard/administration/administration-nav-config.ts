@@ -50,6 +50,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         href: "/dashboard/administration/payment-accounts",
       },
       {
+        label: "Online Payments",
+        href: "/dashboard/administration/online-payments",
+      },
+      {
         label: "VAT/WHT Calculation Basis",
         href: "/dashboard/administration/sales-tax-basis",
       },
@@ -98,11 +102,11 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         href: "/dashboard/administration",
       },
       {
-        label: "Contract & Project Assignments",
+        label: "Contract Assignments",
         href: "/dashboard/administration/projects",
       },
       {
-        label: "Sites",
+        label: "Site Assignments",
         href: "/dashboard/administration/sites",
       },
       {

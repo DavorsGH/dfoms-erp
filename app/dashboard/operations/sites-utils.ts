@@ -1,3 +1,6 @@
+import type { ClientEntry } from "./clients-utils";
+import { getIncomeCustomerDisplayName } from "../finance/income-register-utils";
+
 export type SiteProject = {
   id: string;
   project_code: string;
@@ -47,8 +50,21 @@ export function normalizeSiteEntry(raw: SiteEntry): SiteEntry {
   };
 }
 
-export function getSiteClientName(site: SiteEntry): string {
-  return site.client?.client_name ?? site.client_id ?? "—";
+export function getSiteClientName(
+  site: SiteEntry,
+  clients?: ClientEntry[],
+): string {
+  if (!site.client_id?.trim() && !site.client?.client_name?.trim()) {
+    return "—";
+  }
+  return getIncomeCustomerDisplayName(
+    {
+      client_id: site.client_id,
+      client: site.client ?? null,
+      customer_name: null,
+    },
+    clients,
+  );
 }
 
 export function getSiteBuildingZone(site: SiteEntry): string {

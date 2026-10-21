@@ -15,6 +15,10 @@ export default async function PaymentMethodsPage() {
         <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
           Payment Methods
         </h2>
+        <p className="mb-4 text-sm text-slate-600">
+          How customers and suppliers pay you — cash, Mobile Money, bank
+          transfer.
+        </p>
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           Unable to resolve tenant for Payment Methods.
         </p>
@@ -33,6 +37,10 @@ export default async function PaymentMethodsPage() {
       <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
         Payment Methods
       </h2>
+      <p className="mb-4 text-sm text-slate-600">
+        How customers and suppliers pay you — cash, Mobile Money, bank
+        transfer.
+      </p>
       <PaymentMethods
         tenantId={tenantId}
         initialMethods={(data as NamedLookup[] | null) ?? []}
