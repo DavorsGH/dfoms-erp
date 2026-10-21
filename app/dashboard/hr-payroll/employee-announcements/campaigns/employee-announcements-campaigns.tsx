@@ -32,6 +32,8 @@ import {
 } from "@/utils/employee-message-templates-types";
 import { EMPLOYEE_TEMPLATE_PLACEHOLDERS } from "@/utils/message-template-placeholders";
 import { substituteTemplatePlaceholders } from "@/utils/message-template-render";
+import { announcementAllEmployeesLabel } from "@/utils/employee-announcements-audience";
+import { useBusinessUnitView } from "@/app/dashboard/business-unit-view-context";
 
 export type AnnouncementEmployeeOption = {
   employee_id: string;
@@ -323,6 +325,16 @@ export default function EmployeeAnnouncementsCampaigns({
   fetchError,
 }: EmployeeAnnouncementsCampaignsProps) {
   void tenantId;
+
+  const { viewAllBusinessUnits, activeBusinessUnitId, units } =
+    useBusinessUnitView();
+  const allEmployeesAudienceLabel = useMemo(() => {
+    const activeUnit = units.find((unit) => unit.id === activeBusinessUnitId);
+    return announcementAllEmployeesLabel({
+      viewAllBusinessUnits,
+      businessUnitName: activeUnit?.name ?? null,
+    });
+  }, [activeBusinessUnitId, units, viewAllBusinessUnits]);
 
   const [announcements, setAnnouncements] = useState(initialAnnouncements);
   const [templates] = useState(activeTemplates);
@@ -905,7 +917,7 @@ export default function EmployeeAnnouncementsCampaigns({
                       }))
                     }
                   />
-                  All employees
+                  {allEmployeesAudienceLabel}
                 </label>
                 <label className="inline-flex items-center gap-2 text-sm text-slate-700">
                   <input

@@ -14,6 +14,11 @@ import {
   type EmployeeAnnouncementRow,
 } from "@/utils/employee-announcements-types";
 import { createClient } from "@/utils/supabase/server";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 
 async function getTenantSupabase() {
   const cookieStore = await cookies();
@@ -173,10 +178,19 @@ export async function POST(request: Request) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
   const totalRecipients = await countEmployeeAudienceRecipients(
     supabase,
     auth.tenantId,
     trimmed.audience_filter,
+    buScope,
   );
 
   const { data, error } = await supabase

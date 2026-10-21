@@ -10,6 +10,15 @@ import {
   normalizeDevicePin,
   resolveStaffIdForDevicePin,
 } from "@/lib/device-pin";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import {
+  fetchScopedStaffIds,
+  staffIdInActiveScope,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 
 export async function POST(request: Request) {
   const session = await requireSessionActor();
@@ -40,6 +49,29 @@ export async function POST(request: Request) {
   }
 
   const { admin, actor } = session;
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+  const { staffIds, error: staffScopeError } = await fetchScopedStaffIds(
+    admin,
+    actor.tenantId,
+    buScope,
+  );
+  if (staffScopeError) {
+    return NextResponse.json({ error: staffScopeError }, { status: 500 });
+  }
+  if (!staffIdInActiveScope(staffId, staffIds)) {
+    return NextResponse.json(
+      { error: "Staff is outside the active business unit scope." },
+      { status: 403 },
+    );
+  }
+
   const { data: employee, error: employeeError } = await admin
     .from("employees")
     .select("staff_id")

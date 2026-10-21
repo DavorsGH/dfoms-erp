@@ -1,9 +1,17 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserRole } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserRole,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
 import { canAccessOperationsSection } from "@/utils/rbac-access";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { isCrmCustomerListOnlyRole } from "@/app/dashboard/user-account-role-utils";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import {
   HR_EMPLOYEE_SELECT,
   filterActiveEmployees,
@@ -23,6 +31,14 @@ export default async function CustomersPage() {
   const role = (await getCurrentUserRole()) as AppRole | null;
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [{ data, error }, { data: employees, error: employeesError }] =
     await Promise.all([
@@ -30,7 +46,10 @@ export default async function CustomersPage() {
         .from("customers")
         .select("*")
         .order("client_name", { ascending: true }),
-      supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
+      applyBusinessUnitScope(
+        supabase.from("employees").select(HR_EMPLOYEE_SELECT),
+        buScope,
+      ).order("full_name"),
     ]);
 
   const fetchError = error?.message ?? employeesError?.message ?? null;

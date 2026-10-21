@@ -22,6 +22,10 @@ import { buildMobileMoneyStatusAssistantPayload } from "@/utils/product-sale-pay
 import { scheduleSettlementVerificationIfStale } from "@/utils/paystack-settlement-verification";
 import { canResolvePaystackAttention } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
+import {
+  matchesBusinessUnitScope,
+  snapshotBusinessUnitId,
+} from "@/utils/cart-snapshot-business-unit";
 
 export {
   canCollectPaystackPayments,
@@ -33,37 +37,12 @@ export {
 
 const PAYSTACK_PENDING_LIMIT = LIST_LIMIT;
 
-function snapshotBusinessUnitId(
-  cartSnapshot: unknown,
-): string | null {
-  if (!cartSnapshot || typeof cartSnapshot !== "object") {
-    return null;
-  }
-  const value = (cartSnapshot as Record<string, unknown>).businessUnitId;
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
 function snapshotCustomerName(cartSnapshot: unknown): string | null {
   if (!cartSnapshot || typeof cartSnapshot !== "object") {
     return null;
   }
   const value = (cartSnapshot as Record<string, unknown>).customerName;
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function matchesBusinessUnitScope(
-  rowBusinessUnitId: string | null,
-  buScope: Awaited<ReturnType<typeof loadStaffBusinessUnitScope>>,
-): boolean {
-  if (buScope.mode === "all") {
-    return true;
-  }
-  if (buScope.mode === "unit") {
-    // Untagged rows stay visible in a unit view (same as many registers).
-    return !rowBusinessUnitId || rowBusinessUnitId === buScope.id;
-  }
-  // default (untagged workspace view): only null/empty BU
-  return !rowBusinessUnitId;
 }
 
 export async function getPaystackPaymentsPending(): Promise<unknown> {

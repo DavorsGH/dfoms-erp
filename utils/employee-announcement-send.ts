@@ -22,6 +22,25 @@ import {
   resolveFullDisplayName,
 } from "@/utils/message-person-name";
 import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  resolveBusinessUnitReadScope,
+  type BusinessUnitReadScope,
+} from "@/utils/business-unit-view";
+
+async function resolveAnnouncementBuScope(): Promise<BusinessUnitReadScope> {
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  return resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+}
 
 export const ANNOUNCEMENT_SEND_BATCH_SIZE = 50;
 
@@ -282,10 +301,12 @@ export async function resolveAudienceAndInsertSkipRows(
     audience: EmployeeAnnouncementAudienceFilter;
   },
 ): Promise<AudiencePreview> {
+  const buScope = await resolveAnnouncementBuScope();
   const employees = await loadAnnouncementEmployees(
     supabase,
     options.tenantId,
     options.audience,
+    buScope,
   );
   const logins = await loadEmployeeLoginMap(
     supabase,
@@ -413,10 +434,12 @@ async function listRemainingEligible(
   logins: Map<string, UserAccountLink>;
   remaining: EligibleDelivery[];
 }> {
+  const buScope = await resolveAnnouncementBuScope();
   const employees = await loadAnnouncementEmployees(
     supabase,
     options.tenantId,
     options.announcement.audience_filter,
+    buScope,
   );
   const logins = await loadEmployeeLoginMap(
     supabase,
@@ -867,10 +890,12 @@ export async function previewAnnouncementAudience(
   const audience =
     normalizeAudienceFilter(raw.audience_filter) ?? ({ type: "all" } as const);
   const channels = normalizeChannels(raw.channels);
+  const buScope = await resolveAnnouncementBuScope();
   const employees = await loadAnnouncementEmployees(
     supabase,
     options.tenantId,
     audience,
+    buScope,
   );
   const logins = await loadEmployeeLoginMap(
     supabase,

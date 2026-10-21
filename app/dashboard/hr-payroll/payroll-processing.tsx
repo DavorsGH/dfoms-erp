@@ -111,6 +111,10 @@ import {
 } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import {
+  applyEmployeeIdScope,
+  applyEmployeeIdScopeToColumn,
+} from "./payroll-bu-scope-utils";
+import {
   loadWriteBusinessUnitContext,
   resolveWriteBusinessUnitIdForCreate,
   type AllowedBusinessUnits,
@@ -1009,20 +1013,39 @@ export default function PayrollProcessing({
 
       const { start: attendanceStart, end: attendanceEnd } =
         getAttendanceMonthBounds(period.year, period.month);
+      const scopedEmployeeIds =
+        buReadScope.mode === "all" ? null : [...employeeMap.keys()];
+      const scopedStaffIds =
+        buReadScope.mode === "all"
+          ? null
+          : [
+              ...new Set(
+                [...employeeMap.values()]
+                  .map((employee) => String(employee.staff_id ?? "").trim())
+                  .filter(Boolean),
+              ),
+            ];
       const [
         { data: attendanceData, error: attendanceError },
         { data: overtimeData, error: overtimeFetchError },
       ] = await Promise.all([
-        supabase
-          .from("attendance_register")
-          .select("staff_id, date, attendance_status, exception_status")
-          .gte("date", attendanceStart)
-          .lte("date", attendanceEnd),
-        supabase
-          .from("overtime_register")
-          .select("employee_id, date, overtime_amount, approved_by")
-          .gte("date", attendanceStart)
-          .lte("date", attendanceEnd),
+        applyEmployeeIdScopeToColumn(
+          supabase
+            .from("attendance_register")
+            .select("staff_id, date, attendance_status, exception_status")
+            .gte("date", attendanceStart)
+            .lte("date", attendanceEnd),
+          scopedStaffIds,
+          "staff_id",
+        ),
+        applyEmployeeIdScope(
+          supabase
+            .from("overtime_register")
+            .select("employee_id, date, overtime_amount, approved_by")
+            .gte("date", attendanceStart)
+            .lte("date", attendanceEnd),
+          scopedEmployeeIds,
+        ),
       ]);
 
       if (attendanceError) {
@@ -1054,10 +1077,13 @@ export default function PayrollProcessing({
       if (!isMonthClosed(closeRecord)) {
         const [{ count, error: staleHistoryError }, closedElsewhere] =
           await Promise.all([
-            supabase
-              .from("payroll_history")
-              .select("id", { count: "exact", head: true })
-              .eq("payroll_month", period.payrollMonth),
+            applyEmployeeIdScope(
+              supabase
+                .from("payroll_history")
+                .select("id", { count: "exact", head: true })
+                .eq("payroll_month", period.payrollMonth),
+              scopedEmployeeIds,
+            ),
             monthHasAnyClosedLock(period.payrollMonth),
           ]);
 
@@ -1073,11 +1099,13 @@ export default function PayrollProcessing({
       }
 
       if (isMonthClosed(closeRecord)) {
-        const { data, error: historyError } = await supabase
-          .from("payroll_history")
-          .select("*")
-          .eq("payroll_month", period.payrollMonth)
-          .order("employee_id", { ascending: true });
+        const { data, error: historyError } = await applyEmployeeIdScope(
+          supabase
+            .from("payroll_history")
+            .select("*")
+            .eq("payroll_month", period.payrollMonth),
+          scopedEmployeeIds,
+        ).order("employee_id", { ascending: true });
 
         if (historyError) {
           throw new Error(historyError.message);
@@ -1106,10 +1134,13 @@ export default function PayrollProcessing({
       }
 
       const { count: processingCount, error: processingCountError } =
-        await supabase
-          .from("payroll_processing")
-          .select("id", { count: "exact", head: true })
-          .eq("payroll_month", period.payrollMonth);
+        await applyEmployeeIdScope(
+          supabase
+            .from("payroll_processing")
+            .select("id", { count: "exact", head: true })
+            .eq("payroll_month", period.payrollMonth),
+          scopedEmployeeIds,
+        );
 
       if (processingCountError) {
         throw new Error(processingCountError.message);
@@ -1125,11 +1156,13 @@ export default function PayrollProcessing({
         return;
       }
 
-      const { data, error: processingError } = await supabase
-        .from("payroll_processing")
-        .select("*")
-        .eq("payroll_month", period.payrollMonth)
-        .order("employee_id", { ascending: true });
+      const { data, error: processingError } = await applyEmployeeIdScope(
+        supabase
+          .from("payroll_processing")
+          .select("*")
+          .eq("payroll_month", period.payrollMonth),
+        scopedEmployeeIds,
+      ).order("employee_id", { ascending: true });
 
       if (processingError) {
         throw new Error(processingError.message);

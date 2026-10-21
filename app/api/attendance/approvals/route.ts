@@ -9,6 +9,12 @@ import {
   decideAttendanceRequest,
   isDirectorTierRole,
 } from "@/lib/attendance-requests/rules";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import { fetchScopedStaffIds } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 
 export async function GET(request: Request) {
   const session = await requireSessionActor();
@@ -25,7 +31,28 @@ export async function GET(request: Request) {
   }
 
   try {
-    const pending = await listPendingRequests(session.admin, session.actor.tenantId);
+    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+    const buScope = resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
+    const { staffIds, error: staffScopeError } = await fetchScopedStaffIds(
+      session.admin,
+      session.actor.tenantId,
+      buScope,
+    );
+    if (staffScopeError) {
+      return NextResponse.json({ error: staffScopeError }, { status: 500 });
+    }
+
+    const pending = await listPendingRequests(
+      session.admin,
+      session.actor.tenantId,
+      staffIds,
+    );
     const decidable = pending.filter(
       (row) =>
         decideAttendanceRequest({

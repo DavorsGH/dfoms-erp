@@ -5,8 +5,15 @@ import {
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
-import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
-import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
+import {
+  fetchScopedActiveEmployees,
+  fetchScopedProjectIds,
+  filterSitesByScopedProjectIds,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import type { HrEmployee } from "../../hr-payroll/employee-utils";
 import Sites from "../../operations/sites";
 import {
@@ -34,6 +41,10 @@ export default async function AdministrationSitesPage() {
     activeBusinessUnitId,
   });
 
+  const scopedProjects = tenantId
+    ? await fetchScopedProjectIds(supabase, tenantId, buScope)
+    : { projectIds: [] as string[], error: "Unable to resolve your workspace." };
+
   const [
     { data: sites, error: sitesError },
     { data: projects, error: projectsError },
@@ -41,13 +52,18 @@ export default async function AdministrationSitesPage() {
     scopedEmployees,
   ] = await Promise.all([
     supabase.from("sites").select(SITE_SELECT).order("site_name", { ascending: true }),
-    supabase
-      .from("projects")
-      .select(
-        "id, project_code, project_name, service_contract_id, contract_type, is_archived",
-      )
-      .order("project_name", { ascending: true }),
-    supabase.from("service_contracts").select("id, client_id"),
+    applyBusinessUnitScope(
+      supabase
+        .from("projects")
+        .select(
+          "id, project_code, project_name, service_contract_id, contract_type, is_archived",
+        ),
+      buScope,
+    ).order("project_name", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase.from("service_contracts").select("id, client_id"),
+      buScope,
+    ),
     tenantId
       ? fetchScopedActiveEmployees(supabase, tenantId, buScope)
       : Promise.resolve({
@@ -56,8 +72,9 @@ export default async function AdministrationSitesPage() {
         }),
   ]);
 
-  const normalizedSites = ((sites as SiteEntry[] | null) ?? []).map(
-    normalizeSiteEntry,
+  const normalizedSites = filterSitesByScopedProjectIds(
+    ((sites as SiteEntry[] | null) ?? []).map(normalizeSiteEntry),
+    scopedProjects.projectIds,
   );
   const contracts = listSiteFormContractChoices({
     projects: (projects as SiteFormProject[] | null) ?? [],
@@ -71,6 +88,7 @@ export default async function AdministrationSitesPage() {
   });
 
   const fetchError =
+    scopedProjects.error ??
     scopedEmployees.error ??
     sitesError?.message ??
     projectsError?.message ??

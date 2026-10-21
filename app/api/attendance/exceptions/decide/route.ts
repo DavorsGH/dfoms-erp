@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server";
-import { getCurrentAuthUid } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentAuthUid,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { ATTENDANCE_EXCEPTION_DECIDE_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { applyAttendanceExceptionDecision } from "@/lib/attendance-exception-apply";
 import { isAttendanceExceptionDecision } from "@/lib/attendance-exception-decision";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import {
+  fetchScopedStaffIds,
+  staffIdInActiveScope,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 
 export async function POST(request: Request) {
   const auth = await requireTenantRoleIn(ATTENDANCE_EXCEPTION_DECIDE_ROLES);
@@ -35,7 +44,49 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await applyAttendanceExceptionDecision(createAdminClient(), {
+  const admin = createAdminClient();
+  const { data: existing, error: existingError } = await admin
+    .from("attendance_register")
+    .select("id, staff_id")
+    .eq("tenant_id", auth.tenantId)
+    .eq("id", id)
+    .maybeSingle();
+
+  if (existingError) {
+    return NextResponse.json({ error: existingError.message }, { status: 500 });
+  }
+  if (!existing) {
+    return NextResponse.json({ error: "Attendance row not found." }, { status: 404 });
+  }
+
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+  const { staffIds, error: staffScopeError } = await fetchScopedStaffIds(
+    admin,
+    auth.tenantId,
+    buScope,
+  );
+  if (staffScopeError) {
+    return NextResponse.json({ error: staffScopeError }, { status: 500 });
+  }
+  const staffId = String(existing.staff_id ?? "").trim();
+  if (!staffIdInActiveScope(staffId, staffIds)) {
+    return NextResponse.json(
+      {
+        error:
+          "This attendance exception is outside the active business unit. Switch business unit before deciding.",
+      },
+      { status: 403 },
+    );
+  }
+
+  const result = await applyAttendanceExceptionDecision(admin, {
     tenantId: auth.tenantId,
     attendanceRegisterId: id,
     decision,

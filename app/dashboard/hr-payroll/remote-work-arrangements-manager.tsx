@@ -21,12 +21,21 @@ import {
   REMOTE_LOCATION_OTHER,
   todayInAccra,
 } from "@/lib/attendance-requests/rules";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import {
+  applyStaffIdScope,
+  fetchScopedStaffIds,
+  staffIdInActiveScope,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import { inputClassName } from "../employees/employee-record-utils";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+
+const OUT_OF_SCOPE_STAFF_MESSAGE =
+  "This staff member is outside the active business unit. Switch business unit or pick staff in this unit.";
 
 export type ArrangementStaffOption = {
   staff_id: string;
@@ -108,6 +117,7 @@ export default function RemoteWorkArrangementsManager({
   loadError = null,
 }: Props) {
   const supabase = useMemo(() => createClient(), []);
+  const buReadScope = useBusinessUnitReadScope();
   const { toast } = useToast();
   const { alert, alertError } = useAlert();
   const confirm = useConfirm();
@@ -223,6 +233,19 @@ export default function RemoteWorkArrangementsManager({
     return user?.id ?? null;
   }
 
+  async function assertStaffInActiveScope(staffId: string): Promise<void> {
+    if (lockedStaffId) {
+      return;
+    }
+    const scoped = await fetchScopedStaffIds(supabase, tenantId, buReadScope);
+    if (scoped.error) {
+      throw new Error(scoped.error);
+    }
+    if (!staffIdInActiveScope(staffId, scoped.staffIds)) {
+      throw new Error(OUT_OF_SCOPE_STAFF_MESSAGE);
+    }
+  }
+
   /** Fresh active rows for this tenant + staff, so a stale list cannot miss a clash. */
   async function loadActiveForStaff(staffId: string): Promise<RemoteWorkArrangement[]> {
     const { data, error } = await supabase
@@ -238,14 +261,30 @@ export default function RemoteWorkArrangementsManager({
   }
 
   async function refreshRows() {
-    let query = supabase
-      .from("remote_work_arrangements")
-      .select(ARRANGEMENT_COLUMNS)
-      .eq("tenant_id", tenantId);
     if (lockedStaffId) {
-      query = query.eq("staff_id", lockedStaffId);
+      const { data, error } = await supabase
+        .from("remote_work_arrangements")
+        .select(ARRANGEMENT_COLUMNS)
+        .eq("tenant_id", tenantId)
+        .eq("staff_id", lockedStaffId);
+      if (error) {
+        throw new Error(error.message);
+      }
+      setRows(sortArrangements((data ?? []) as RemoteWorkArrangement[]));
+      return;
     }
-    const { data, error } = await query;
+
+    const scoped = await fetchScopedStaffIds(supabase, tenantId, buReadScope);
+    if (scoped.error) {
+      throw new Error(scoped.error);
+    }
+    const { data, error } = await applyStaffIdScope(
+      supabase
+        .from("remote_work_arrangements")
+        .select(ARRANGEMENT_COLUMNS)
+        .eq("tenant_id", tenantId),
+      scoped.staffIds,
+    );
     if (error) {
       throw new Error(error.message);
     }
@@ -296,6 +335,7 @@ export default function RemoteWorkArrangementsManager({
 
     setSaving(true);
     try {
+      await assertStaffInActiveScope(draft.staff_id);
       const weekdays = normalizeWeekdays(draft.weekdays);
       const endDate = draft.end_date || null;
       if (
@@ -366,6 +406,7 @@ export default function RemoteWorkArrangementsManager({
     }
     setSaving(true);
     try {
+      await assertStaffInActiveScope(row.staff_id);
       if (
         active &&
         (await refuseIfOverlap({

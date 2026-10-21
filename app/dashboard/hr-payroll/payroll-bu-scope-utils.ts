@@ -249,3 +249,108 @@ export async function fetchScopedActiveEmployees(
     error: null,
   };
 }
+
+/** True when staffIds is null (All Businesses) or the id is in the scoped set. */
+export function staffIdInActiveScope(
+  staffId: string,
+  staffIds: string[] | null,
+): boolean {
+  if (staffIds === null) {
+    return true;
+  }
+  return staffIds.includes(staffId);
+}
+
+/**
+ * Keep rows whose staff_id is in scope. Rows with empty staff_id (unmapped)
+ * are kept so PIN mapping can still happen.
+ */
+export function filterRowsByStaffIdScope<T extends { staff_id?: string | null }>(
+  rows: T[],
+  staffIds: string[] | null,
+): T[] {
+  if (staffIds === null) {
+    return rows;
+  }
+  const allowed = new Set(staffIds);
+  return rows.filter((row) => {
+    const id = String(row.staff_id ?? "").trim();
+    if (!id) {
+      return true;
+    }
+    return allowed.has(id);
+  });
+}
+
+export type ScopedProjectIdsResult = {
+  /** null = All Businesses — do not filter by project. */
+  projectIds: string[] | null;
+  error: string | null;
+};
+
+/** Project primary keys for the active BU (sites inherit via project_id). */
+export async function fetchScopedProjectIds(
+  supabase: SupabaseClient,
+  tenantId: string,
+  buScope: BusinessUnitReadScope,
+): Promise<ScopedProjectIdsResult> {
+  if (buScope.mode === "all") {
+    return { projectIds: null, error: null };
+  }
+
+  const { data, error } = await applyBusinessUnitScope(
+    supabase.from("projects").select("id").eq("tenant_id", tenantId),
+    buScope,
+  );
+
+  if (error) {
+    return { projectIds: [], error: error.message };
+  }
+
+  const ids = [
+    ...new Set(
+      ((data as Array<{ id: string | null }> | null) ?? [])
+        .map((row) => String(row.id ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+
+  return { projectIds: ids, error: null };
+}
+
+/**
+ * Attendance devices: active BU match, or company_wide devices.
+ * - all → no filter
+ * - unit → business_unit_id = id OR company_wide
+ * - default → business_unit_id IS NULL OR company_wide
+ */
+export function applyAttendanceDeviceReadScope<T>(
+  query: T,
+  scope: BusinessUnitReadScope,
+): T {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const q = query as any;
+  if (scope.mode === "all") {
+    return query;
+  }
+  if (scope.mode === "unit") {
+    return q.or(
+      `business_unit_id.eq.${scope.id},company_wide.eq.true`,
+    ) as T;
+  }
+  return q.or("business_unit_id.is.null,company_wide.eq.true") as T;
+}
+
+/** Filter sites whose project_id is in the scoped project set. */
+export function filterSitesByScopedProjectIds<
+  T extends { project_id?: string | null },
+>(sites: T[], projectIds: string[] | null): T[] {
+  if (projectIds === null) {
+    return sites;
+  }
+  const allowed = new Set(projectIds);
+  return sites.filter((site) => {
+    const projectId = String(site.project_id ?? "").trim();
+    return Boolean(projectId) && allowed.has(projectId);
+  });
+}

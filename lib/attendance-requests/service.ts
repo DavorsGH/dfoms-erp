@@ -17,6 +17,7 @@ import {
   scheduleColumnsForEmployee,
 } from "@/lib/shift-attendance-context";
 import { formatDate } from "@/app/dashboard/finance/income-register-utils";
+import { applyStaffIdScope } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 
 export type AttendanceRequestRow = {
   id: string;
@@ -691,13 +692,16 @@ export async function listOwnRequests(
 export async function listPendingRequests(
   admin: SupabaseClient,
   tenantId: string,
+  staffIds: string[] | null = null,
 ): Promise<AttendanceRequestRow[]> {
-  const { data, error } = await admin
-    .from("attendance_requests")
-    .select(REQUEST_COLUMNS)
-    .eq("tenant_id", tenantId)
-    .eq("status", "pending")
-    .order("submitted_at", { ascending: true });
+  const { data, error } = await applyStaffIdScope(
+    admin
+      .from("attendance_requests")
+      .select(REQUEST_COLUMNS)
+      .eq("tenant_id", tenantId)
+      .eq("status", "pending"),
+    staffIds,
+  ).order("submitted_at", { ascending: true });
 
   if (error) {
     throw new Error(error.message);

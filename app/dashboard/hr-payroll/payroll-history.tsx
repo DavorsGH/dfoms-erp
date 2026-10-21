@@ -50,6 +50,7 @@ import {
 import type { PayrollHistoryRow } from "./payroll-processing-utils";
 import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
+import { applyEmployeeIdScope } from "./payroll-bu-scope-utils";
 
 type PayrollHistoryEmployee = {
   employee_id: string;
@@ -411,11 +412,15 @@ export default function PayrollHistory({
 
       setMonthEndClose(nextClose);
 
-      const { data, error: historyError } = await supabase
-        .from("payroll_history")
-        .select("*")
-        .eq("payroll_month", payrollMonth)
-        .order("employee_id", { ascending: true });
+      const scopedEmployeeIds =
+        buReadScope.mode === "all" ? null : [...employeeMap.keys()];
+      const { data, error: historyError } = await applyEmployeeIdScope(
+        supabase
+          .from("payroll_history")
+          .select("*")
+          .eq("payroll_month", payrollMonth),
+        scopedEmployeeIds,
+      ).order("employee_id", { ascending: true });
 
       if (historyError) {
         throw new Error(historyError.message);

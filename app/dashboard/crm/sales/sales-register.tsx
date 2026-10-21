@@ -15,6 +15,10 @@ import {
   useBusinessUnitView,
 } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
+import {
+  matchesBusinessUnitScope,
+  snapshotBusinessUnitId,
+} from "@/utils/cart-snapshot-business-unit";
 import RegisterRecordDetailDrawer, {
   type RegisterDetailSection,
 } from "@/app/dashboard/register-record-detail-drawer";
@@ -326,16 +330,23 @@ export default function SalesRegister(props: SalesRegisterProps) {
       created_at: string;
     }>;
     setPendingPaystack(
-      rows.map((row) => ({
-        id: row.id,
-        invoice_no: row.invoice_no,
-        amount_requested: Number(row.amount_requested) || 0,
-        status: row.status,
-        payment_method: row.payment_method,
-        income_ids: Array.isArray(row.income_ids) ? row.income_ids : [],
-        cart_snapshot: row.cart_snapshot,
-        created_at: row.created_at,
-      })),
+      rows
+        .filter((row) =>
+          matchesBusinessUnitScope(
+            snapshotBusinessUnitId(row.cart_snapshot),
+            buReadScope,
+          ),
+        )
+        .map((row) => ({
+          id: row.id,
+          invoice_no: row.invoice_no,
+          amount_requested: Number(row.amount_requested) || 0,
+          status: row.status,
+          payment_method: row.payment_method,
+          income_ids: Array.isArray(row.income_ids) ? row.income_ids : [],
+          cart_snapshot: row.cart_snapshot,
+          created_at: row.created_at,
+        })),
     );
   }
 
@@ -388,7 +399,9 @@ export default function SalesRegister(props: SalesRegisterProps) {
 
   useEffect(() => {
     void refreshPendingPaystack();
-  }, [supabase]);
+    // buReadScope: re-filter pending Paystack rows when the switcher changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshPendingPaystack closes over latest scope
+  }, [supabase, buReadScope]);
 
   useEffect(() => {
     void reloadReturnedQuantities(incomeEntries);

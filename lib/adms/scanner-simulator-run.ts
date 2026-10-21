@@ -135,6 +135,7 @@ async function loadMappedEmployees(
   admin: SupabaseClient,
   tenantId: string,
   device: AttendanceDeviceRow,
+  staffIds: string[] | null = null,
 ): Promise<SimEmployee[]> {
   const [pinsResult, employeesResult, context] = await Promise.all([
     admin
@@ -150,6 +151,8 @@ async function loadMappedEmployees(
       .eq("employment_status", "Active"),
     loadShiftScheduleContext(admin, tenantId),
   ]);
+  const allowedStaff =
+    staffIds === null ? null : new Set(staffIds);
   const pinByStaff = new Map<string, string>();
   for (const row of pinsResult.data ?? []) {
     const staffId = String(row.staff_id ?? "");
@@ -165,6 +168,9 @@ async function loadMappedEmployees(
   const employees: SimEmployee[] = [];
   for (const row of employeesResult.data ?? []) {
     const staffId = String(row.staff_id ?? "");
+    if (allowedStaff !== null && !allowedStaff.has(staffId)) {
+      continue;
+    }
     const pin = pinByStaff.get(staffId);
     if (!pin) {
       continue;
@@ -625,12 +631,18 @@ export async function listSimulatorEmployees(
   admin: SupabaseClient,
   tenantId: string,
   deviceId: string,
+  staffIds: string[] | null = null,
 ): Promise<SimulatorEmployeeOption[]> {
   const device = await loadDevice(admin, tenantId, deviceId);
   if (!device) {
     return [];
   }
-  const employees = await loadMappedEmployees(admin, tenantId, device);
+  const employees = await loadMappedEmployees(
+    admin,
+    tenantId,
+    device,
+    staffIds,
+  );
   return employees.map((employee) => ({
     staffId: employee.staff_id,
     fullName: employee.full_name,

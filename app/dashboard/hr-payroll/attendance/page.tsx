@@ -13,7 +13,9 @@ import {
 } from "@/utils/business-unit-view";
 import {
   applyStaffIdScope,
+  fetchScopedProjectIds,
   fetchScopedStaffIds,
+  filterSitesByScopedProjectIds,
 } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import AttendanceExceptionsPanel from "../attendance-exceptions-panel";
 import AttendanceRegister from "../attendance-register";
@@ -55,6 +57,15 @@ export default async function AttendancePage() {
             ? null
             : "Unable to resolve your workspace.",
       };
+  const { projectIds, error: projectScopeError } = tenantId
+    ? await fetchScopedProjectIds(supabase, tenantId, buScope)
+    : {
+        projectIds: buScope.mode === "all" ? null : [],
+        error:
+          buScope.mode === "all"
+            ? null
+            : "Unable to resolve your workspace.",
+      };
 
   const [
     { data, error },
@@ -76,7 +87,7 @@ export default async function AttendancePage() {
     tenantId
       ? supabase
           .from("sites")
-          .select("site_code, site_name")
+          .select("site_code, site_name, project_id")
           .eq("tenant_id", tenantId)
           .order("site_name")
       : Promise.resolve({ data: [], error: null }),
@@ -84,16 +95,23 @@ export default async function AttendancePage() {
 
   const fetchError =
     staffScopeError ??
+    projectScopeError ??
     error?.message ??
     employeesError?.message ??
     sitesError?.message ??
     null;
 
+  const scopedSites = filterSitesByScopedProjectIds(
+    (sites as Array<{
+      site_code: string;
+      site_name: string;
+      project_id: string | null;
+    }> | null) ?? [],
+    projectIds,
+  );
+
   const siteNameByCode: Record<string, string> = {};
-  for (const site of (sites as Array<{
-    site_code: string;
-    site_name: string;
-  }> | null) ?? []) {
+  for (const site of scopedSites) {
     if (site.site_code) {
       siteNameByCode[site.site_code] = site.site_name || site.site_code;
     }

@@ -31,6 +31,15 @@ import {
   normalizeTenantDeviceSettings,
   TENANT_DEVICE_SETTINGS_DEFAULTS,
 } from "@/utils/tenant-device-settings";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
+import { fetchScopedStaffIds } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 
 type DeviceRow = {
   id: string;
@@ -132,6 +141,23 @@ export async function GET() {
   }
 
   const { admin, actor } = session;
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+  const { staffIds, error: staffScopeError } = await fetchScopedStaffIds(
+    admin,
+    actor.tenantId,
+    buScope,
+  );
+  if (staffScopeError) {
+    return NextResponse.json({ error: staffScopeError }, { status: 500 });
+  }
+
   const [sitesResult, employeesResult, devicesResult, projectsResult, settingsResult] =
     await Promise.all([
       admin
@@ -139,10 +165,13 @@ export async function GET() {
         .select("site_code, site_name, project_id")
         .eq("tenant_id", actor.tenantId)
         .order("site_name"),
-      admin
-        .from("employees")
-        .select("staff_id, full_name, contract_project, employment_status")
-        .eq("tenant_id", actor.tenantId),
+      applyBusinessUnitScope(
+        admin
+          .from("employees")
+          .select("staff_id, full_name, contract_project, employment_status")
+          .eq("tenant_id", actor.tenantId),
+        buScope,
+      ),
       admin
         .from("attendance_devices")
         .select(
@@ -208,9 +237,17 @@ export async function GET() {
     }
     return group.projectCodes.some((code) => visibleProjectCodes.has(code));
   });
+  const allowedStaff =
+    staffIds === null ? null : new Set(staffIds);
   const employees = (employeesResult.data ?? []).filter((employee) => {
     const status = String(employee.employment_status ?? "active").toLowerCase();
-    return status === "active";
+    if (status !== "active") {
+      return false;
+    }
+    if (allowedStaff === null) {
+      return true;
+    }
+    return allowedStaff.has(String(employee.staff_id ?? ""));
   });
 
   return NextResponse.json({

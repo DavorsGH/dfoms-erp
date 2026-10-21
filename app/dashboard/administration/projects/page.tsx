@@ -9,6 +9,10 @@ import {
   applyBusinessUnitScope,
   resolveBusinessUnitReadScope,
 } from "@/utils/business-unit-view";
+import {
+  fetchScopedProjectIds,
+  filterSitesByScopedProjectIds,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import { CLIENT_SELECT, type ClientEntry } from "../../operations/clients-utils";
 import {
   SITE_ASSIGNMENT_SELECT,
@@ -40,6 +44,10 @@ export default async function ProjectsPage() {
     activeBusinessUnitId,
   });
 
+  const scopedProjects = tenantId
+    ? await fetchScopedProjectIds(supabase, tenantId, buScope)
+    : { projectIds: [] as string[], error: "Unable to resolve tenant." };
+
   const projectsQuery = applyBusinessUnitScope(
     supabase.from("projects").select(PROJECT_SELECT),
     buScope,
@@ -52,14 +60,17 @@ export default async function ProjectsPage() {
     .from("customers")
     .select(CLIENT_SELECT)
     .order("client_name", { ascending: true });
-  const employeesQuery = supabase
-    .from("employees")
-    .select("contract_project")
-    .not("contract_project", "is", null);
-  const serviceContractsQuery = supabase
-    .from("service_contracts")
-    .select(SERVICE_CONTRACT_LIST_SELECT)
-    .order("contract_number", { ascending: true });
+  const employeesQuery = applyBusinessUnitScope(
+    supabase.from("employees").select("contract_project").not("contract_project", "is", null),
+    buScope,
+  );
+  const serviceContractsQuery = applyBusinessUnitScope(
+    supabase
+      .from("service_contracts")
+      .select(SERVICE_CONTRACT_LIST_SELECT)
+      .order("contract_number", { ascending: true }),
+    buScope,
+  );
 
   if (tenantId) {
     projectsQuery.eq("tenant_id", tenantId);
@@ -91,6 +102,37 @@ export default async function ProjectsPage() {
       (employeeCountByProjectCode[code] ?? 0) + 1;
   }
 
+  const scopedSites = filterSitesByScopedProjectIds(
+    (sites as SiteEntry[] | null) ?? [],
+    scopedProjects.projectIds,
+  );
+
+  const scopedProjectRows =
+    (data as ProjectEntry[] | null)?.map((project) =>
+      normalizeProjectEntry(project),
+    ) ?? [];
+  const clientIds = new Set<string>();
+  for (const site of scopedSites) {
+    const clientId = String(site.client_id ?? "").trim();
+    if (clientId) {
+      clientIds.add(clientId);
+    }
+  }
+  for (const contract of (serviceContracts as ServiceContractListRow[] | null) ??
+    []) {
+    const clientId = String(contract.client_id ?? "").trim();
+    if (clientId) {
+      clientIds.add(clientId);
+    }
+  }
+
+  const scopedClients =
+    buScope.mode === "all"
+      ? ((clients as ClientEntry[] | null) ?? [])
+      : ((clients as ClientEntry[] | null) ?? []).filter((client) =>
+          clientIds.has(String(client.client_id ?? "").trim()),
+        );
+
   if (!tenantId) {
     return (
       <>
@@ -111,13 +153,9 @@ export default async function ProjectsPage() {
       </h2>
       <Projects
         tenantId={tenantId}
-        initialProjects={
-          (data as ProjectEntry[] | null)?.map((project) =>
-            normalizeProjectEntry(project),
-          ) ?? []
-        }
-        initialSites={(sites as SiteEntry[] | null) ?? []}
-        initialClients={(clients as ClientEntry[] | null) ?? []}
+        initialProjects={scopedProjectRows}
+        initialSites={scopedSites}
+        initialClients={scopedClients}
         initialServiceContracts={
           ((serviceContracts as ServiceContractListRow[] | null) ?? []).map(
             (row) => normalizeServiceContractListRow(row),
@@ -125,6 +163,7 @@ export default async function ProjectsPage() {
         }
         initialEmployeeCountByProjectCode={employeeCountByProjectCode}
         fetchError={
+          scopedProjects.error ??
           error?.message ??
           sitesError?.message ??
           clientsError?.message ??

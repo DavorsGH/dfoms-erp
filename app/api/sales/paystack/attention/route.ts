@@ -6,6 +6,15 @@ import {
   isMissingPaystackAttentionTable,
   PAYSTACK_ATTENTION_TABLE,
 } from "@/utils/paystack-payment-attention";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import {
+  matchesBusinessUnitScope,
+  snapshotBusinessUnitId,
+} from "@/utils/cart-snapshot-business-unit";
 
 export const runtime = "nodejs";
 
@@ -17,6 +26,15 @@ export async function GET() {
   if (!auth.ok) {
     return auth.response;
   }
+
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const admin = createAdminClient();
   const { data, error } = await admin
@@ -33,5 +51,38 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ rows: data ?? [], unavailable: false });
+  const rows = data ?? [];
+  if (buScope.mode === "all" || rows.length === 0) {
+    return NextResponse.json({ rows, unavailable: false });
+  }
+
+  const requestIds = [
+    ...new Set(
+      rows
+        .map((row) => String(row.payment_request_id ?? ""))
+        .filter(Boolean),
+    ),
+  ];
+  const buByRequestId = new Map<string, string | null>();
+  if (requestIds.length > 0) {
+    const { data: requests } = await admin
+      .from("product_sale_payment_requests")
+      .select("id, cart_snapshot")
+      .eq("tenant_id", auth.tenantId)
+      .in("id", requestIds);
+    for (const request of requests ?? []) {
+      buByRequestId.set(
+        String(request.id),
+        snapshotBusinessUnitId(request.cart_snapshot),
+      );
+    }
+  }
+
+  const scopedRows = rows.filter((row) => {
+    const requestId = String(row.payment_request_id ?? "");
+    const buId = buByRequestId.get(requestId) ?? null;
+    return matchesBusinessUnitScope(buId, buScope);
+  });
+
+  return NextResponse.json({ rows: scopedRows, unavailable: false });
 }

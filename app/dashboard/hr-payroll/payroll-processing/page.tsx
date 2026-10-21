@@ -121,8 +121,14 @@ export default async function PayrollProcessingPage() {
     { data: hrPayrollSettingsRows, error: hrPayrollSettingsError },
     { data: sites, error: sitesError },
   ] = await Promise.all([
-    supabase.from("payroll_processing").select("payroll_month"),
-    supabase.from("payroll_history").select("payroll_month"),
+    applyEmployeeIdScope(
+      supabase.from("payroll_processing").select("payroll_month"),
+      employeeIds,
+    ),
+    applyEmployeeIdScope(
+      supabase.from("payroll_history").select("payroll_month"),
+      employeeIds,
+    ),
     applyBusinessUnitScope(
       supabase.from("month_end_close").select("*"),
       buScope,

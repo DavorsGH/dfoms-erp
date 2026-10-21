@@ -46,6 +46,10 @@ import {
 } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import {
+  fetchScopedProjectIds,
+  filterSitesByScopedProjectIds,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
+import {
   assertCanModifyBusinessUnitRow,
   formatBusinessUnitAccessError,
   loadWriteBusinessUnitContext,
@@ -196,10 +200,13 @@ export default function Projects({
       return;
     }
 
-    const { data, error: countError } = await supabase
-      .from("employees")
-      .select("contract_project")
-      .in("contract_project", projectCodes);
+    const { data, error: countError } = await applyBusinessUnitScope(
+      supabase
+        .from("employees")
+        .select("contract_project")
+        .in("contract_project", projectCodes),
+      buReadScope,
+    );
 
     if (countError) {
       // Keep prior counts if the refresh fails; delete/deactivate still works.
@@ -216,6 +223,16 @@ export default function Projects({
   }
 
   async function refreshData() {
+    const scopedProjects = await fetchScopedProjectIds(
+      supabase,
+      scopedTenantId,
+      buReadScope,
+    );
+    if (scopedProjects.error) {
+      await alertError(scopedProjects.error);
+      return;
+    }
+
     const [{ data: projectRows, error: projectError }, { data: siteRows, error: siteError }] =
       await Promise.all([
         applyBusinessUnitScope(
@@ -239,8 +256,11 @@ export default function Projects({
 
     setProjects(nextProjects);
     setSites(
-      ((siteRows as unknown as SiteEntry[] | null) ?? []).map((site) =>
-        normalizeSiteEntry(site),
+      filterSitesByScopedProjectIds(
+        ((siteRows as unknown as SiteEntry[] | null) ?? []).map((site) =>
+          normalizeSiteEntry(site),
+        ),
+        scopedProjects.projectIds,
       ),
     );
     await refreshEmployeeCounts(nextProjects.map((project) => project.project_code));

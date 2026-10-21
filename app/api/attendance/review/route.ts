@@ -14,6 +14,18 @@ import {
   isAttendanceHubRole,
   requireSessionActor,
 } from "@/lib/attendance-requests/session";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
+import {
+  fetchScopedStaffIds,
+  filterRowsByStaffIdScope,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 
 const REVIEW_NOTES = [
   "missing_clock_out",
@@ -33,6 +45,23 @@ export async function GET() {
   }
 
   const { admin, actor } = session;
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+  const { staffIds, error: staffScopeError } = await fetchScopedStaffIds(
+    admin,
+    actor.tenantId,
+    buScope,
+  );
+  if (staffScopeError) {
+    return NextResponse.json({ error: staffScopeError }, { status: 500 });
+  }
+
   const nowMs = Date.now();
   await processBiometricPunchesForTenant(admin, actor.tenantId, {
     dueFutureOnly: true,
@@ -80,10 +109,13 @@ export async function GET() {
         .gte("date", openSince)
         .order("date", { ascending: false })
         .limit(200),
-      admin
-        .from("employees")
-        .select("staff_id, full_name, employment_status, contract_project")
-        .eq("tenant_id", actor.tenantId),
+      applyBusinessUnitScope(
+        admin
+          .from("employees")
+          .select("staff_id, full_name, employment_status, contract_project")
+          .eq("tenant_id", actor.tenantId),
+        buScope,
+      ),
     ]);
 
   const error =
@@ -97,17 +129,17 @@ export async function GET() {
   }
 
   const punches = new Map<string, Record<string, unknown>>();
-  for (const row of notedResult.data ?? []) {
+  for (const row of filterRowsByStaffIdScope(notedResult.data ?? [], staffIds)) {
     punches.set(row.id, row);
   }
-  for (const row of unmappedResult.data ?? []) {
+  for (const row of filterRowsByStaffIdScope(unmappedResult.data ?? [], staffIds)) {
     const note = String(row.process_note ?? "");
     if (note.endsWith(":dismissed")) {
       continue;
     }
     punches.set(row.id, row);
   }
-  for (const row of stuckResult.data ?? []) {
+  for (const row of filterRowsByStaffIdScope(stuckResult.data ?? [], staffIds)) {
     const note = String(row.process_note ?? "");
     if (note === "future_time" || note.endsWith(":dismissed")) {
       continue;
@@ -213,7 +245,7 @@ export async function GET() {
         }),
       };
     }),
-    openRows: (openResult.data ?? [])
+    openRows: filterRowsByStaffIdScope(openResult.data ?? [], staffIds)
       .filter((row) =>
         registerSessionWindowOpen(
           String(row.date ?? ""),

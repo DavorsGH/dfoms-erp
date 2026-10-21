@@ -15,7 +15,17 @@ import {
   normalizeSiteEntry,
   type SiteEntry,
 } from "../operations/sites-utils";
-import { useBusinessUnitView } from "@/app/dashboard/business-unit-view-context";
+import {
+  useBusinessUnitReadScope,
+  useBusinessUnitView,
+} from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
+import {
+  applyAttendanceDeviceReadScope,
+  applyStaffIdScope,
+  fetchScopedStaffIds,
+  filterRowsByStaffIdScope,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import {
   assertTenantIdForMutation,
   tenantScopedDelete,
@@ -177,6 +187,7 @@ export default function AttendanceDevicesTab({
   const { alertError } = useAlert();
   const confirm = useConfirm();
   const { units: businessUnits } = useBusinessUnitView();
+  const buReadScope = useBusinessUnitReadScope();
   const [devices, setDevices] = useState<AttendanceDeviceRow[]>([]);
   const [projects, setProjects] = useState<StaffGroupProject[]>([]);
   const [sites, setSites] = useState<SiteEntry[]>([]);
@@ -262,6 +273,20 @@ export default function AttendanceDevicesTab({
     }
     let ok = true;
 
+    const scopedStaff =
+      tenantId != null
+        ? await fetchScopedStaffIds(supabase, tenantId, buReadScope)
+        : { staffIds: null as string[] | null, error: null as string | null };
+    if (scopedStaff.error) {
+      ok = false;
+      if (!silent) {
+        void alertError(scopedStaff.error, {
+          title: "Could not resolve business unit staff",
+        });
+      }
+    }
+    const staffIds = scopedStaff.error ? [] : scopedStaff.staffIds;
+
     const [
       devicesResult,
       projectsResult,
@@ -272,27 +297,35 @@ export default function AttendanceDevicesTab({
       recentResult,
       unclaimedResponse,
     ] = await Promise.all([
-      supabase
-        .from("attendance_devices")
-        .select(
-          "id, tenant_id, serial_number, device_name, site_code, contract_project, company_wide, business_unit_id, status, last_seen_at, firmware_info",
-        )
-        .order("device_name", { ascending: true }),
+      applyAttendanceDeviceReadScope(
+        supabase
+          .from("attendance_devices")
+          .select(
+            "id, tenant_id, serial_number, device_name, site_code, contract_project, company_wide, business_unit_id, status, last_seen_at, firmware_info",
+          ),
+        buReadScope,
+      ).order("device_name", { ascending: true }),
       supabase
         .from("projects")
         .select("project_code, project_name, service_contract_id, is_archived")
         .order("project_name"),
       supabase.from("sites").select(SITE_ASSIGNMENT_SELECT).order("site_name"),
-      supabase.from("employees").select(HR_EMPLOYEE_SELECT),
-      supabase
-        .from("employee_biometric_ids")
-        .select("id, tenant_id, staff_id, device_pin"),
+      applyBusinessUnitScope(
+        supabase.from("employees").select(HR_EMPLOYEE_SELECT),
+        buReadScope,
+      ),
+      applyStaffIdScope(
+        supabase
+          .from("employee_biometric_ids")
+          .select("id, tenant_id, staff_id, device_pin"),
+        staffIds,
+      ),
       supabase.from("biometric_punches").select("device_id"),
       supabase
         .from("biometric_punches")
         .select("id, staff_id, device_pin, punch_time")
         .order("punch_time", { ascending: false })
-        .limit(30),
+        .limit(80),
       fetch("/api/attendance/unclaimed-devices"),
     ]);
 
@@ -354,7 +387,14 @@ export default function AttendanceDevicesTab({
         });
       }
     } else {
-      setPinRows((pinsResult.data as BiometricPinRow[] | null) ?? []);
+      const pinRowsRaw = (pinsResult.data as BiometricPinRow[] | null) ?? [];
+      setPinRows(
+        staffIds === null
+          ? pinRowsRaw
+          : pinRowsRaw.filter((row) =>
+              staffIds.includes(String(row.staff_id ?? "").trim()),
+            ),
+      );
     }
 
     if (punchesResult.error || recentResult.error) {
@@ -368,15 +408,26 @@ export default function AttendanceDevicesTab({
         );
       }
     } else {
+      const scopedDeviceIds = new Set(
+        ((devicesResult.data as AttendanceDeviceRow[] | null) ?? []).map(
+          (device) => device.id,
+        ),
+      );
       const punchIds = new Set<string>();
       for (const row of (punchesResult.data as { device_id: string | null }[] | null) ??
         []) {
-        if (row.device_id) {
+        if (
+          row.device_id &&
+          (buReadScope.mode === "all" || scopedDeviceIds.has(row.device_id))
+        ) {
           punchIds.add(row.device_id);
         }
       }
       setPunchDeviceIds(punchIds);
-      setRecentPunches((recentResult.data as RecentPunch[] | null) ?? []);
+      const recentRaw = (recentResult.data as RecentPunch[] | null) ?? [];
+      setRecentPunches(
+        filterRowsByStaffIdScope(recentRaw, staffIds).slice(0, 30),
+      );
     }
 
     const unclaimedBody = (await unclaimedResponse.json().catch(() => null)) as
@@ -403,7 +454,7 @@ export default function AttendanceDevicesTab({
       setDeviceRefreshFailed(true);
     }
     return ok;
-  }, [alertError, supabase]);
+  }, [alertError, buReadScope, supabase, tenantId]);
 
   const refreshLive = useCallback(async () => {
     await refresh({ silent: true });

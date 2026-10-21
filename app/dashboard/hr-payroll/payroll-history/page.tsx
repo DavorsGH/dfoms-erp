@@ -9,6 +9,10 @@ import {
   applyBusinessUnitScope,
   resolveBusinessUnitReadScope,
 } from "@/utils/business-unit-view";
+import {
+  applyEmployeeIdScope,
+  fetchScopedEmployeeIds,
+} from "../payroll-bu-scope-utils";
 import HrPayrollShell from "../hr-payroll-shell";
 import PayrollHistory from "../payroll-history";
 import {
@@ -31,6 +35,11 @@ export default async function PayrollHistoryPage() {
     activeBusinessUnitId,
   });
 
+  const scopedEmployees = tenantId
+    ? await fetchScopedEmployeeIds(supabase, tenantId, buScope)
+    : { employeeIds: [] as string[], error: "Unable to resolve tenant." };
+  const employeeIds = scopedEmployees.employeeIds;
+
   let employeesQuery = supabase
     .from("employees")
     .select(
@@ -48,7 +57,10 @@ export default async function PayrollHistoryPage() {
     { data: employees, error: employeesError },
     { data: sites, error: sitesError },
   ] = await Promise.all([
-    supabase.from("payroll_history").select("payroll_month"),
+    applyEmployeeIdScope(
+      supabase.from("payroll_history").select("payroll_month"),
+      employeeIds,
+    ),
     applyBusinessUnitScope(
       supabase.from("month_end_close").select("*"),
       buScope,
@@ -64,6 +76,7 @@ export default async function PayrollHistoryPage() {
   ]);
 
   const fetchError =
+    scopedEmployees.error ??
     historyMonthsError?.message ??
     monthEndCloseError?.message ??
     employeesError?.message ??

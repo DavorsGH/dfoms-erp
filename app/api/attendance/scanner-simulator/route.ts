@@ -12,6 +12,12 @@ import {
   SIMULATOR_SCENARIOS,
   type SimulatorScenarioId,
 } from "@/lib/adms/scanner-simulator-traffic";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import { fetchScopedStaffIds } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 
 export const maxDuration = 120;
 
@@ -36,10 +42,28 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Choose a device." }, { status: 400 });
   }
   try {
+    const admin = createAdminClient();
+    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+    const buScope = resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
+    const { staffIds, error: staffScopeError } = await fetchScopedStaffIds(
+      admin,
+      auth.tenantId,
+      buScope,
+    );
+    if (staffScopeError) {
+      return NextResponse.json({ error: staffScopeError }, { status: 500 });
+    }
     const employees = await listSimulatorEmployees(
-      createAdminClient(),
+      admin,
       auth.tenantId,
       deviceId,
+      staffIds,
     );
     return NextResponse.json({ employees });
   } catch (error) {
