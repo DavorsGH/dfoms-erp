@@ -4,6 +4,14 @@ import { createAdminClient } from "@/utils/supabase/admin";
 import { listPaystackTransactions } from "@/utils/paystack";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 import { logSystemEvent } from "@/lib/system-event-log";
+import {
+  sweepOpenProductSalePaystackRequests,
+  type PaystackNightlySweepResult,
+} from "@/utils/paystack-product-sale-confirm";
+import {
+  verifyAllTenantSettlementSubaccounts,
+  type NightlySettlementVerificationSummary,
+} from "@/utils/paystack-settlement-verification";
 
 const RECONCILIATION_HOURS = 48;
 
@@ -192,9 +200,90 @@ export async function runPaystackReconciliation(): Promise<PaystackReconciliatio
   };
 }
 
-export async function runPaystackReconciliationWithLogging(): Promise<PaystackReconciliationResult> {
+/**
+ * Verify product_sale_payment_requests still pending/sent that have a reference
+ * older than 15 minutes, and apply the ones Paystack reports as paid. A failure
+ * here is logged and never blocks the ledger reconciliation below.
+ */
+async function sweepProductSaleRequestsWithLogging(): Promise<PaystackNightlySweepResult | null> {
   try {
-    const result = await runPaystackReconciliation();
+    const sweep = await sweepOpenProductSalePaystackRequests();
+    const notable = sweep.applied + sweep.alreadyApplied + sweep.failed;
+    await logSystemEvent({
+      eventType: "payment",
+      eventName: "paystack-reconciliation-product-sale-requests",
+      status: sweep.failed > 0 ? "failure" : sweep.applied > 0 ? "warning" : "success",
+      message:
+        `Checked ${sweep.checked} open product-sale Paystack request(s): ` +
+        `${sweep.applied} applied, ${sweep.alreadyApplied} already applied, ` +
+        `${sweep.notPaid} not paid, ${sweep.failed} failed`,
+      metadata: {
+        checked: sweep.checked,
+        applied: sweep.applied,
+        alreadyApplied: sweep.alreadyApplied,
+        notPaid: sweep.notPaid,
+        failed: sweep.failed,
+        details: notable > 0 ? sweep.details.filter((d) => d.outcome !== "not_paid") : [],
+      },
+    });
+    return sweep;
+  } catch (error) {
+    await logSystemEvent({
+      eventType: "payment",
+      eventName: "paystack-reconciliation-product-sale-requests",
+      status: "failure",
+      message: error instanceof Error ? error.message : "Product-sale request sweep failed",
+    });
+    return null;
+  }
+}
+
+async function verifySettlementSubaccountsWithLogging(): Promise<NightlySettlementVerificationSummary | null> {
+  try {
+    const summary = await verifyAllTenantSettlementSubaccounts();
+    await logSystemEvent({
+      eventType: "payment",
+      eventName: "paystack-settlement-verification",
+      status:
+        summary.failed > 0
+          ? "warning"
+          : summary.checked > 0
+            ? "success"
+            : "success",
+      message:
+        `Verified ${summary.checked} settlement subaccount(s): ` +
+        `${summary.verifiedOk} ok, ${summary.failed} failed` +
+        (summary.newlyFailed > 0
+          ? ` (${summary.newlyFailed} newly failed)`
+          : ""),
+      metadata: { ...summary },
+    });
+    return summary;
+  } catch (error) {
+    await logSystemEvent({
+      eventType: "payment",
+      eventName: "paystack-settlement-verification",
+      status: "failure",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Settlement subaccount verification failed",
+    });
+    return null;
+  }
+}
+
+export async function runPaystackReconciliationWithLogging(): Promise<
+  PaystackReconciliationResult & {
+    productSaleRequests: PaystackNightlySweepResult | null;
+    settlementVerification: NightlySettlementVerificationSummary | null;
+  }
+> {
+  const productSaleRequests = await sweepProductSaleRequestsWithLogging();
+  const settlementVerification = await verifySettlementSubaccountsWithLogging();
+  try {
+    const base = await runPaystackReconciliation();
+    const result = { ...base, productSaleRequests, settlementVerification };
     const failureIssues = result.issues.filter((issue) => issue.kind !== "subscription_missing");
     const warningIssues = result.issues.filter((issue) => issue.kind === "subscription_missing");
 

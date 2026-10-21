@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useQueryTab } from "@/hooks/use-query-tab";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import { DetailTabs } from "@/app/dashboard/real-estate/lease-detail-layout";
 import ScrollableTable, {
@@ -282,7 +282,10 @@ export default function PortalIssuesView({
   complaints,
   repairs,
 }: PortalIssuesViewProps) {
-  const [activeTab, setActiveTab] = useState<PortalIssuesTabId>(DEFAULT_TAB);
+  const { tab: activeTab, setTab: setActiveTab } = useQueryTab<PortalIssuesTabId>({
+    values: ["complaints", "repairs"],
+    defaultTab: DEFAULT_TAB,
+  });
 
   return (
     <div className="mt-3 space-y-3">

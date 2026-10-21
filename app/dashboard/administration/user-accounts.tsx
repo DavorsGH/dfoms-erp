@@ -1,10 +1,13 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAlert, useToast } from "@/components/feedback";
 import { useRouter } from "next/navigation";
-import { PASSWORD_MIN_LENGTH } from "@/utils/password-policy";
+import {
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_POLICY_HINT,
+} from "@/utils/password-policy";
 import { parseApiErrorResponse } from "@/utils/parse-api-error";
 import type { Employee } from "../lookup-types";
 import { getRoleLabel } from "../role-labels";
@@ -208,14 +211,52 @@ export default function UserAccounts({
     }
   }
 
+  function closeEditUser() {
+    setEditingUid(null);
+  }
+
+  function closeResetPassword() {
+    setResettingUid(null);
+    setResetPassword("");
+  }
+
   function openEditUser(account: UserAccount) {
     setEditingUid(account.auth_uid);
     setEditForm(editUserFromAccount(account));
-    setResettingUid(null);
+    closeResetPassword();
     setError(null);
     setSuccess(null);
     void loadBusinessUnitAccess(account.auth_uid);
   }
+
+  function openResetPassword(account: UserAccount) {
+    setResettingUid(account.auth_uid);
+    setResetPassword("");
+    setEditingUid(null);
+    setError(null);
+    setSuccess(null);
+  }
+
+  useEffect(() => {
+    if (!editingUid && !resettingUid) {
+      return;
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      if (resettingUid) {
+        closeResetPassword();
+      } else {
+        closeEditUser();
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [editingUid, resettingUid]);
 
   const assignedEmployeeIds = useMemo(
     () =>
@@ -237,7 +278,12 @@ export default function UserAccounts({
     [accounts],
   );
 
-  const editingAccount = accounts.find((account) => account.auth_uid === editingUid);
+  const editingAccount = accounts.find(
+    (account) => account.auth_uid === editingUid,
+  );
+  const resettingAccount = accounts.find(
+    (account) => account.auth_uid === resettingUid,
+  );
 
   async function syncBusinessUnitAccess(
     authUid: string,
@@ -402,7 +448,7 @@ export default function UserAccounts({
       }
     }
 
-    setEditingUid(null);
+    closeEditUser();
     toast(
       originalAccount?.is_active && !editForm.is_active
         ? "User account deactivated."
@@ -415,7 +461,11 @@ export default function UserAccounts({
     router.refresh();
   }
 
-  async function handleResetPassword(e: React.FormEvent, authUid: string) {
+  async function handleResetPassword(
+    e: React.FormEvent,
+    authUid: string,
+    displayName: string,
+  ) {
     e.preventDefault();
     setActionId(authUid);
     setError(null);
@@ -435,9 +485,8 @@ export default function UserAccounts({
       return;
     }
 
-    setResettingUid(null);
-    setResetPassword("");
-    setSuccess("Password reset successfully.");
+    closeResetPassword();
+    toast(`Password updated for ${displayName}`);
     setActionId(null);
   }
 
@@ -559,7 +608,8 @@ export default function UserAccounts({
             setShowCreateForm((current) => !current);
             setCreateMode("password");
             setCreateBusinessUnitAccessForm(emptyBusinessUnitAccessForm());
-            setEditingUid(null);
+            closeEditUser();
+            closeResetPassword();
             setError(null);
             setSuccess(null);
           }}
@@ -731,245 +781,292 @@ export default function UserAccounts({
               </tr>
             ) : (
               accounts.map((account, index) => (
-                <Fragment key={account.auth_uid}>
-                  <tr
-                    className={
-                      index % 2 === 1
-                        ? "bg-slate-50 text-slate-700"
-                        : "text-slate-700"
-                    }
+                <tr
+                  key={account.auth_uid}
+                  className={
+                    index % 2 === 1
+                      ? "bg-slate-50 text-slate-700"
+                      : "text-slate-700"
+                  }
+                >
+                  <td className={scrollableTableBodyCellClassNameForHeading("Name")}>
+                    {account.full_name}
+                  </td>
+                  <td className={scrollableTableBodyCellClassNameForHeading("Email")}>
+                    {account.email}
+                  </td>
+                  <td
+                    className={scrollableTableBodyCellClassNameForHeading("Role")}
                   >
-                    <td className={scrollableTableBodyCellClassNameForHeading("Name")}>
-                      {account.full_name}
-                    </td>
-                    <td className={scrollableTableBodyCellClassNameForHeading("Email")}>
-                      {account.email}
-                    </td>
-                    <td
-                      className={scrollableTableBodyCellClassNameForHeading("Role")}
-                    >
-                      {getRoleLabel(account.role)}
-                    </td>
-                    <td
-                      className={`${scrollableTableBodyCellClassNameForHeading("Role Links")} text-sm`}
-                    >
-                      {formatRoleLinks(account, initialSites)}
-                    </td>
-                    <td
-                      className={`${scrollableTableBodyCellClassNameForHeading("Active")} ${scrollableTableCompactCellClassName}`}
-                    >
-                      {account.is_active ? "Yes" : "No"}
-                    </td>
-                    <td
-                      className={`${scrollableTableBodyCellClassNameForHeading("Actions")} whitespace-nowrap ${scrollableTableCompactCellClassName}`}
-                    >
-                      <div className="inline-flex flex-nowrap items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => openEditUser(account)}
-                          disabled={actionId === account.auth_uid}
-                          className={actionButtonClassName}
-                        >
-                          Edit User
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setResettingUid(account.auth_uid);
-                            setResetPassword("");
-                            setEditingUid(null);
-                            setError(null);
-                            setSuccess(null);
-                          }}
-                          disabled={!account.is_active || actionId === account.auth_uid}
-                          className={actionButtonClassName}
-                        >
-                          Reset Password
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleDeactivate(account.auth_uid, account.full_name)
-                          }
-                          disabled={
-                            !account.is_active || actionId === account.auth_uid
-                          }
-                          className={deactivateButtonClassName}
-                        >
-                          {actionId === account.auth_uid
-                            ? "Working…"
-                            : "Deactivate"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleDeleteUser(account.auth_uid, account.full_name)
-                          }
-                          disabled={actionId === account.auth_uid}
-                          className={deleteButtonClassName}
-                        >
-                          Delete User
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {editingUid === account.auth_uid && (
-                    <tr className="bg-slate-50">
-                      <td colSpan={6} className="px-4 py-4">
-                        <form
-                          onSubmit={(e) =>
-                            handleUpdateUser(
-                              e,
-                              account.auth_uid,
-                              account.full_name,
-                            )
-                          }
-                          className="space-y-4"
-                        >
-                          <div className="max-w-md">
-                            <label className="mb-1 block text-sm font-medium text-slate-700">
-                              Email
-                            </label>
-                            <input
-                              type="email"
-                              required
-                              value={editForm.email}
-                              onChange={(e) =>
-                                setEditForm((current) => ({
-                                  ...current,
-                                  email: e.target.value,
-                                }))
-                              }
-                              className={inputClassName}
-                            />
-                          </div>
-                          <div>
-                            <span className="mb-1 block text-sm font-medium text-slate-700">
-                              Account Status
-                            </span>
-                            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                              <input
-                                type="checkbox"
-                                checked={editForm.is_active}
-                                onChange={(e) =>
-                                  setEditForm((current) => ({
-                                    ...current,
-                                    is_active: e.target.checked,
-                                  }))
-                                }
-                                className="h-4 w-4 rounded border-slate-300 text-[#0f2744] focus:ring-[#0f2744]"
-                              />
-                              {editForm.is_active ? "Active" : "Inactive"}
-                            </label>
-                            {!editForm.is_active && (
-                              <p className="mt-1 text-xs text-slate-500">
-                                Inactive users are signed out on their next
-                                request and cannot access the portal.
-                              </p>
-                            )}
-                          </div>
-                          <RoleAssignmentFields
-                            form={editForm}
-                            employees={initialEmployees}
-                            clients={initialClients}
-                            sites={initialSites}
-                            assignedEmployeeIds={assignedEmployeeIds}
-                            assignedClientIds={assignedClientIds}
-                            currentEmployeeId={editingAccount?.employee_id}
-                            currentClientId={editingAccount?.client_id}
-                            onChange={(next) =>
-                              setEditForm((current) => ({
-                                ...current,
-                                ...next,
-                              }))
-                            }
-                            idPrefix={`edit-${account.auth_uid}`}
-                          />
-                          {showBusinessUnitAccess ? (
-                            <BusinessUnitAccessFields
-                              form={businessUnitAccessForm}
-                              businessUnits={initialBusinessUnits}
-                              onChange={setBusinessUnitAccessForm}
-                              loading={businessUnitAccessLoading}
-                              idPrefix={`edit-bu-${account.auth_uid}`}
-                            />
-                          ) : null}
-                          <div className="flex gap-2">
-                            <button
-                              type="submit"
-                              disabled={actionId === account.auth_uid}
-                              className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {actionId === account.auth_uid
-                                ? "Saving…"
-                                : "Save User"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setEditingUid(null)}
-                              className={actionButtonClassName}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </form>
-                      </td>
-                    </tr>
-                  )}
-
-                  {resettingUid === account.auth_uid && (
-                    <tr className="bg-slate-50">
-                      <td colSpan={6} className="px-4 py-4">
-                        <form
-                          onSubmit={(e) =>
-                            handleResetPassword(e, account.auth_uid)
-                          }
-                          className="flex flex-col gap-3 sm:flex-row sm:items-end"
-                        >
-                          <div className="flex-1">
-                            <label className="mb-1 block text-sm font-medium text-slate-700">
-                              New Password for {account.full_name}
-                            </label>
-                            <PasswordInput
-                              required
-                              minLength={PASSWORD_MIN_LENGTH}
-                              value={resetPassword}
-                              onChange={(e) => setResetPassword(e.target.value)}
-                              className={inputClassName}
-                            />
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              type="submit"
-                              disabled={actionId === account.auth_uid}
-                              className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {actionId === account.auth_uid
-                                ? "Saving…"
-                                : "Save Password"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setResettingUid(null);
-                                setResetPassword("");
-                              }}
-                              className={actionButtonClassName}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </form>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
+                    {getRoleLabel(account.role)}
+                  </td>
+                  <td
+                    className={`${scrollableTableBodyCellClassNameForHeading("Role Links")} text-sm`}
+                  >
+                    {formatRoleLinks(account, initialSites)}
+                  </td>
+                  <td
+                    className={`${scrollableTableBodyCellClassNameForHeading("Active")} ${scrollableTableCompactCellClassName}`}
+                  >
+                    {account.is_active ? "Yes" : "No"}
+                  </td>
+                  <td
+                    className={`${scrollableTableBodyCellClassNameForHeading("Actions")} whitespace-nowrap ${scrollableTableCompactCellClassName}`}
+                  >
+                    <div className="inline-flex flex-nowrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => openEditUser(account)}
+                        disabled={actionId === account.auth_uid}
+                        className={actionButtonClassName}
+                      >
+                        Edit User
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openResetPassword(account)}
+                        disabled={
+                          !account.is_active || actionId === account.auth_uid
+                        }
+                        className={actionButtonClassName}
+                      >
+                        Reset Password
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleDeactivate(account.auth_uid, account.full_name)
+                        }
+                        disabled={
+                          !account.is_active || actionId === account.auth_uid
+                        }
+                        className={deactivateButtonClassName}
+                      >
+                        {actionId === account.auth_uid
+                          ? "Working…"
+                          : "Deactivate"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleDeleteUser(account.auth_uid, account.full_name)
+                        }
+                        disabled={actionId === account.auth_uid}
+                        className={deleteButtonClassName}
+                      >
+                        Delete User
+                      </button>
+                    </div>
+                  </td>
+                </tr>
               ))
             )}
           </tbody>
         </table>
       </ScrollableTable>
+
+      {editingAccount ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-user-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeEditUser();
+            }
+          }}
+        >
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-slate-200 bg-white p-6 shadow-xl">
+            <h3
+              id="edit-user-title"
+              className="text-lg font-semibold text-[#0f2744]"
+            >
+              Edit User
+            </h3>
+            <p className="mt-1 text-sm text-slate-600">
+              {editingAccount.full_name}
+              <span className="text-slate-400"> · </span>
+              {editingAccount.email}
+            </p>
+            <form
+              onSubmit={(e) =>
+                handleUpdateUser(
+                  e,
+                  editingAccount.auth_uid,
+                  editingAccount.full_name,
+                )
+              }
+              className="mt-4 space-y-4"
+            >
+              <div className="max-w-md">
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={editForm.email}
+                  onChange={(e) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      email: e.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </div>
+              <div>
+                <span className="mb-1 block text-sm font-medium text-slate-700">
+                  Account Status
+                </span>
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={editForm.is_active}
+                    onChange={(e) =>
+                      setEditForm((current) => ({
+                        ...current,
+                        is_active: e.target.checked,
+                      }))
+                    }
+                    className="h-4 w-4 rounded border-slate-300 text-[#0f2744] focus:ring-[#0f2744]"
+                  />
+                  {editForm.is_active ? "Active" : "Inactive"}
+                </label>
+                {!editForm.is_active && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Inactive users are signed out on their next request and
+                    cannot access the portal.
+                  </p>
+                )}
+              </div>
+              <RoleAssignmentFields
+                form={editForm}
+                employees={initialEmployees}
+                clients={initialClients}
+                sites={initialSites}
+                assignedEmployeeIds={assignedEmployeeIds}
+                assignedClientIds={assignedClientIds}
+                currentEmployeeId={editingAccount.employee_id}
+                currentClientId={editingAccount.client_id}
+                onChange={(next) =>
+                  setEditForm((current) => ({
+                    ...current,
+                    ...next,
+                  }))
+                }
+                idPrefix={`edit-${editingAccount.auth_uid}`}
+              />
+              {showBusinessUnitAccess ? (
+                <BusinessUnitAccessFields
+                  form={businessUnitAccessForm}
+                  businessUnits={initialBusinessUnits}
+                  onChange={setBusinessUnitAccessForm}
+                  loading={businessUnitAccessLoading}
+                  idPrefix={`edit-bu-${editingAccount.auth_uid}`}
+                />
+              ) : null}
+              <div className="flex flex-wrap justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={closeEditUser}
+                  className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionId === editingAccount.auth_uid}
+                  className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {actionId === editingAccount.auth_uid
+                    ? "Saving…"
+                    : "Save changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {resettingAccount ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reset-password-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeResetPassword();
+            }
+          }}
+        >
+          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-xl">
+            <h3
+              id="reset-password-title"
+              className="text-lg font-semibold text-[#0f2744]"
+            >
+              Reset password
+            </h3>
+            <p className="mt-1 text-sm text-slate-600">
+              {resettingAccount.full_name}
+              <span className="text-slate-400"> · </span>
+              {resettingAccount.email}
+            </p>
+            <form
+              onSubmit={(e) =>
+                handleResetPassword(
+                  e,
+                  resettingAccount.auth_uid,
+                  resettingAccount.full_name,
+                )
+              }
+              className="mt-4 space-y-4"
+            >
+              <div>
+                <label
+                  htmlFor="reset-password-field"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  New password
+                </label>
+                <PasswordInput
+                  id="reset-password-field"
+                  required
+                  autoFocus
+                  minLength={PASSWORD_MIN_LENGTH}
+                  value={resetPassword}
+                  onChange={(e) => setResetPassword(e.target.value)}
+                  className={inputClassName}
+                  autoComplete="new-password"
+                />
+                <p className="mt-2 text-xs text-slate-500">
+                  {PASSWORD_POLICY_HINT}
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeResetPassword}
+                  className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionId === resettingAccount.auth_uid}
+                  className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {actionId === resettingAccount.auth_uid
+                    ? "Saving…"
+                    : "Save password"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

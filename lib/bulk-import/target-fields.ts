@@ -320,7 +320,7 @@ export const EMPLOYEE_TARGET_FIELDS: readonly BulkImportTargetField[] = [
     label: "Assigned site name",
     required: false,
     example: "Accra Mall",
-    mappingHint: "Site name (not code); left blank at import if not found",
+    mappingHint: "Ignored. Duty Roster assigns the site after import.",
   },
   {
     key: "basic_salary",

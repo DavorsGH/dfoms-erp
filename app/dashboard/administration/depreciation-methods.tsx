@@ -8,6 +8,7 @@ import {
   tenantScopedDelete,
 } from "@/utils/tenant-scoped-supabase";
 import type { NamedLookup } from "../lookup-types";
+import { useLookupSettingsFeedback } from "./lookup-settings-feedback";
 
 type DepreciationMethodsProps = {
   tenantId: string;
@@ -24,11 +25,12 @@ export default function DepreciationMethods({
   fetchError,
 }: DepreciationMethodsProps) {
   const supabase = createClient();
+  const { showActionError, showActionSuccess } =
+    useLookupSettingsFeedback(fetchError);
   const [methods, setMethods] = useState(initialMethods);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [deletingName, setDeletingName] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(fetchError);
 
   async function refreshMethods() {
     const { data, error: refreshError } = await supabase
@@ -37,18 +39,16 @@ export default function DepreciationMethods({
       .order("name", { ascending: true });
 
     if (refreshError) {
-      setError(refreshError.message);
+      showActionError(refreshError);
       return;
     }
 
     setMethods(data ?? []);
-    setError(null);
   }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setError(null);
 
     const scopedTenantId = assertTenantIdForMutation(tenantId);
     const { error: insertError } = await supabase
@@ -56,19 +56,19 @@ export default function DepreciationMethods({
       .insert({ tenant_id: scopedTenantId, name: name.trim() });
 
     if (insertError) {
-      setError(insertError.message);
       setLoading(false);
+      showActionError(insertError);
       return;
     }
 
     setName("");
     await refreshMethods();
     setLoading(false);
+    showActionSuccess("Depreciation method added.");
   }
 
   async function handleDelete(methodName: string) {
     setDeletingName(methodName);
-    setError(null);
 
     const { error: deleteError } = await tenantScopedDelete(
       supabase,
@@ -78,15 +78,16 @@ export default function DepreciationMethods({
     );
 
     if (deleteError) {
-      setError(
+      setDeletingName(null);
+      showActionError(
         getNamedLookupDeleteErrorMessage(deleteError, "depreciation method"),
       );
-      setDeletingName(null);
       return;
     }
 
     await refreshMethods();
     setDeletingName(null);
+    showActionSuccess("Depreciation method deleted.");
   }
 
   return (
@@ -94,12 +95,6 @@ export default function DepreciationMethods({
       <h2 className="mb-4 text-lg font-semibold text-[#0f2744]">
         Depreciation Methods
       </h2>
-
-      {error && (
-        <p className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       <form onSubmit={handleAdd} className="mb-6 flex flex-col gap-3 sm:flex-row">
         <input

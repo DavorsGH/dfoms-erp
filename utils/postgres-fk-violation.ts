@@ -3,6 +3,27 @@ import type { PostgrestError } from "@supabase/supabase-js";
 const FK_CONSTRAINT_NAME_PATTERN =
   /violates foreign key constraint "([^"]+)"/i;
 
+/** Referencing (child) table — the one after the constraint name, not the deleted parent. */
+const FK_REFERENCING_TABLE_PATTERN =
+  /violates foreign key constraint "[^"]+" on table "([^"]+)"/i;
+
+/** Common referencing tables → plain English for delete errors. */
+const FK_REFERENCING_TABLE_LABELS: Record<string, string> = {
+  salary_advance_register: "salary advances",
+  client_invoice_payment_accounts: "invoices",
+  client_quotation_payment_accounts: "quotations",
+  product_purchases: "purchases",
+  employees: "employees",
+  income_register: "income records",
+  expense_register: "expense records",
+  sites: "sites",
+  work_orders: "work orders",
+  crm_sales: "sales",
+  suppliers: "suppliers",
+  finished_products: "products",
+  payment_accounts: "payment accounts",
+};
+
 const UNIQUE_CONSTRAINT_NAME_PATTERN =
   /violates unique constraint "([^"]+)"/i;
 
@@ -154,4 +175,124 @@ export function resolveDeleteErrorMessage(
     options.fallbackGenericMessage ??
     "Unable to complete this delete. Try again."
   );
+}
+
+export function looksLikeRawPostgresForeignKeyError(
+  message: string | null | undefined,
+): boolean {
+  if (!message?.trim()) {
+    return false;
+  }
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("violates foreign key constraint") ||
+    lower.startsWith("update or delete on table") ||
+    lower.includes("violates foreign key")
+  );
+}
+
+export function extractPostgresForeignKeyReferencingTable(
+  message: string | null | undefined,
+): string | null {
+  if (!message) {
+    return null;
+  }
+  const match = message.match(FK_REFERENCING_TABLE_PATTERN);
+  return match?.[1] ?? null;
+}
+
+export function humanizeForeignKeyReferencingTable(
+  tableOrConstraint: string | null | undefined,
+): string {
+  const raw = tableOrConstraint?.trim() ?? "";
+  if (!raw) {
+    return "other records";
+  }
+  if (FK_REFERENCING_TABLE_LABELS[raw]) {
+    return FK_REFERENCING_TABLE_LABELS[raw];
+  }
+  // Constraint names often end with _fkey and include the child table.
+  const withoutFkey = raw.replace(/_fkey$/i, "");
+  if (FK_REFERENCING_TABLE_LABELS[withoutFkey]) {
+    return FK_REFERENCING_TABLE_LABELS[withoutFkey];
+  }
+  const tableGuess = withoutFkey.split("_payment_account")[0] ?? withoutFkey;
+  if (FK_REFERENCING_TABLE_LABELS[tableGuess]) {
+    return FK_REFERENCING_TABLE_LABELS[tableGuess];
+  }
+  return raw.replace(/_/g, " ");
+}
+
+/**
+ * Plain-language delete-blocked message for Postgres 23503 / raw FK text.
+ * Never returns the raw constraint name.
+ */
+export function formatFriendlyForeignKeyDeleteMessage(
+  message: string | null | undefined,
+  options?: {
+    itemName?: string | null;
+    linkedLabel?: string | null;
+    canDeactivateHint?: boolean;
+  },
+): string {
+  const item = options?.itemName?.trim() || "This item";
+  const constraint = extractPostgresForeignKeyConstraintName(message);
+  const onTable = extractPostgresForeignKeyReferencingTable(message);
+  const linked =
+    options?.linkedLabel?.trim() ||
+    humanizeForeignKeyReferencingTable(onTable ?? constraint);
+  const deactivateHint =
+    options?.canDeactivateHint === false
+      ? ""
+      : " Remove or reassign those records first, or deactivate it if available.";
+  return `${item} is linked to ${linked} and can't be deleted.${deactivateHint}`;
+}
+
+/**
+ * If `message` is a raw FK violation, return a friendly string; otherwise null.
+ */
+export function tryFormatRawForeignKeyDeleteMessage(
+  message: string | null | undefined,
+  options?: {
+    itemName?: string | null;
+    linkedLabel?: string | null;
+    canDeactivateHint?: boolean;
+  },
+): string | null {
+  if (!looksLikeRawPostgresForeignKeyError(message)) {
+    return null;
+  }
+  return formatFriendlyForeignKeyDeleteMessage(message, options);
+}
+
+/**
+ * API helper: map a Postgrest delete error to a user-facing message.
+ * FK violations never return raw constraint text.
+ */
+export function resolveApiDeleteErrorMessage(
+  error: Pick<PostgrestError, "code" | "message"> | null | undefined,
+  options: {
+    itemName: string;
+    fallbackMessage?: string;
+  },
+): string {
+  if (!error) {
+    return options.fallbackMessage ?? `Unable to delete ${options.itemName}. Try again.`;
+  }
+
+  if (isPostgresForeignKeyViolation(error)) {
+    return (
+      tryFormatRawForeignKeyDeleteMessage(error.message, {
+        itemName: options.itemName,
+      }) ??
+      `${options.itemName} is linked to other records and can't be deleted.`
+    );
+  }
+
+  const trimmed = error.message?.trim();
+  if (trimmed && !looksLikeRawPostgresForeignKeyError(trimmed)) {
+    return trimmed;
+  }
+
+  return options.fallbackMessage ?? `Unable to delete ${options.itemName}. Try again.`;
 }

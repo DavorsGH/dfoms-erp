@@ -15,7 +15,9 @@ import {
   canAdjustInventoryStock,
   canEditInventory,
   canEditInventoryOrProcurement,
+  canSetFinishedProductOpeningCost,
 } from "@/utils/rbac-access";
+import { loadFinishedProductOutflowStatus } from "@/lib/inventory/finished-product-outflow-cost";
 import { SUPPLIER_SELECT, type SupplierRow } from "@/utils/suppliers-types";
 import FinishedProducts from "../finished-products";
 import {
@@ -146,7 +148,16 @@ export default async function FinishedProductsPage() {
     catalogProducts,
     scopedStock.stockMap,
     buScope.mode,
+    { overlayAverageCost: true },
   );
+
+  const outflowStatus = tenantId
+    ? await loadFinishedProductOutflowStatus(supabase, tenantId, buScope)
+    : {
+        outflowCostByProductId: {},
+        uncostedUnitNamesByProductId: {},
+        error: null,
+      };
 
   const icProducts = mergeScopedStockOntoProducts(
     ((icProductsResult.data as FinishedProductRecord[] | null) ?? []).map(
@@ -178,6 +189,7 @@ export default async function FinishedProductsPage() {
           adjustmentsError?.message ??
           lotDatesResult.error ??
           scopedStock.error ??
+          outflowStatus.error ??
           internalConsumptionResult.error?.message ??
           icProductsResult.error?.message ??
           icProjectsResult.error?.message ??
@@ -186,6 +198,11 @@ export default async function FinishedProductsPage() {
         }
         readOnly={!canEditInventory(role)}
         showStockAdjustments={canAdjustInventoryStock(role)}
+        canSetOpeningCost={canSetFinishedProductOpeningCost(role)}
+        initialOutflowCostByProductId={outflowStatus.outflowCostByProductId}
+        initialUncostedUnitNamesByProductId={
+          outflowStatus.uncostedUnitNamesByProductId
+        }
         internalConsumptionReadOnly={!canEditInventoryOrProcurement(role)}
         initialInternalConsumptionEntries={
           (

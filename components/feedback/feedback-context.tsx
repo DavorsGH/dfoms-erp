@@ -8,6 +8,8 @@ export type AlertOptions = {
   title?: string;
   message: string;
   variant?: AlertVariant;
+  href?: string;
+  hrefLabel?: string;
 };
 
 export type ConfirmOptions = {

@@ -13,6 +13,7 @@ import {
   type ResolvedAllowanceLine,
 } from "../administration/compensation-policy-utils";
 import type { PayrollWelfareConfig } from "@/utils/hr-payroll-settings-types";
+import { isExemptMode, type AttendanceMode } from "@/lib/attendance-mode";
 import { filterEmployeesForPayrollPeriod } from "./employee-utils";
 import {
   calculateCasualOvertimeTax,
@@ -206,6 +207,11 @@ export type PayrollAttendanceSource = {
   staff_id: string;
   date: string;
   attendance_status: string;
+  /**
+   * One deduction per row: 1 when status is Absent or the decision is absent,
+   * otherwise 0.5 for half_day, otherwise 0.
+   */
+  exception_status?: string | null;
 };
 
 export type PayrollOvertimeSource = {
@@ -517,20 +523,60 @@ function isApprovedMaternityAbsenceExclusion(
   );
 }
 
+/** A row is counted once. Absent status and an absent decision are the same day. */
+export function absenceDaysForAttendanceRow(
+  row: {
+    attendance_status?: string | null;
+    exception_status?: string | null;
+  },
+  /** Exempt staff are never counted absent. */
+  attendanceMode?: AttendanceMode | null,
+): number {
+  if (isExemptMode(attendanceMode)) {
+    return 0;
+  }
+  if (
+    row.attendance_status === "Absent" ||
+    row.exception_status === "absent"
+  ) {
+    return 1;
+  }
+  if (row.exception_status === "half_day") {
+    return 0.5;
+  }
+  return 0;
+}
+
 export function countAbsencesForStaff(
   attendanceRows: PayrollAttendanceSource[],
   staffId: string,
   year: number,
   month: number,
   maternityLeaves: MaternityLeaveAbsenceExclusion[] = [],
+  /** staff_ids whose attendance mode is exempt. They are never deducted. */
+  exemptStaffIds: ReadonlySet<string> | readonly string[] = [],
 ): number {
-  return attendanceRows.filter(
-    (row) =>
-      row.staff_id === staffId &&
-      row.attendance_status === "Absent" &&
-      isDateInPayrollMonth(row.date, year, month) &&
-      !isApprovedMaternityAbsenceExclusion(row, maternityLeaves),
-  ).length;
+  const isExempt =
+    exemptStaffIds instanceof Set
+      ? exemptStaffIds.has(staffId)
+      : (exemptStaffIds as readonly string[]).includes(staffId);
+  if (isExempt) {
+    return 0;
+  }
+  let count = 0;
+  for (const row of attendanceRows) {
+    if (row.staff_id !== staffId) {
+      continue;
+    }
+    if (!isDateInPayrollMonth(row.date, year, month)) {
+      continue;
+    }
+    if (isApprovedMaternityAbsenceExclusion(row, maternityLeaves)) {
+      continue;
+    }
+    count += absenceDaysForAttendanceRow(row);
+  }
+  return count;
 }
 
 export function sumOvertimeForEmployee(
@@ -615,16 +661,27 @@ export function calculateLoanRepaymentForEmployee(
     }, 0);
 }
 
+/** Open periods from this date take unpaid absence off gross before SSNIT and PAYE. */
+export const ABSENCE_REDUCES_GROSS_FROM = "2026-10-01";
+
+export function absenceReducesGrossBeforeTax(asOf: string): boolean {
+  return asOf.slice(0, 10) >= ABSENCE_REDUCES_GROSS_FROM;
+}
+
 export type WelfareDeductionCalculationOptions = {
   overtimeAmount?: number;
+  /** Unpaid absence amount already used for the period (daily_rate × days). */
+  absenceDeduction?: number;
   asOfDate?: string;
   includeOvertimeInWelfare?: boolean;
 };
 
 /**
  * Auto welfare from employee rate × welfare base.
- * Base is period gross (basic + allowances + overtime + bonuses + arrears) unless
- * include_overtime_in_welfare is off for periods on/after 2026-10-01 — then OT is excluded.
+ * Base is basic + allowances + overtime (when include_overtime_in_welfare is on) +
+ * bonuses + arrears. From October 2026 open periods, unpaid absence is subtracted
+ * so welfare runs on earned gross. Rate and the overtime-in-welfare flag are unchanged.
+ * Welfare stays after tax and is not an allowable PAYE deduction.
  * Rate is percent points (2.5 → 2.5% of base). Same ROUND(..., 2) as other money.
  */
 export function calculateWelfareDeductionForEmployee(
@@ -640,7 +697,12 @@ export function calculateWelfareDeductionForEmployee(
   const includeOvertime = options?.includeOvertimeInWelfare !== false;
   if (isGraOvertimeTaxRuleActive(asOf) && !includeOvertime) {
     const overtime = Math.max(0, Number(options?.overtimeAmount) || 0);
-    welfareBase = Math.max(gross - overtime, 0);
+    welfareBase = Math.max(welfareBase - overtime, 0);
+  }
+
+  if (absenceReducesGrossBeforeTax(asOf)) {
+    const absence = Math.max(0, Number(options?.absenceDeduction) || 0);
+    welfareBase = Math.max(welfareBase - absence, 0);
   }
 
   return roundMoney((welfareBase * rate) / 100);
@@ -660,6 +722,10 @@ export function calculatePayrollRow(
   manual: Partial<PayrollManualInputs> = {},
   policyCompensation: PayrollPolicyCompensation | null = null,
   welfareConfig: PayrollWelfareConfig | null = null,
+  options?: {
+    /** Omit to follow the October 2026 date rule. Tests pass this to compare both formulas. */
+    absenceBeforeTax?: boolean;
+  },
 ): PayrollCalculatedRow {
   const basicSalary = policyCompensation
     ? Number(policyCompensation.basic_salary) || 0
@@ -697,8 +763,9 @@ export function calculatePayrollRow(
       )
     : housingAllowance + transportAllowance + otherAllowances;
 
-  // Gross is finalized before percentage deductions (welfare, PAYE base).
-  const grossPay = roundMoney(
+  // Pre-absence gross (basic + allowances + overtime + bonuses + arrears).
+  // From October 2026 displayed Gross and welfare use earned gross (minus absence).
+  const preAbsenceGross = roundMoney(
     periodPayBasic +
       allowanceTotal +
       overtimeAmount +
@@ -707,12 +774,20 @@ export function calculatePayrollRow(
   );
 
   const asOf = getPeriodEndDate(period.year, period.month);
+  const absenceBeforeTax =
+    options?.absenceBeforeTax ?? absenceReducesGrossBeforeTax(asOf);
+  const absenceRounded = roundMoney(absenceDeduction);
+  const grossPay =
+    absenceBeforeTax && absenceRounded > 0
+      ? roundMoney(Math.max(preAbsenceGross - absenceRounded, 0))
+      : preAbsenceGross;
 
   const welfareDeduction = calculateWelfareDeductionForEmployee(
     employee,
-    grossPay,
+    preAbsenceGross,
     {
       overtimeAmount,
+      absenceDeduction: absenceRounded,
       asOfDate: asOf,
       includeOvertimeInWelfare:
         welfareConfig?.includeOvertimeInWelfare !== false,
@@ -720,6 +795,10 @@ export function calculatePayrollRow(
   );
   const employmentType = employee.employment_type?.trim() ?? "";
   const proratedBasicPay = periodPayBasic;
+  const earnedBasic =
+    absenceBeforeTax && absenceRounded > 0
+      ? Math.max(proratedBasicPay - absenceRounded, 0)
+      : proratedBasicPay;
 
   let employeeSsnit = 0;
   let employerSsnit = 0;
@@ -738,9 +817,12 @@ export function calculatePayrollRow(
 
   if (employmentType === "Casual") {
     const casualConfig = pickLatestByEffectiveDate(taxConfigs.casualRows, asOf);
+    // Flat rate stays on basic pay (prorated), minus absence from October 2026.
+    // Allowances, bonuses, arrears, and overtime stay outside this base, same as
+    // today, so a casual with no absence is unchanged and overtime is not taxed
+    // twice. With no allowances or overtime this equals earned gross.
     payeTax = roundMoney(
-      proratedBasicPay *
-        normalizeRate(Number(casualConfig?.flat_rate) || 0),
+      earnedBasic * normalizeRate(Number(casualConfig?.flat_rate) || 0),
     );
     if (graOvertimeActive && overtimeAmount > 0) {
       overtimeTax = calculateCasualOvertimeTax(
@@ -755,8 +837,8 @@ export function calculatePayrollRow(
   ) {
     const ssnitConfig = pickLatestByEffectiveDate(taxConfigs.ssnitRows, asOf);
     const insurableBase = Math.min(
-      proratedBasicPay,
-      Number(ssnitConfig?.insurable_earnings_ceiling) || proratedBasicPay,
+      earnedBasic,
+      Number(ssnitConfig?.insurable_earnings_ceiling) || earnedBasic,
     );
 
     employeeSsnit = roundMoney(
@@ -802,7 +884,7 @@ export function calculatePayrollRow(
       salaryAdvance +
       welfareDeduction +
       otherDeductions +
-      absenceDeduction,
+      (absenceBeforeTax ? 0 : absenceDeduction),
   );
 
   const netPay = roundMoney(

@@ -1,5 +1,7 @@
+import { mapNegativeWacUserMessage } from "@/lib/inventory/finished-product-wac";
+
 const FINISHED_PRODUCT_BALANCE_WAC_PATTERN =
-  /finished_product_balances\.average_cost_per_unit cannot be negative/i;
+  /average_cost_per_unit cannot be negative|weighted-average cost cannot be negative|finished_product_balances/i;
 
 const PRODUCT_UUID_IN_WAC_ERROR =
   /product\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
@@ -35,13 +37,14 @@ export function mapPosCheckoutRpcErrorMessage(
     return "This sale could not be completed. Please try again.";
   }
 
-  if (FINISHED_PRODUCT_BALANCE_WAC_PATTERN.test(raw)) {
+  const negativeWac = mapNegativeWacUserMessage(raw);
+  if (negativeWac || FINISHED_PRODUCT_BALANCE_WAC_PATTERN.test(raw)) {
     const productId = raw.match(PRODUCT_UUID_IN_WAC_ERROR)?.[1] ?? null;
     const label =
       (productId && productLabelById?.get(productId)) ||
       "one of the products in the cart";
     console.error("[pos-checkout]", raw);
-    return `This sale could not be completed because of a stock costing problem on ${label}. Please contact support.`;
+    return `This sale could not be completed because ${label} has no usable stock cost. Set an opening cost for that product, then try again.`;
   }
 
   if (looksLikePostgresSystemMessage(raw)) {

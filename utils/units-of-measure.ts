@@ -85,7 +85,21 @@ export function unitOfMeasureFormFromStored(
   if (isUnitOfMeasurePreset(unit)) {
     return { preset: unit, other: "" };
   }
+  const key = normalizeUnitKey(unit);
+  if (LEGACY_PIECE_ALIASES.has(key)) {
+    return { preset: "piece", other: "" };
+  }
   return { preset: UNIT_OF_MEASURE_OTHER, other: unit };
+}
+
+export function resolveStoredUnitForForm(
+  storedUnit: string | null | undefined,
+): string {
+  const { preset, other } = unitOfMeasureFormFromStored(storedUnit);
+  if (preset === UNIT_OF_MEASURE_OTHER) {
+    return other;
+  }
+  return preset;
 }
 
 export function resolveUnitOfMeasureFromForm(

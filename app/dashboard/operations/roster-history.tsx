@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { inputClassName } from "../employees/employee-record-utils";
+import { listRosterContractChoices } from "@/lib/roster-contract-choices";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableBodyClassName,
@@ -10,23 +11,29 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import FilteredListCount from "../filtered-list-count";
-import type { RosterHistoryRecord } from "./duty-roster-utils";
-
-type RosterHistoryEmployee = {
-  employee_id: string;
-  staff_id: string;
-  full_name: string;
-};
+import {
+  buildClientAssignmentProjectCodes,
+  filterHistoryForClient,
+  type DutyRosterEmployee,
+  type DutyRosterProject,
+  type DutyRosterSite,
+  type RosterHistoryRecord,
+} from "./duty-roster-utils";
+import { useRosterContractSelection } from "./use-roster-contract-selection";
 
 type RosterHistoryProps = {
   initialHistory: RosterHistoryRecord[];
-  employees: RosterHistoryEmployee[];
+  employees: DutyRosterEmployee[];
+  projects: DutyRosterProject[];
+  sites: DutyRosterSite[];
   fetchError: string | null;
 };
 
 export default function RosterHistory({
   initialHistory,
   employees,
+  projects,
+  sites,
   fetchError,
 }: RosterHistoryProps) {
   const [rotationFilter, setRotationFilter] = useState("");
@@ -38,18 +45,61 @@ export default function RosterHistory({
     );
   }, [employees]);
 
+  const contractChoices = useMemo(
+    () =>
+      listRosterContractChoices({
+        projects,
+        sites: sites.map((site) => ({
+          client_id: site.client_id,
+          project_code: site.project?.project_code ?? null,
+        })),
+        employees,
+      }),
+    [projects, sites, employees],
+  );
+  const { groupKey, selected, selectContract } =
+    useRosterContractSelection(contractChoices);
+  const contractHistory = useMemo(() => {
+    const clientId = selected?.clientId;
+    if (!clientId) {
+      return [];
+    }
+    return filterHistoryForClient(
+      initialHistory,
+      employees,
+      buildClientAssignmentProjectCodes(sites, projects, clientId),
+    );
+  }, [employees, initialHistory, projects, selected, sites]);
+
+  const visibleEmployees = useMemo(() => {
+    const clientId = selected?.clientId;
+    if (!clientId) {
+      return [];
+    }
+    const codes = buildClientAssignmentProjectCodes(sites, projects, clientId);
+    return employees.filter(
+      (employee) =>
+        employee.contract_project != null && codes.has(employee.contract_project),
+    );
+  }, [employees, projects, selected, sites]);
+
+  useEffect(() => {
+    setRotationFilter("");
+    setEmployeeFilter("");
+  }, [groupKey]);
+
   const rotationOptions = useMemo(() => {
     const values = new Set<number>();
-    for (const row of initialHistory) {
+    for (const row of contractHistory) {
       if (row.rotation_number != null) {
         values.add(row.rotation_number);
       }
     }
     return [...values].sort((left, right) => right - left);
-  }, [initialHistory]);
+  }, [contractHistory]);
 
   const filteredHistory = useMemo(() => {
-    return initialHistory.filter((row) => {
+    return contractHistory.filter((row) => {
       if (
         rotationFilter &&
         String(row.rotation_number ?? "") !== rotationFilter
@@ -63,7 +113,7 @@ export default function RosterHistory({
 
       return true;
     });
-  }, [employeeFilter, initialHistory, rotationFilter]);
+  }, [contractHistory, employeeFilter, rotationFilter]);
 
   if (fetchError) {
     return (
@@ -80,7 +130,24 @@ export default function RosterHistory({
         append-only and cannot be edited or deleted.
       </p>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            Contract
+          </label>
+          <select
+            value={groupKey}
+            onChange={(event) => selectContract(event.target.value)}
+            className={inputClassName}
+          >
+            <option value="">Select contract</option>
+            {contractChoices.map((choice) => (
+              <option key={choice.groupKey} value={choice.groupKey}>
+                {choice.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">
             Filter by Rotation
@@ -108,7 +175,7 @@ export default function RosterHistory({
             className={inputClassName}
           >
             <option value="">All employees</option>
-            {employees.map((employee) => (
+            {visibleEmployees.map((employee) => (
               <option key={employee.employee_id} value={employee.employee_id}>
                 {employee.staff_id} — {employee.full_name}
               </option>
@@ -117,9 +184,15 @@ export default function RosterHistory({
         </div>
       </div>
 
+      {selected?.dataIssue ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {selected.dataIssue}
+        </p>
+      ) : null}
+
       <FilteredListCount
         filteredCount={filteredHistory.length}
-        totalCount={initialHistory.length}
+        totalCount={contractHistory.length}
         itemSingular="record"
         hasActiveFilters={Boolean(rotationFilter || employeeFilter)}
       />
@@ -148,9 +221,11 @@ export default function RosterHistory({
                   colSpan={11}
                   className="px-4 py-8 text-center text-sm text-slate-500"
                 >
-                  {initialHistory.length === 0
-                    ? "No roster history records yet. Records appear here after a Duty Roster rotation is started."
-                    : "No roster history records match the selected filters."}
+                  {!selected?.clientId
+                    ? "Select a contract to see its roster history."
+                    : contractHistory.length === 0
+                      ? "No roster history records yet for this contract. Records appear here after a Duty Roster rotation is started."
+                      : "No roster history records match the selected filters."}
                 </td>
               </tr>
             ) : (

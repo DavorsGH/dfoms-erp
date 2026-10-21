@@ -47,6 +47,15 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
+export const PUSH_UNAVAILABLE_MESSAGE =
+  "Push notifications aren't available on this server";
+
+export const PUSH_BLOCKED_MESSAGE =
+  "Notifications are blocked for this site in your browser settings";
+
+export const PUSH_IOS_MESSAGE =
+  "On iPhone, open the app from your Home Screen to enable notifications";
+
 export function getNotificationPermission():
   | NotificationPermission
   | "unsupported" {

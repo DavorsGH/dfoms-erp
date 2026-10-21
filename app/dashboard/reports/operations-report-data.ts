@@ -128,7 +128,7 @@ type DutyRosterBundle = {
 };
 
 const DUTY_ROSTER_EMPLOYEE_SELECT =
-  "employee_id, staff_id, full_name, position, shift, contract_project, employment_status, project_ref:projects!employees_contract_project_fkey(project_code, project_name), tenant_id";
+  "employee_id, staff_id, full_name, position, shift, contract_project, assigned_site_id, employment_status, project_ref:projects!employees_contract_project_fkey(project_code, project_name), tenant_id";
 
 function normalizeDutyRosterBundle(input: {
   configRows: RosterConfigRecord[] | null;

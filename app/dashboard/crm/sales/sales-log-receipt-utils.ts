@@ -1,6 +1,17 @@
 import type { ClientEntry } from "../../operations/clients-utils";
-import { getIncomeCustomerDisplayName } from "../../finance/income-register-utils";
+import {
+  formatProductSaleStatusForDisplay,
+  getIncomeCustomerDisplayName,
+} from "../../finance/income-register-utils";
 import type { PosReceiptData } from "../../pos/pos-receipt";
+import {
+  creditNoteNumberFromNotes,
+  formatReceiptPaymentMethods,
+  isReceiptReturnLine,
+  receiptSaleTimestamp,
+  settleIncomeReceiptLines,
+  type ReceiptIncomeLine,
+} from "../../pos/receipt-settlement";
 import {
   cartTotal,
   roundMoney,
@@ -11,7 +22,15 @@ import {
   PRODUCT_SALES_SELECT,
   type ProductSaleEntry,
 } from "../product-sales-utils";
-import { buildProductSaleReceiptData } from "../product-sale-receipt";
+import {
+  buildProductSaleReceiptData,
+  withReceiptPaymentLines,
+} from "../product-sale-receipt";
+import {
+  buildReceiptPaymentLines,
+  type ReceiptListedPayment,
+} from "../../pos/receipt-settlement";
+import { PRODUCT_SALE_PAYMENT_SELECT } from "@/utils/product-sale-payments-types";
 import type { CrmSaleEntry } from "./sales-utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -77,31 +96,102 @@ export function buildPosReceiptFromProductSaleEntries(
     throw new Error("No product sale lines found for this POS receipt.");
   }
 
-  const lines: PosCartLine[] = sorted.map((entry, index) => ({
+  const incomeLines: ReceiptIncomeLine[] = sorted.map((entry) => {
+    const note = Array.isArray(entry.credit_note)
+      ? entry.credit_note[0]
+      : entry.credit_note;
+    return {
+      id: entry.id,
+      notes: entry.notes,
+      payment_method: entry.payment_method,
+      amount: Number(entry.amount) || 0,
+      amount_received: Number(entry.amount_received) || 0,
+      due_date: entry.due_date,
+      created_at: entry.created_at,
+      date: entry.date,
+      is_sale_return: entry.is_sale_return === true,
+      sale_quantity: entry.sale_quantity,
+      unit_price: entry.unit_price,
+      product_code: entry.product?.product_code ?? null,
+      product_name: entry.product?.product_name ?? null,
+      credit_note_number:
+        note?.credit_note_number?.trim() ||
+        creditNoteNumberFromNotes(entry.notes),
+      return_mode: note?.return_mode ?? null,
+      refunded_amount: note?.refunded_amount ?? null,
+    };
+  });
+  const settlement = settleIncomeReceiptLines(incomeLines);
+  const saleEntries = sorted.filter(
+    (entry) =>
+      !isReceiptReturnLine({
+        is_sale_return: entry.is_sale_return === true,
+        amount: Number(entry.amount) || 0,
+        notes: entry.notes,
+      }),
+  );
+
+  const lines: PosCartLine[] = saleEntries.map((entry, index) => ({
     id: entry.id,
     productId: entry.product_id ?? `line-${index}`,
     productCode: entry.product?.product_code ?? "—",
     productName: entry.product?.product_name ?? "—",
     unitOfMeasure: entry.product?.unit_of_measure ?? "",
-    quantity: entry.sale_quantity ?? 0,
-    unitPrice: entry.unit_price ?? 0,
+    quantity: Math.abs(entry.sale_quantity ?? 0),
+    unitPrice: Math.abs(entry.unit_price ?? 0),
     availableStock: 0,
   }));
 
-  const amountReceived = roundMoney(
-    sorted.reduce((sum, entry) => sum + (Number(entry.amount_received) || 0), 0),
-  );
-
   return {
     invoiceNo: first.invoice_no,
-    saleDate: first.date,
-    customerLabel: getIncomeCustomerDisplayName(first, clients),
-    paymentMethod: parsePosPaymentMethodFromNotes(first.notes),
-    paymentStatus: first.payment_status,
-    amountReceived,
-    cartTotal: cartTotal(lines),
+    saleDate: receiptSaleTimestamp(saleEntries.length > 0 ? saleEntries : sorted) || first.date,
+    customerLabel: getIncomeCustomerDisplayName(saleEntries[0] ?? first, clients),
+    paymentMethod: formatReceiptPaymentMethods(saleEntries),
+    paymentStatus: settlement.standing,
+    amountReceived: settlement.amountReceived,
+    cartTotal: settlement.netTotal,
+    subtotal: settlement.subtotal,
+    dueDate: settlement.dueDate,
     lines,
+    returnLines: settlement.returnLines,
+    returnsTotal: settlement.returnsTotal,
+    netTotal: settlement.netTotal,
+    storeCreditIssued: settlement.storeCreditIssued,
+    cashRefunded: settlement.cashRefunded,
+    saleStatus: formatProductSaleStatusForDisplay(
+      (saleEntries[0] ?? first).sale_status,
+    ),
   };
+}
+
+async function loadListedPayments(
+  supabase: SupabaseClient,
+  rows: ProductSaleEntry[],
+): Promise<ReceiptListedPayment[]> {
+  const incomeIds = rows.map((row) => row.id).filter(Boolean);
+  if (incomeIds.length === 0) {
+    return [];
+  }
+  const { data, error } = await supabase
+    .from("product_sale_payments")
+    .select(PRODUCT_SALE_PAYMENT_SELECT)
+    .in("income_id", incomeIds)
+    .order("payment_date", { ascending: true });
+  if (error) {
+    throw new Error(error.message);
+  }
+  return buildReceiptPaymentLines(
+    rows.map((row) => ({
+      id: row.id,
+      date: row.date,
+      amount: Number(row.amount) || 0,
+      amount_received: Number(row.amount_received) || 0,
+      notes: row.notes,
+      payment_method: row.payment_method,
+      is_sale_return: row.is_sale_return === true,
+    })),
+    data ?? [],
+  );
 }
 
 async function loadProductSaleRows(
@@ -175,23 +265,51 @@ export async function loadSalesLogReceiptData(
       };
     }
 
+    const receipt = buildPosReceiptFromProductSaleEntries(rows, clients);
+    receipt.paymentLines = await loadListedPayments(supabase, rows);
     return {
       kind: "pos",
-      receipt: buildPosReceiptFromProductSaleEntries(rows, clients),
+      receipt,
     };
   }
 
-  const rows = await loadProductSaleRows(supabase, buScope, { kind: "id", id: sale.id });
-  const entry = rows[0];
+  const invoiceNo = sale.invoice_no?.trim();
+  const rows = invoiceNo
+    ? await loadProductSaleRows(supabase, buScope, {
+        kind: "invoice_no",
+        invoiceNo,
+      })
+    : await loadProductSaleRows(supabase, buScope, { kind: "id", id: sale.id });
+  const entry = rows.find((row) => row.id === sale.id) ?? rows[0];
   if (!entry) {
     return {
       kind: "unsupported",
       reason: "Could not find this product sale.",
     };
   }
+  if (
+    rows.some((row) =>
+      isReceiptReturnLine({
+        is_sale_return: row.is_sale_return === true,
+        amount: Number(row.amount) || 0,
+        notes: row.notes,
+      }),
+    )
+  ) {
+    const receipt = buildPosReceiptFromProductSaleEntries(rows, clients);
+    receipt.paymentLines = await loadListedPayments(supabase, rows);
+    return {
+      kind: "pos",
+      receipt,
+    };
+  }
 
   return {
     kind: "product_sale",
-    receipt: buildProductSaleReceiptData(entry, clients),
+    receipt: withReceiptPaymentLines(
+      buildProductSaleReceiptData(entry, clients),
+      await loadListedPayments(supabase, [entry]),
+      entry.notes,
+    ),
   };
 }

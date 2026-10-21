@@ -12,6 +12,7 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import { formatGHS } from "./manual-financial-entries-utils";
+import { formatDate } from "./income-register-utils";
 import {
   DIRECTORS_LOAN_ENTRY_TYPE_LABELS,
   DIRECTORS_LOAN_LEDGER_SELECT,
@@ -366,7 +367,7 @@ export default function DirectorsLoanLedgerPanel({
                   <option value="">— None —</option>
                   {expenseOptions.map((expense) => (
                     <option key={expense.id} value={expense.id}>
-                      {expense.date.slice(0, 10)} · {formatGHS(expense.amount)} ·{" "}
+                      {formatDate(expense.date)} · {formatGHS(expense.amount)} ·{" "}
                       {expense.description ?? expense.expense_category ?? "Expense"}
                     </option>
                   ))}
@@ -428,7 +429,7 @@ export default function DirectorsLoanLedgerPanel({
             ) : (
               entries.map((entry) => (
                 <tr key={entry.id}>
-                  <td className="px-4 py-3">{entry.entry_date.slice(0, 10)}</td>
+                  <td className="px-4 py-3">{formatDate(entry.entry_date)}</td>
                   <td className="px-4 py-3 text-sm">
                     {DIRECTORS_LOAN_ENTRY_TYPE_LABELS[entry.entry_type]}
                   </td>

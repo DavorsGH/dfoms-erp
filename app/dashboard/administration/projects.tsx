@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAlert, useToast } from "@/components/feedback";
 import { createClient } from "@/utils/supabase/client";
 import type { ServiceContractListRow } from "@/utils/service-contracts-types";
@@ -22,6 +22,8 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import {
+  duplicateContractNameMessage,
+  findActiveContractNameDuplicate,
   formatProjectClientContractLabel,
   formatServiceContractOptionLabel,
   getProjectClientName,
@@ -54,6 +56,8 @@ import {
   tenantScopedDelete,
   tenantScopedUpdate,
 } from "@/utils/tenant-scoped-supabase";
+import { allocateProjectCode } from "./project-code-api";
+import { formatCountNoun } from "@/utils/pluralise";
 
 type ProjectsProps = {
   tenantId: string;
@@ -70,6 +74,7 @@ const emptyContractForm = {
   project_code: "",
   project_name: "",
   service_contract_id: "",
+  contract_type: "contract" as "contract" | "adhoc",
 };
 
 export default function Projects({
@@ -96,6 +101,8 @@ export default function Projects({
   );
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [showContractForm, setShowContractForm] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<"" | "contract" | "adhoc">("");
+  const [typeSort, setTypeSort] = useState<"asc" | "desc" | null>(null);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [deletingCode, setDeletingCode] = useState<string | null>(null);
   const [archivingCode, setArchivingCode] = useState<string | null>(null);
@@ -104,8 +111,15 @@ export default function Projects({
   const [editingSiteCode, setEditingSiteCode] = useState<string | null>(null);
   const [siteStaffValue, setSiteStaffValue] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(fetchError);
+  const contractSaveLock = useRef(false);
+  const contractNameRef = useRef<HTMLInputElement>(null);
   const [serviceContracts] = useState(initialServiceContracts);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError);
+    }
+  }, [alertError, fetchError]);
 
   useEffect(() => {
     setProjects(initialProjects.map(normalizeProjectEntry));
@@ -144,13 +158,22 @@ export default function Projects({
     setEmployeeCountByProjectCode(initialEmployeeCountByProjectCode);
   }, [initialEmployeeCountByProjectCode]);
 
-  const contractProjects = useMemo(
-    () =>
-      [...projects].sort((left, right) =>
-        left.project_name.localeCompare(right.project_name),
-      ),
-    [projects],
-  );
+  const contractProjects = useMemo(() => {
+    const filtered = projects.filter((project) =>
+      typeFilter ? (project.contract_type ?? "contract") === typeFilter : true,
+    );
+    return [...filtered].sort((left, right) => {
+      if (typeSort) {
+        const typeCompare = (left.contract_type ?? "contract").localeCompare(
+          right.contract_type ?? "contract",
+        );
+        if (typeCompare !== 0) {
+          return typeSort === "asc" ? typeCompare : -typeCompare;
+        }
+      }
+      return left.project_name.localeCompare(right.project_name);
+    });
+  }, [projects, typeFilter, typeSort]);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
@@ -206,7 +229,7 @@ export default function Projects({
       ]);
 
     if (projectError || siteError) {
-      setError(projectError?.message ?? siteError?.message ?? "Refresh failed.");
+      await alertError(projectError ?? siteError ?? "Refresh failed.");
       return;
     }
 
@@ -221,7 +244,6 @@ export default function Projects({
       ),
     );
     await refreshEmployeeCounts(nextProjects.map((project) => project.project_code));
-    setError(null);
   }
 
   function openAddContractForm() {
@@ -242,6 +264,7 @@ export default function Projects({
       project_code: project.project_code,
       project_name: project.project_name,
       service_contract_id: project.service_contract_id ?? "",
+      contract_type: project.contract_type === "adhoc" ? "adhoc" : "contract",
     });
     setShowContractForm(true);
   }
@@ -252,12 +275,11 @@ export default function Projects({
     }
 
     setArchivingCode(projectCode);
-    setError(null);
 
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
       setArchivingCode(null);
+      await alertError(buContext.error);
       return;
     }
 
@@ -268,8 +290,8 @@ export default function Projects({
         existing?.business_unit_id,
       );
     } catch (accessError) {
-      setError(formatBusinessUnitAccessError(accessError));
       setArchivingCode(null);
+      await alertError(formatBusinessUnitAccessError(accessError));
       return;
     }
 
@@ -282,8 +304,8 @@ export default function Projects({
     );
 
     if (archiveError) {
-      setError("Unable to deactivate this contract/project. Try again.");
       setArchivingCode(null);
+      await alertError("Unable to deactivate this contract/project. Try again.");
       return;
     }
 
@@ -293,6 +315,7 @@ export default function Projects({
 
     await refreshData();
     setArchivingCode(null);
+    toast("Contract deactivated.");
   }
 
   async function handleReactivateContract(projectCode: string) {
@@ -301,12 +324,11 @@ export default function Projects({
     }
 
     setReactivatingCode(projectCode);
-    setError(null);
 
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
       setReactivatingCode(null);
+      await alertError(buContext.error);
       return;
     }
 
@@ -317,8 +339,8 @@ export default function Projects({
         existing?.business_unit_id,
       );
     } catch (accessError) {
-      setError(formatBusinessUnitAccessError(accessError));
       setReactivatingCode(null);
+      await alertError(formatBusinessUnitAccessError(accessError));
       return;
     }
 
@@ -331,13 +353,14 @@ export default function Projects({
     );
 
     if (reactivateError) {
-      setError("Unable to reactivate this contract/project. Try again.");
       setReactivatingCode(null);
+      await alertError("Unable to reactivate this contract/project. Try again.");
       return;
     }
 
     await refreshData();
     setReactivatingCode(null);
+    toast("Contract reactivated.");
   }
 
   async function handleDeleteContract(projectCode: string) {
@@ -346,12 +369,11 @@ export default function Projects({
     }
 
     setDeletingCode(projectCode);
-    setError(null);
 
     const assignedEmployees = initialEmployeeCountByProjectCode[projectCode] ?? 0;
     if (assignedEmployees > 0) {
-      setError(formatProjectDeleteBlockedByEmployeesMessage(assignedEmployees));
       setDeletingCode(null);
+      await alertError(formatProjectDeleteBlockedByEmployeesMessage(assignedEmployees));
       return;
     }
 
@@ -363,8 +385,8 @@ export default function Projects({
     );
 
     if (deleteError) {
-      setError(getProjectDeleteErrorMessage(deleteError));
       setDeletingCode(null);
+      await alertError(getProjectDeleteErrorMessage(deleteError));
       return;
     }
 
@@ -378,84 +400,132 @@ export default function Projects({
 
     await refreshData();
     setDeletingCode(null);
+    toast("Contract deleted.");
   }
 
   async function handleContractSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (contractSaveLock.current) {
+      return;
+    }
+    contractSaveLock.current = true;
     setLoading(true);
-    setError(null);
+    contractNameRef.current?.setCustomValidity("");
 
-    const buContext = await loadWriteBusinessUnitContext(supabase);
-    if (!buContext.ok) {
-      await alertError(buContext.error);
-      setLoading(false);
-      return;
-    }
-
-    const stampResult = resolveWriteBusinessUnitIdForCreate({
-      allowedUnits: buContext.allowedUnits,
-      stamp: stampBusinessUnit,
-    });
-    if (!stampResult.ok) {
-      await alertError(stampResult.error);
-      setLoading(false);
-      return;
-    }
-
-    const serviceContractId =
-      contractForm.service_contract_id.trim() || null;
-
-    const payload = {
-      project_code: contractForm.project_code.trim(),
-      project_name: contractForm.project_name.trim(),
-      service_contract_id: serviceContractId,
-    };
-
-    if (editingCode) {
-      const existing = projects.find(
-        (project) => project.project_code === editingCode,
-      );
-      try {
-        assertCanModifyBusinessUnitRow(
-          buContext.allowedUnits,
-          existing?.business_unit_id,
-        );
-      } catch (accessError) {
-        await alertError(formatBusinessUnitAccessError(accessError));
-        setLoading(false);
+    try {
+      const buContext = await loadWriteBusinessUnitContext(supabase);
+      if (!buContext.ok) {
+        await alertError(buContext.error);
         return;
       }
-    }
 
-    const { error: saveError } = editingCode
-      ? await tenantScopedUpdate(
-          supabase,
-          "projects",
-          scopedTenantId,
-          {
+      const stampResult = resolveWriteBusinessUnitIdForCreate({
+        allowedUnits: buContext.allowedUnits,
+        stamp: stampBusinessUnit,
+      });
+      if (!stampResult.ok) {
+        await alertError(stampResult.error);
+        return;
+      }
+
+      const serviceContractId =
+        contractForm.service_contract_id.trim() || null;
+
+      const payload = {
+        project_name: contractForm.project_name.trim(),
+        service_contract_id: serviceContractId,
+        contract_type: contractForm.contract_type,
+      };
+
+      const { data: nameRows, error: nameError } = await supabase
+        .from("projects")
+        .select("project_code, project_name, is_archived")
+        .eq("tenant_id", scopedTenantId);
+      if (nameError) {
+        await alertError(nameError.message);
+        return;
+      }
+      const duplicate = findActiveContractNameDuplicate(
+        payload.project_name,
+        nameRows ?? [],
+        editingCode,
+      );
+      if (duplicate) {
+        const nameField = contractNameRef.current;
+        if (nameField) {
+          nameField.setCustomValidity(
+            duplicateContractNameMessage(
+              payload.project_name,
+              duplicate.project_code,
+            ),
+          );
+          nameField.reportValidity();
+        }
+        return;
+      }
+
+      if (editingCode) {
+        const existing = projects.find(
+          (project) => project.project_code === editingCode,
+        );
+        try {
+          assertCanModifyBusinessUnitRow(
+            buContext.allowedUnits,
+            existing?.business_unit_id,
+          );
+        } catch (accessError) {
+          await alertError(formatBusinessUnitAccessError(accessError));
+          return;
+        }
+      }
+
+      let createdCode: string | null = null;
+      if (!editingCode) {
+        const allocated = await allocateProjectCode(supabase);
+        if (allocated.error || !allocated.projectCode) {
+          await alertError(
+            allocated.error ?? "Unable to allocate a project code.",
+          );
+          return;
+        }
+        createdCode = allocated.projectCode;
+      }
+
+      const { error: saveError } = editingCode
+        ? await tenantScopedUpdate(
+            supabase,
+            "projects",
+            scopedTenantId,
+            {
+              project_name: payload.project_name,
+              service_contract_id: payload.service_contract_id,
+              contract_type: payload.contract_type,
+            },
+            { project_code: editingCode },
+          )
+        : await supabase.from("projects").insert({
+            project_code: createdCode,
             project_name: payload.project_name,
             service_contract_id: payload.service_contract_id,
-          },
-          { project_code: editingCode },
-        )
-      : await supabase.from("projects").insert({
-          project_code: payload.project_code,
-          project_name: payload.project_name,
-          service_contract_id: payload.service_contract_id,
-          tenant_id: scopedTenantId,
-          business_unit_id: stampResult.businessUnitId,
-        });
+            contract_type: payload.contract_type,
+            tenant_id: scopedTenantId,
+            business_unit_id: stampResult.businessUnitId,
+          });
 
-    if (saveError) {
-      await alertError(saveError.message);
+      if (saveError) {
+        await alertError(saveError.message);
+        return;
+      }
+
+      closeContractForm();
+      await refreshData();
+      toast(
+        editingCode ? "Contract updated." : `Contract created — ${createdCode}`,
+      );
+    } finally {
+      contractSaveLock.current = false;
       setLoading(false);
-      return;
     }
-
-    closeContractForm();
-    await refreshData();
-    toast(editingCode ? "Contract updated." : "Contract added.");
-    setLoading(false);
   }
 
   function openEditSiteStaff(site: SiteEntry) {
@@ -472,16 +542,22 @@ export default function Projects({
 
   async function handleSaveSiteStaff(siteCode: string) {
     setLoading(true);
-    setError(null);
 
     const trimmed = siteStaffValue.trim();
     const requiredStaff =
       trimmed === "" ? null : Number.parseInt(trimmed, 10);
+    const staffInput = document.getElementById(`project-required-staff-${siteCode}`);
 
     if (trimmed !== "" && Number.isNaN(requiredStaff)) {
-      setError("Required staff must be a whole number.");
       setLoading(false);
+      if (staffInput instanceof HTMLInputElement) {
+        staffInput.setCustomValidity("Required staff must be a whole number.");
+        staffInput.reportValidity();
+      }
       return;
+    }
+    if (staffInput instanceof HTMLInputElement) {
+      staffInput.setCustomValidity("");
     }
 
     const { error: saveError } = await tenantScopedUpdate(
@@ -493,14 +569,15 @@ export default function Projects({
     );
 
     if (saveError) {
-      setError(saveError.message);
       setLoading(false);
+      await alertError(saveError);
       return;
     }
 
     closeEditSiteStaff();
     await refreshData();
     setLoading(false);
+    toast("Required staff saved.");
   }
 
   return (
@@ -521,53 +598,67 @@ export default function Projects({
           </button>
         </div>
 
-        {error ? (
-          <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </p>
-        ) : null}
-
         {showContractForm ? (
           <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
             <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
               {editingCode ? "Edit Contract" : "New Contract"}
             </h3>
             <form onSubmit={handleContractSubmit} className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Project Code
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    readOnly={Boolean(editingCode)}
-                    value={contractForm.project_code}
-                    onChange={(event) =>
-                      setContractForm((current) => ({
-                        ...current,
-                        project_code: event.target.value,
-                      }))
-                    }
-                    className={`${inputClassName}${editingCode ? " bg-slate-50 text-slate-600" : ""}`}
-                  />
-                </div>
+              <fieldset disabled={loading} className="grid gap-4 md:grid-cols-2 disabled:opacity-70">
+                {editingCode ? (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Project Code
+                    </label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={editingCode}
+                      className={`${inputClassName} bg-slate-50 text-slate-600`}
+                    />
+                  </div>
+                ) : null}
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">
                     Contract / Project Name
                   </label>
                   <input
+                    ref={contractNameRef}
+                    name="project_name"
                     type="text"
                     required
                     value={contractForm.project_name}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      event.target.setCustomValidity("");
                       setContractForm((current) => ({
                         ...current,
                         project_name: event.target.value,
+                      }));
+                    }}
+                    className={inputClassName}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Type
+                  </label>
+                  <select
+                    value={contractForm.contract_type}
+                    onChange={(event) =>
+                      setContractForm((current) => ({
+                        ...current,
+                        contract_type:
+                          event.target.value === "adhoc" ? "adhoc" : "contract",
                       }))
                     }
                     className={inputClassName}
-                  />
+                  >
+                    <option value="contract">Contract</option>
+                    <option value="adhoc">Ad hoc</option>
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Ad hoc is a one-off job, such as fumigation.
+                  </p>
                 </div>
                 <div className="md:col-span-2">
                   <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -595,7 +686,7 @@ export default function Projects({
                     no contract are treated as company overhead.
                   </p>
                 </div>
-              </div>
+              </fieldset>
               <div className="flex gap-3">
                 <button
                   type="submit"
@@ -617,12 +708,45 @@ export default function Projects({
           </section>
         ) : null}
 
+        <div className="mb-3 max-w-xs">
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            Type
+          </label>
+          <select
+            value={typeFilter}
+            onChange={(event) =>
+              setTypeFilter(
+                event.target.value === "contract" || event.target.value === "adhoc"
+                  ? event.target.value
+                  : "",
+              )
+            }
+            className={inputClassName}
+          >
+            <option value="">All types</option>
+            <option value="contract">Contract</option>
+            <option value="adhoc">Ad hoc</option>
+          </select>
+        </div>
         <ScrollableTable>
           <table className={scrollableTableClassName}>
             <thead className={scrollableTableHeadClassName}>
               <tr>
                 <th className={scrollableTableThClassName}>Project Code</th>
                 <th className={scrollableTableThClassName}>Contract Name</th>
+                <th className={scrollableTableThClassName}>
+                  <button
+                    type="button"
+                    className="font-semibold"
+                    onClick={() =>
+                      setTypeSort((current) =>
+                        current === "asc" ? "desc" : "asc",
+                      )
+                    }
+                  >
+                    Type{typeSort === "asc" ? " ↑" : typeSort === "desc" ? " ↓" : ""}
+                  </button>
+                </th>
                 <th className={scrollableTableThClassName}>Client Contract</th>
                 <th className={scrollableTableThClassName}>Customer</th>
                 <th className={scrollableTableThClassName}>Sites</th>
@@ -633,7 +757,7 @@ export default function Projects({
               {contractProjects.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-4 py-8 text-center text-slate-500"
                   >
                     No contract projects configured yet.
@@ -664,13 +788,16 @@ export default function Projects({
                         </div>
                       </td>
                       <td className="px-4 py-3">
+                        {project.contract_type === "adhoc" ? "Ad hoc" : "Contract"}
+                      </td>
+                      <td className="px-4 py-3">
                         {formatProjectClientContractLabel(
                           project.service_contract_id,
                           serviceContractsById,
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        {getProjectClientName(project, sites)}
+                        {getProjectClientName(project, sites, initialClients)}
                       </td>
                       <td className="px-4 py-3">{getProjectSiteCount(project)}</td>
                       <RegisterRowActions
@@ -705,10 +832,13 @@ export default function Projects({
       </section>
 
       <section className="space-y-4">
+        <h2 className="text-lg font-semibold text-[#0f2744]">
+          Sites on this contract
+        </h2>
         <div className="flex flex-wrap items-end gap-4">
           <div className="min-w-[280px]">
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Site Assignment — Select Contract / Project
+              Contract
             </label>
             <select
               value={selectedProjectId}
@@ -726,7 +856,7 @@ export default function Projects({
           </div>
           {selectedProject ? (
             <p className="text-sm text-slate-600">
-              {assignedSites.length} site(s) linked to{" "}
+              {formatCountNoun(assignedSites.length, "site")} on{" "}
               <span className="font-medium text-[#0f2744]">
                 {selectedProject.project_name}
               </span>
@@ -769,17 +899,21 @@ export default function Projects({
                       <td className="px-4 py-3 font-medium text-[#0f2744]">
                         {site.site_name}
                       </td>
-                      <td className="px-4 py-3">{getSiteClientName(site)}</td>
+                      <td className="px-4 py-3">
+                        {getSiteClientName(site, initialClients)}
+                      </td>
                       <td className="px-4 py-3">{getSiteBuildingZone(site)}</td>
                       <td className="px-4 py-3">
                         {editingSiteCode === site.site_code ? (
                           <input
+                            id={`project-required-staff-${site.site_code}`}
                             type="number"
                             min={0}
                             value={siteStaffValue}
-                            onChange={(event) =>
-                              setSiteStaffValue(event.target.value)
-                            }
+                            onChange={(event) => {
+                              event.currentTarget.setCustomValidity("");
+                              setSiteStaffValue(event.target.value);
+                            }}
                             className={inputClassName}
                           />
                         ) : (
@@ -812,7 +946,7 @@ export default function Projects({
                             onClick={() => openEditSiteStaff(site)}
                             className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                           >
-                            Edit Staff
+                            Required staff
                           </button>
                         )}
                       </td>

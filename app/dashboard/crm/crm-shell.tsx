@@ -7,12 +7,14 @@ type CrmShellProps = {
   children: React.ReactNode;
   sectionTitle: string;
   customerListOnly?: boolean;
+  hideSectionTitle?: boolean;
 };
 
 export default async function CrmShell({
   children,
   sectionTitle,
   customerListOnly = false,
+  hideSectionTitle = false,
 }: CrmShellProps) {
   const [tenantId, role] = await Promise.all([
     getCurrentUserTenantId(),
@@ -36,7 +38,9 @@ export default async function CrmShell({
         showProductCatalog={isDavorsPlatformTenant(tenantId)}
         userRole={userRole}
       />
-      <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">{sectionTitle}</h2>
+      {hideSectionTitle ? null : (
+        <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">{sectionTitle}</h2>
+      )}
       {children}
     </div>
   );

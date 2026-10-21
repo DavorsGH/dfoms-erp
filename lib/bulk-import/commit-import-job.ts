@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { Client } from "pg";
+import { normalizeDevicePin, pinFromStaffId } from "@/lib/device-pin";
 import {
   buildCustomerCommitInsert,
   buildEmployeeCommitInsert,
@@ -16,7 +17,6 @@ import {
 } from "@/lib/bulk-import/resolve-customer-for-commit";
 import {
   allocateEmployeeIdsForCommit,
-  resolveAssignedSiteCodeForCommit,
   resolveDepartmentCodeForCommit,
   resolvePositionTitleForCommit,
   resolveProjectCodeForCommit,
@@ -52,6 +52,10 @@ import {
 } from "@/lib/bulk-import/resolve-supplier-for-commit";
 import { generateNextCodeInTransaction } from "@/lib/bulk-import/allocate-inventory-code-for-commit";
 import { FINISHED_PRODUCT_BARCODE_ENTITY_TYPE } from "@/lib/bulk-import/finished-product-barcode-import";
+import {
+  barcodeImportCellToText,
+  parseProductBarcodeText,
+} from "@/utils/finished-product-barcode-utils";
 import { FINISHED_PRODUCT_PURCHASED_SOURCING_TYPE } from "@/lib/bulk-import/target-fields";
 import type { BulkImportType } from "@/lib/bulk-import/types";
 import {
@@ -100,9 +104,13 @@ async function insertFinishedProduct(
     resolvedSupplierId,
   );
 
-  const suppliedBarcode = String(mappedData.barcode ?? "").trim();
-  const barcode = suppliedBarcode
-    ? suppliedBarcode
+  const suppliedBarcode = barcodeImportCellToText(mappedData.barcode);
+  const parsedBarcode = parseProductBarcodeText(suppliedBarcode);
+  if (!parsedBarcode.ok) {
+    throw new Error(parsedBarcode.error);
+  }
+  const barcode = parsedBarcode.barcode
+    ? parsedBarcode.barcode
     : await generateNextCodeInTransaction(
         client,
         tenantId,
@@ -145,6 +153,12 @@ async function insertFinishedProduct(
   if (!productId) {
     throw new Error(
       `Finished product insert did not return an id for ${payload.product_code}.`,
+    );
+  }
+
+  if (payload.opening_stock > 0 && !(Number(payload.opening_unit_cost) > 0)) {
+    throw new Error(
+      `Opening stock for ${payload.product_code} needs a unit cost greater than zero. Record it as an Opening balance adjustment instead.`,
     );
   }
 
@@ -235,6 +249,7 @@ function applySalarySettingsCompensationToEmployeePayload(
   };
 }
 
+/** New employees only. A site column in the file is ignored; Duty Roster assigns the site. */
 async function insertEmployeeRow(
   client: Client,
   tenantId: string,
@@ -278,13 +293,6 @@ async function insertEmployeeRow(
     supervisorName: String(mappedData.supervisor_name ?? ""),
     cache: caches.supervisorCache,
   });
-  const assignedSiteCode = await resolveAssignedSiteCodeForCommit({
-    client,
-    tenantId,
-    siteName: String(mappedData.assigned_site_name ?? ""),
-    cache: caches.siteCache,
-  });
-
   const { employeeId, staffId } = await allocateEmployeeIdsForCommit({
     client,
     tenantId,
@@ -301,7 +309,7 @@ async function insertEmployeeRow(
       positionTitle,
       projectCode,
       supervisorId,
-      assignedSiteCode,
+      assignedSiteCode: null,
       businessUnitId,
     }),
     compensationPolicyConfig,
@@ -486,6 +494,39 @@ async function insertEmployeeRow(
       historyInsert.changed_by,
     ],
   );
+
+  const pin = pinFromStaffId(String(payload.staff_id ?? ""));
+  if (!pin) {
+    return `${payload.staff_id} has no digits, so no attendance PIN was assigned.`;
+  }
+  const existingPins = await client.query(
+    `
+      SELECT staff_id, device_pin
+      FROM public.employee_biometric_ids
+      WHERE tenant_id = $1
+    `,
+    [payload.tenant_id],
+  );
+  const pinRows = existingPins.rows as { staff_id: string; device_pin: string }[];
+  const clash = pinRows.find(
+    (row) =>
+      row.staff_id !== payload.staff_id &&
+      normalizeDevicePin(row.device_pin) === pin,
+  );
+  if (clash) {
+    return `PIN ${pin} is already used by ${clash.staff_id}, so it was not assigned to ${payload.staff_id}.`;
+  }
+  const own = pinRows.find((row) => row.staff_id === payload.staff_id);
+  if (!own) {
+    await client.query(
+      `
+        INSERT INTO public.employee_biometric_ids (tenant_id, staff_id, device_pin)
+        VALUES ($1, $2, $3)
+      `,
+      [payload.tenant_id, payload.staff_id, pin],
+    );
+  }
+  return null;
 }
 
 async function insertCustomerRow(
@@ -982,6 +1023,7 @@ export async function commitImportJobInTransaction(input: {
     }
 
     for (const row of rows) {
+      let rowNote: string | null = null;
       if (importType === "product") {
         await insertFinishedProduct(
           client,
@@ -997,7 +1039,7 @@ export async function commitImportJobInTransaction(input: {
           throw new Error("Employee import requires Salary Settings configuration.");
         }
 
-        await insertEmployeeRow(
+        const pinNote = await insertEmployeeRow(
           client,
           tenantId,
           row.mapped_data,
@@ -1013,6 +1055,7 @@ export async function commitImportJobInTransaction(input: {
           activeBusinessUnitId,
           createMissingPositions,
         );
+        rowNote = pinNote;
       } else if (importType === "customer") {
         await insertCustomerRow(
           client,
@@ -1040,14 +1083,14 @@ export async function commitImportJobInTransaction(input: {
       await client.query(
         `
           UPDATE public.bulk_import_rows AS r
-          SET status = 'committed', error_message = NULL
+          SET status = 'committed', error_message = $4
           FROM public.bulk_import_jobs AS j
           WHERE r.id = $1
             AND r.job_id = $2
             AND j.id = r.job_id
             AND j.tenant_id = $3
         `,
-        [row.id, jobId, tenantId],
+        [row.id, jobId, tenantId, rowNote],
       );
     }
 

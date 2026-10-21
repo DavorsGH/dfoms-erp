@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import TimePickerField from "@/components/time-picker-field";
 import { createClient } from "@/utils/supabase/client";
+import { useToast } from "@/components/feedback/feedback-context";
 import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import RegisterRowActions, {
@@ -25,7 +27,15 @@ import {
   inputClassName,
   toTimeInputValue,
 } from "../hr-payroll/hr-register-utils";
-import type { ClientEntry } from "./clients-utils";
+import {
+  contractKeyForStoredRecord,
+  contractLabelForStoredRecord,
+  listOperationsContractChoices,
+  siteProjectCode,
+  sitesForContract,
+  staffForSelectedSite,
+} from "@/lib/operations-contract-scope";
+import type { RosterContractProject } from "@/lib/roster-contract-choices";
 import {
   calculateDurationMinutes,
   derivePassFailFromScore,
@@ -45,11 +55,18 @@ import {
 } from "./work-orders-utils";
 import { useOperationsReadOnly } from "./operations-read-only-context";
 
+type LinkedInspectionOption = {
+  checklist_id: string;
+  inspection_date: string | null;
+  site_id: string | null;
+};
+
 type WorkOrdersProps = {
   initialWorkOrders: WorkOrderEntry[];
-  initialClients: ClientEntry[];
+  initialProjects: RosterContractProject[];
   initialSites: SiteEntry[];
   initialEmployees: HrEmployee[];
+  initialInspections: LinkedInspectionOption[];
   inspectionPassingThreshold: number;
   fetchError: string | null;
   tenantId?: string | null;
@@ -77,14 +94,16 @@ const emptyForm = {
 
 export default function WorkOrders({
   initialWorkOrders,
-  initialClients,
+  initialProjects,
   initialSites,
   initialEmployees,
+  initialInspections,
   inspectionPassingThreshold,
   fetchError,
   tenantId = null,
 }: WorkOrdersProps) {
   const supabase = createClient();
+  const { toast } = useToast();
   const operationsReadOnly = useOperationsReadOnly();
   const buReadScope = useBusinessUnitReadScope();
   const [workOrders, setWorkOrders] = useState(
@@ -97,7 +116,9 @@ export default function WorkOrders({
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
-  const [filterClient, setFilterClient] = useState("");
+  const [filterContractKey, setFilterContractKey] = useState("");
+  const [formContractKey, setFormContractKey] = useState("");
+  const [showAllStaff, setShowAllStaff] = useState(false);
   const [filterSite, setFilterSite] = useState("");
   const [filterPassFail, setFilterPassFail] = useState("");
   const [filterDateFrom, setFilterDateFrom] = useState("");
@@ -137,9 +158,30 @@ export default function WorkOrders({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
   }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
+  const contractChoices = useMemo(
+    () =>
+      listOperationsContractChoices({
+        projects: initialProjects,
+        sites: initialSites.map((site) => ({
+          client_id: site.client_id,
+          project_code: siteProjectCode(site) || null,
+        })),
+      }),
+    [initialProjects, initialSites],
+  );
+  const filterContract =
+    contractChoices.find((choice) => choice.groupKey === filterContractKey) ??
+    null;
+  const formContract =
+    contractChoices.find((choice) => choice.groupKey === formContractKey) ??
+    null;
+
   const filteredWorkOrders = useMemo(() => {
     return workOrders.filter((entry) => {
-      if (filterClient && (entry.client_id ?? "") !== filterClient) {
+      if (
+        filterContractKey &&
+        (entry.client_id ?? "") !== (filterContract?.clientId ?? "")
+      ) {
         return false;
       }
 
@@ -163,7 +205,8 @@ export default function WorkOrders({
       return true;
     });
   }, [
-    filterClient,
+    filterContract?.clientId,
+    filterContractKey,
     filterDateFrom,
     filterDateTo,
     filterPassFail,
@@ -172,20 +215,51 @@ export default function WorkOrders({
   ]);
 
   const filterSiteOptions = useMemo(() => {
-    if (!filterClient) {
+    if (!filterContractKey) {
       return initialSites;
     }
 
-    return initialSites.filter((site) => site.client_id === filterClient);
-  }, [filterClient, initialSites]);
+    return sitesForContract(initialSites, filterContractKey, initialProjects);
+  }, [filterContractKey, initialProjects, initialSites]);
 
   const formSiteOptions = useMemo(() => {
-    if (!form.client_id) {
+    if (!formContractKey) {
       return [];
     }
 
-    return initialSites.filter((site) => site.client_id === form.client_id);
-  }, [form.client_id, initialSites]);
+    return sitesForContract(initialSites, formContractKey, initialProjects);
+  }, [formContractKey, initialProjects, initialSites]);
+
+  const inspectionOptions = useMemo(() => {
+    const forSite = initialInspections.filter(
+      (inspection) => inspection.site_id === form.site_id,
+    );
+    if (
+      form.checklist_id &&
+      !forSite.some((inspection) => inspection.checklist_id === form.checklist_id)
+    ) {
+      return [
+        {
+          checklist_id: form.checklist_id,
+          inspection_date: null,
+          site_id: form.site_id,
+        },
+        ...forSite,
+      ];
+    }
+    return forSite;
+  }, [form.checklist_id, form.site_id, initialInspections]);
+
+  const cleanerOptions = useMemo(
+    () =>
+      staffForSelectedSite(
+        employees,
+        form.site_id,
+        showAllStaff,
+        form.assigned_cleaner,
+      ),
+    [employees, form.assigned_cleaner, form.site_id, showAllStaff],
+  );
 
   async function refreshWorkOrders() {
     const { data, error: refreshError } = await supabase
@@ -205,8 +279,33 @@ export default function WorkOrders({
     setError(null);
   }
 
+  function storedContractKey(clientId: string | null, siteId: string | null) {
+    const site = initialSites.find((entry) => entry.site_code === siteId);
+    return contractKeyForStoredRecord({
+      clientId,
+      siteProjectCode: siteProjectCode(site),
+      projects: initialProjects,
+      choices: contractChoices,
+    });
+  }
+
+  function selectFormContract(groupKey: string) {
+    const choice = contractChoices.find((entry) => entry.groupKey === groupKey);
+    setFormContractKey(groupKey);
+    setShowAllStaff(false);
+    setForm((current) => ({
+      ...current,
+      client_id: choice?.clientId ?? "",
+      site_id: "",
+      checklist_id: "",
+      assigned_cleaner: "",
+    }));
+  }
+
   function openAddForm() {
     setEditingNo(null);
+    setFormContractKey("");
+    setShowAllStaff(false);
     setForm({
       ...emptyForm,
       date: toDateInputValue(new Date().toISOString()),
@@ -216,12 +315,16 @@ export default function WorkOrders({
 
   function closeForm() {
     setEditingNo(null);
+    setFormContractKey("");
+    setShowAllStaff(false);
     setForm(emptyForm);
     setShowForm(false);
   }
 
   function openEditForm(entry: WorkOrderEntry) {
     setEditingNo(entry.work_order_no);
+    setFormContractKey(storedContractKey(entry.client_id, entry.site_id));
+    setShowAllStaff(false);
     setForm({
       work_order_no: entry.work_order_no,
       checklist_id: entry.checklist_id ?? "",
@@ -252,11 +355,15 @@ export default function WorkOrders({
     field: K,
     value: (typeof emptyForm)[K],
   ) {
+    if (field === "site_id" && value !== form.site_id) {
+      setShowAllStaff(false);
+    }
     setForm((current) => {
       const next = { ...current, [field]: value };
 
-      if (field === "client_id" && value !== current.client_id) {
-        next.site_id = "";
+      if (field === "site_id" && value !== current.site_id) {
+        next.checklist_id = "";
+        next.assigned_cleaner = "";
       }
 
       if (field === "start_time" || field === "completion_time") {
@@ -315,12 +422,21 @@ export default function WorkOrders({
     setLoading(true);
     setError(null);
 
+    if (formContractKey && !formContract?.clientId) {
+      setError(
+        formContract?.dataIssue ??
+          "This contract has no customer, so the work order cannot be saved.",
+      );
+      setLoading(false);
+      return;
+    }
+
     const payload = {
       work_order_no: form.work_order_no.trim(),
       checklist_id: nullableText(form.checklist_id),
       ref_po_no: nullableText(form.ref_po_no),
       date: form.date,
-      client_id: nullableText(form.client_id),
+      client_id: nullableText(formContract?.clientId ?? form.client_id),
       site_id: nullableText(form.site_id),
       area: nullableText(form.area),
       service_type: nullableText(form.service_type),
@@ -386,6 +502,7 @@ export default function WorkOrders({
     closeForm();
     await refreshWorkOrders();
     setLoading(false);
+    toast(editingNo ? "Work order saved" : "Work order created");
   }
 
   return (
@@ -394,20 +511,20 @@ export default function WorkOrders({
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Filter by Customer
+              Filter by Contract
             </label>
             <select
-              value={filterClient}
+              value={filterContractKey}
               onChange={(event) => {
-                setFilterClient(event.target.value);
+                setFilterContractKey(event.target.value);
                 setFilterSite("");
               }}
               className={inputClassName}
             >
-              <option value="">All customers</option>
-              {initialClients.map((client) => (
-                <option key={client.client_id} value={client.client_id}>
-                  {client.client_name}
+              <option value="">All contracts</option>
+              {contractChoices.map((choice) => (
+                <option key={choice.groupKey} value={choice.groupKey}>
+                  {choice.label}
                 </option>
               ))}
             </select>
@@ -520,16 +637,30 @@ export default function WorkOrders({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Checklist ID
+                  Linked inspection (optional)
                 </label>
-                <input
-                  type="text"
+                <select
                   value={form.checklist_id}
                   onChange={(event) =>
                     updateField("checklist_id", event.target.value)
                   }
+                  disabled={!form.site_id}
                   className={inputClassName}
-                />
+                >
+                  <option value="">
+                    {form.site_id ? "None" : "Select a site first"}
+                  </option>
+                  {inspectionOptions.map((inspection) => (
+                    <option
+                      key={inspection.checklist_id}
+                      value={inspection.checklist_id}
+                    >
+                      {inspection.inspection_date
+                        ? `${inspection.checklist_id} — ${formatDate(inspection.inspection_date)}`
+                        : inspection.checklist_id}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -544,22 +675,25 @@ export default function WorkOrders({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Customer
+                  Contract
                 </label>
                 <select
-                  value={form.client_id}
-                  onChange={(event) =>
-                    updateField("client_id", event.target.value)
-                  }
+                  value={formContractKey}
+                  onChange={(event) => selectFormContract(event.target.value)}
                   className={inputClassName}
                 >
-                  <option value="">Select customer</option>
-                  {initialClients.map((client) => (
-                    <option key={client.client_id} value={client.client_id}>
-                      {client.client_name}
+                  <option value="">Select contract</option>
+                  {contractChoices.map((choice) => (
+                    <option key={choice.groupKey} value={choice.groupKey}>
+                      {choice.label}
                     </option>
                   ))}
                 </select>
+                {formContract?.dataIssue ? (
+                  <p className="mt-1 text-sm text-amber-700">
+                    {formContract.dataIssue}
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -568,11 +702,11 @@ export default function WorkOrders({
                 <select
                   value={form.site_id}
                   onChange={(event) => updateField("site_id", event.target.value)}
-                  disabled={!form.client_id}
+                  disabled={!formContractKey}
                   className={inputClassName}
                 >
                   <option value="">
-                    {form.client_id ? "Select site" : "Select a customer first"}
+                    {formContractKey ? "Select site" : "Select a contract first"}
                   </option>
                   {formSiteOptions.map((site) => (
                     <option key={site.site_code} value={site.site_code}>
@@ -606,9 +740,19 @@ export default function WorkOrders({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Assigned Cleaner
-                </label>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <label className="block text-sm font-medium text-slate-700">
+                    Assigned Cleaner
+                  </label>
+                  <label className="flex items-center gap-1 text-xs text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={showAllStaff}
+                      onChange={(event) => setShowAllStaff(event.target.checked)}
+                    />
+                    Show all staff
+                  </label>
+                </div>
                 <select
                   value={form.assigned_cleaner}
                   onChange={(event) =>
@@ -617,7 +761,7 @@ export default function WorkOrders({
                   className={inputClassName}
                 >
                   <option value="">Select cleaner</option>
-                  {employees.map((employee) => (
+                  {cleanerOptions.map((employee) => (
                     <option key={employee.employee_id} value={employee.employee_id}>
                       {employee.staff_id} — {employee.full_name}
                     </option>
@@ -645,26 +789,20 @@ export default function WorkOrders({
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Start Time
                 </label>
-                <input
-                  type="time"
+                <TimePickerField
+                  aria-label="Start Time"
                   value={form.start_time}
-                  onChange={(event) =>
-                    updateField("start_time", event.target.value)
-                  }
-                  className={inputClassName}
+                  onChange={(value) => updateField("start_time", value)}
                 />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Completion Time
                 </label>
-                <input
-                  type="time"
+                <TimePickerField
+                  aria-label="Completion Time"
                   value={form.completion_time}
-                  onChange={(event) =>
-                    updateField("completion_time", event.target.value)
-                  }
-                  className={inputClassName}
+                  onChange={(value) => updateField("completion_time", value)}
                 />
               </div>
               <div>
@@ -774,7 +912,7 @@ export default function WorkOrders({
         itemSingular="work order"
         itemPlural="work orders"
         hasActiveFilters={Boolean(
-          filterClient ||
+          filterContractKey ||
             filterSite ||
             filterPassFail ||
             filterDateFrom ||
@@ -787,7 +925,7 @@ export default function WorkOrders({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Date</th>
-              <th className={scrollableTableThClassName}>Customer</th>
+              <th className={scrollableTableThClassName}>Contract</th>
               <th className={scrollableTableThClassName}>Work Order No</th>
               <th className={scrollableTableThClassName}>Site</th>
               <th className={scrollableTableThClassName}>Service Type</th>
@@ -811,7 +949,21 @@ export default function WorkOrders({
               filteredWorkOrders.map((entry, index) => (
                 <tr key={entry.work_order_no} className={getStripedRowClassName(index)}>
                   <td className="px-4 py-3">{formatDate(entry.date)}</td>
-                  <td className="px-4 py-3">{getWorkOrderClientName(entry)}</td>
+                  <td className="px-4 py-3">
+                    {contractLabelForStoredRecord(
+                      {
+                        clientId: entry.client_id,
+                        siteProjectCode: siteProjectCode(
+                          initialSites.find(
+                            (site) => site.site_code === entry.site_id,
+                          ),
+                        ),
+                        projects: initialProjects,
+                        choices: contractChoices,
+                      },
+                      getWorkOrderClientName(entry),
+                    )}
+                  </td>
                   <td className="px-4 py-3 font-medium text-[#0f2744]">
                     {entry.work_order_no}
                   </td>

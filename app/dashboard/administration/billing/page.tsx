@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
@@ -20,6 +21,7 @@ import {
   type AccountCreditLedgerRow,
 } from "@/utils/account-credit";
 import { ensureReferralCodeForTenant } from "@/utils/referral-codes";
+import { ONLINE_PAYMENTS_HREF } from "@/utils/product-sale-paystack";
 import BillingSettings, {
   type BillingTierOption,
 } from "../billing-settings";
@@ -35,11 +37,12 @@ export default async function BillingSettingsPage({
   searchParams,
 }: BillingSettingsPageProps) {
   const params = await searchParams;
-  // Deep link (?tab=payment) used by POS when a settlement account is required.
-  const initialTab =
+  // Legacy Payment Settings deep link → Finance Settings → Online Payments.
+  if (
     (Array.isArray(params.tab) ? params.tab[0] : params.tab) === "payment"
-      ? ("payment" as const)
-      : ("billing" as const);
+  ) {
+    redirect(ONLINE_PAYMENTS_HREF);
+  }
   const tenantId = await getCurrentUserTenantId();
 
   if (!tenantId) {
@@ -183,7 +186,6 @@ export default async function BillingSettingsPage({
         referralCode={resolvedReferralCode}
         creditLedger={creditLedgerRows}
         fetchError={fetchError}
-        initialTab={initialTab}
       />
     </>
   );

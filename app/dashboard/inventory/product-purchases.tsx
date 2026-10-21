@@ -1,6 +1,7 @@
 "use client";
 
-import { useAlert } from "@/components/feedback/feedback-context";
+import { useAlert, useToast } from "@/components/feedback/feedback-context";
+import { claimSingleSubmit } from "@/lib/inventory/finished-product-wac";
 import { INVENTORY_ACTION_ALERT_TITLE } from "@/lib/inventory/inventory-item-business-unit-guard";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -74,6 +75,8 @@ export default function ProductPurchases({
   readOnly = false,
 }: ProductPurchasesProps) {
   const { alertError } = useAlert();
+  const { toast } = useToast();
+  const purchaseLock = useRef(false);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -213,6 +216,9 @@ export default function ProductPurchases({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (!claimSingleSubmit(purchaseLock)) {
+      return;
+    }
     setLoading(true);
     setError(null);
     setSuccess(null);
@@ -254,6 +260,7 @@ export default function ProductPurchases({
       }
 
       setSuccess("Purchase updated.");
+      toast("Purchase updated.");
       closeModal();
       router.refresh();
       return;
@@ -282,11 +289,11 @@ export default function ProductPurchases({
     }
 
     const lotCode = payload?.product_purchase?.batch_number?.trim();
-    setSuccess(
-      lotCode
-        ? `Purchase recorded. Lot code: ${lotCode}.`
-        : "Purchase recorded.",
-    );
+    const savedMessage = lotCode
+      ? `Purchase recorded. Lot code: ${lotCode}.`
+      : "Purchase recorded.";
+    setSuccess(savedMessage);
+    toast(savedMessage);
     closeModal();
     router.refresh();
     } catch (unexpected) {
@@ -296,6 +303,7 @@ export default function ProductPurchases({
           : "Unable to save the purchase.",
       );
     } finally {
+      purchaseLock.current = false;
       setLoading(false);
     }
   }
@@ -520,7 +528,11 @@ export default function ProductPurchases({
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
+            <form onSubmit={handleSubmit}>
+              <fieldset
+                disabled={loading}
+                className="grid gap-4 border-0 p-0 disabled:opacity-70 md:grid-cols-2"
+              >
               {!editingPurchaseId ? (
                 <div className="md:col-span-2">
                   <BarcodeScanField
@@ -779,6 +791,7 @@ export default function ProductPurchases({
                   Cancel
                 </button>
               </div>
+              </fieldset>
             </form>
           </div>
         </div>

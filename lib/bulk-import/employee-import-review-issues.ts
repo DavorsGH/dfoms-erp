@@ -222,7 +222,6 @@ export function collectEmployeeImportReviewIssues(input: {
     ["department_name", employeeLookups.departmentNameMatchCounts, "departments"],
     ["position_title", employeeLookups.positionTitleMatchCounts, "positions"],
     ["supervisor_name", employeeLookups.supervisorNameMatchCounts, "employees"],
-    ["assigned_site_name", employeeLookups.assignedSiteNameMatchCounts, "sites"],
   ];
 
   for (const [fieldKey, matchCounts, entityLabel] of nameLookups) {

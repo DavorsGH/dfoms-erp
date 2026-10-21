@@ -13,7 +13,8 @@ import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-b
 import type { HrEmployee } from "../../hr-payroll/employee-utils";
 import OperationsShell from "../operations-shell";
 import CorrectiveActions from "../corrective-actions";
-import type { ClientEntry } from "../clients-utils";
+import type { RosterContractProject } from "@/lib/roster-contract-choices";
+import type { SiteEntry } from "../sites-utils";
 import {
   CORRECTIVE_ACTION_SELECT,
   type CorrectiveActionEntry,
@@ -37,7 +38,8 @@ export default async function CorrectiveActionsPage() {
 
   const [
     { data: entries, error: entriesError },
-    { data: clients, error: clientsError },
+    { data: projects, error: projectsError },
+    { data: sites, error: sitesError },
     { data: workOrders, error: workOrdersError },
     { data: failedIssues, error: failedIssuesError },
     scopedEmployees,
@@ -47,9 +49,17 @@ export default async function CorrectiveActionsPage() {
       buScope,
     ).order("date_raised", { ascending: false }),
     supabase
-      .from("customers")
-      .select("client_id, client_name")
-      .order("client_name", { ascending: true }),
+      .from("projects")
+      .select(
+        "project_code, project_name, service_contract_id, contract_type, is_archived",
+      )
+      .order("project_name", { ascending: true }),
+    supabase
+      .from("sites")
+      .select(
+        "site_code, site_name, client_id, project:projects!sites_project_id_fkey(project_code)",
+      )
+      .order("site_name", { ascending: true }),
     supabase
       .from("work_orders")
       .select("work_order_no, date")
@@ -69,7 +79,8 @@ export default async function CorrectiveActionsPage() {
   const fetchError =
     scopedEmployees.error ??
     entriesError?.message ??
-    clientsError?.message ??
+    projectsError?.message ??
+    sitesError?.message ??
     workOrdersError?.message ??
     failedIssuesError?.message ??
     null;
@@ -78,7 +89,8 @@ export default async function CorrectiveActionsPage() {
     <OperationsShell sectionTitle="Corrective Actions">
       <CorrectiveActions
         initialEntries={(entries as CorrectiveActionEntry[] | null) ?? []}
-        initialClients={(clients as ClientEntry[] | null) ?? []}
+        initialProjects={(projects as RosterContractProject[] | null) ?? []}
+        initialSites={(sites as SiteEntry[] | null) ?? []}
         initialWorkOrders={(workOrders as WorkOrderLookupOption[] | null) ?? []}
         initialFailedIssues={(failedIssues as FailedIssueLookupOption[] | null) ?? []}
         initialEmployees={scopedEmployees.employees}

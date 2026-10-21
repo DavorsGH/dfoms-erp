@@ -10,7 +10,7 @@ import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-b
 import type { HrEmployee } from "../../hr-payroll/employee-utils";
 import OperationsShell from "../operations-shell";
 import FailedInspections from "../failed-inspections";
-import type { ClientEntry } from "../clients-utils";
+import type { RosterContractProject } from "@/lib/roster-contract-choices";
 import {
   FAILED_INSPECTION_SELECT,
   type FailedInspectionEntry,
@@ -34,7 +34,7 @@ export default async function FailedInspectionsPage() {
 
   const [
     { data: entries, error: entriesError },
-    { data: clients, error: clientsError },
+    { data: projects, error: projectsError },
     { data: sites, error: sitesError },
     { data: checklists, error: checklistsError },
     scopedEmployees,
@@ -44,12 +44,16 @@ export default async function FailedInspectionsPage() {
       .select(FAILED_INSPECTION_SELECT)
       .order("date_identified", { ascending: false }),
     supabase
-      .from("customers")
-      .select("client_id, client_name")
-      .order("client_name", { ascending: true }),
+      .from("projects")
+      .select(
+        "project_code, project_name, service_contract_id, contract_type, is_archived",
+      )
+      .order("project_name", { ascending: true }),
     supabase
       .from("sites")
-      .select("site_code, site_name, client_id")
+      .select(
+        "site_code, site_name, client_id, project:projects!sites_project_id_fkey(project_code)",
+      )
       .order("site_name", { ascending: true }),
     supabase
       .from("inspection_summary")
@@ -66,7 +70,7 @@ export default async function FailedInspectionsPage() {
   const fetchError =
     scopedEmployees.error ??
     entriesError?.message ??
-    clientsError?.message ??
+    projectsError?.message ??
     sitesError?.message ??
     checklistsError?.message ??
     null;
@@ -75,7 +79,7 @@ export default async function FailedInspectionsPage() {
     <OperationsShell sectionTitle="Failed Inspections">
       <FailedInspections
         initialEntries={(entries as FailedInspectionEntry[] | null) ?? []}
-        initialClients={(clients as ClientEntry[] | null) ?? []}
+        initialProjects={(projects as RosterContractProject[] | null) ?? []}
         initialSites={(sites as SiteEntry[] | null) ?? []}
         initialChecklists={(checklists as InspectionChecklistLookup[] | null) ?? []}
         initialEmployees={scopedEmployees.employees}

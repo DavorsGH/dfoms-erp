@@ -54,7 +54,7 @@ function incomeProductSaleToLogEntry(
     outstanding_balance: entry.outstanding_balance ?? null,
     payment_status: entry.payment_status ?? "unpaid",
     due_date: entry.date,
-    notes: null,
+    notes: entry.notes ?? null,
     product_id: entry.product_id ?? null,
     sale_quantity: null,
     unit_price: null,

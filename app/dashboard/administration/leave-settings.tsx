@@ -1,7 +1,9 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
+import { useAlert, useToast } from "@/components/feedback";
 import { useEffect, useMemo, useState } from "react";
+import { useQueryTab } from "@/hooks/use-query-tab";
 import { createClient } from "@/utils/supabase/client";
 import { inputClassName } from "../hr-payroll/hr-register-utils";
 import RegisterRowActions, {
@@ -12,7 +14,10 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
-import type { LeaveApproverConfig } from "../self-service/leave-request-utils";
+import {
+  formatLeaveApproverDisplay,
+  type LeaveApproverConfig,
+} from "../self-service/leave-request-utils";
 import {
   LEAVE_ENTITLEMENT_DEFAULT_EMPLOYMENT_TYPE,
   LEAVE_ENTITLEMENT_DEFAULT_LABEL,
@@ -23,20 +28,16 @@ import {
   isLeaveEntitlementDefaultPolicyRow,
   type LeaveEntitlementPolicyRow,
 } from "./leave-entitlement-policy-utils";
+import type { LeaveApproverChoice } from "@/lib/leave-approver-options";
 
 type TabId = "approver" | "entitlements";
-
-type UserAccountOption = {
-  auth_uid: string;
-  email: string;
-  full_name: string;
-};
 
 type LeaveSettingsProps = {
   tenantId: string;
   currentApprover: LeaveApproverConfig | null;
   history: LeaveApproverConfig[];
-  userAccounts: UserAccountOption[];
+  canChangeApprover: boolean;
+  approverChoices: LeaveApproverChoice[];
   initialPositions: string[];
   initialPolicies: LeaveEntitlementPolicyRow[];
   fetchError: string | null;
@@ -51,27 +52,28 @@ export default function LeaveSettings({
   tenantId,
   currentApprover,
   history,
-  userAccounts,
+  canChangeApprover,
+  approverChoices,
   initialPositions,
   initialPolicies,
   fetchError,
 }: LeaveSettingsProps) {
   const supabase = createClient();
-  const [tab, setTab] = useState<TabId>("approver");
+  const { alertError } = useAlert();
+  const { toast } = useToast();
+  const { tab, setTab } = useQueryTab<TabId>({
+    values: ["approver", "entitlements"],
+    defaultTab: "approver",
+  });
 
   const [selectedAuthUid, setSelectedAuthUid] = useState(
     currentApprover?.approver_user_account_id ?? "",
   );
   const [notes, setNotes] = useState("");
   const [approverLoading, setApproverLoading] = useState(false);
-  const [approverError, setApproverError] = useState<string | null>(fetchError);
-  const [approverSuccess, setApproverSuccess] = useState<string | null>(null);
 
   const [positions] = useState(initialPositions);
   const [policies, setPolicies] = useState(initialPolicies);
-  const [entitlementError, setEntitlementError] = useState<string | null>(
-    fetchError,
-  );
   const [entitlementLoading, setEntitlementLoading] = useState(false);
   const [entitlementForm, setEntitlementForm] = useState(emptyEntitlementForm);
   const [daysDrafts, setDaysDrafts] = useState<Record<string, string>>({});
@@ -88,6 +90,12 @@ export default function LeaveSettings({
   useEffect(() => {
     setPolicies(initialPolicies);
   }, [initialPolicies]);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError);
+    }
+  }, [alertError, fetchError]);
 
   useEffect(() => {
     const drafts = defaultLeaveEntitlementDraftValues();
@@ -160,20 +168,28 @@ export default function LeaveSettings({
     );
   }, [positionSpecificPolicies]);
 
-  const currentLabel =
-    currentApprover?.user_accounts?.employees?.full_name ??
-    currentApprover?.user_accounts?.email ??
-    "Not configured";
+  const currentLabel = currentApprover
+    ? formatLeaveApproverDisplay({
+        approverUserAccountId: currentApprover.approver_user_account_id,
+        fullName: currentApprover.user_accounts?.employees?.full_name,
+        staffId: currentApprover.user_accounts?.employees?.staff_id,
+        email: currentApprover.user_accounts?.email,
+      })
+    : "Not configured";
 
-  async function handleChangeApprover() {
-    if (!selectedAuthUid) {
-      setApproverError("Select an approver account.");
-      return;
+  async function handleChangeApprover(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const select = event.currentTarget.elements.namedItem("approver");
+    if (select instanceof HTMLSelectElement) {
+      select.setCustomValidity("");
+      if (!select.value) {
+        select.setCustomValidity("Select an approver.");
+        select.reportValidity();
+        return;
+      }
     }
 
     setApproverLoading(true);
-    setApproverError(null);
-    setApproverSuccess(null);
 
     try {
       const response = await fetch("/api/leave/change-approver", {
@@ -185,39 +201,35 @@ export default function LeaveSettings({
         }),
       });
 
-      const payload = (await response.json()) as { error?: string };
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
       if (!response.ok) {
-        throw new Error(payload.error ?? "Failed to change leave approver");
+        throw new Error(payload?.error ?? "Failed to change leave approver");
       }
 
-      setApproverSuccess(
-        "Leave approver updated. Reload the page to see the latest assignment.",
-      );
       setNotes("");
+      toast("Leave approver updated.");
     } catch (changeError) {
-      setApproverError(
-        changeError instanceof Error
-          ? changeError.message
-          : "Failed to change leave approver",
-      );
+      setApproverLoading(false);
+      await alertError(changeError);
     } finally {
       setApproverLoading(false);
     }
   }
 
-  async function refreshPolicies() {
+  async function refreshPolicies(): Promise<string | null> {
     const { data, error } = await supabase
       .from("leave_entitlement_policy")
       .select("*")
       .eq("tenant_id", tenantId);
 
     if (error) {
-      setEntitlementError(error.message);
-      return;
+      return error.message;
     }
 
     setPolicies((data as LeaveEntitlementPolicyRow[] | null) ?? []);
-    setEntitlementError(null);
+    return null;
   }
 
   function openAddEntitlement() {
@@ -251,31 +263,28 @@ export default function LeaveSettings({
 
   async function handleSaveEntitlement(e: React.FormEvent) {
     e.preventDefault();
-    if (!entitlementForm.position || !entitlementForm.employment_type) {
-      setEntitlementError("Position and employment type are required.");
-      return;
-    }
+    const position = entitlementForm.position;
+    const employmentType = entitlementForm.employment_type;
 
     setEntitlementLoading(true);
-    setEntitlementError(null);
 
     const { error: deleteError } = await supabase
       .from("leave_entitlement_policy")
       .delete()
       .eq("tenant_id", tenantId)
-      .eq("position", entitlementForm.position)
-      .eq("employment_type", entitlementForm.employment_type);
+      .eq("position", position)
+      .eq("employment_type", employmentType);
 
     if (deleteError) {
-      setEntitlementError(deleteError.message);
       setEntitlementLoading(false);
+      await alertError(deleteError);
       return;
     }
 
     const inserts = LEAVE_ENTITLEMENT_TYPES.map((leaveType) => ({
       tenant_id: tenantId,
-      position: entitlementForm.position,
-      employment_type: entitlementForm.employment_type,
+      position,
+      employment_type: employmentType,
       leave_type: leaveType,
       entitled_days: Number(daysDrafts[leaveType]) || 0,
     }));
@@ -285,20 +294,23 @@ export default function LeaveSettings({
       .insert(inserts);
 
     if (insertError) {
-      setEntitlementError(insertError.message);
       setEntitlementLoading(false);
+      await alertError(insertError);
       return;
     }
 
     closeEntitlementForm();
-    await refreshPolicies();
+    const refreshProblem = await refreshPolicies();
     setEntitlementLoading(false);
+    toast(`Entitlement saved — ${position} · ${employmentType}`);
+    if (refreshProblem) {
+      await alertError(refreshProblem);
+    }
   }
 
   async function handleSaveDefaultEntitlement(e: React.FormEvent) {
     e.preventDefault();
     setSavingDefaultEntitlement(true);
-    setEntitlementError(null);
 
     const { error: deleteError } = await supabase
       .from("leave_entitlement_policy")
@@ -308,8 +320,8 @@ export default function LeaveSettings({
       .eq("employment_type", LEAVE_ENTITLEMENT_DEFAULT_EMPLOYMENT_TYPE);
 
     if (deleteError) {
-      setEntitlementError(deleteError.message);
       setSavingDefaultEntitlement(false);
+      await alertError(deleteError);
       return;
     }
 
@@ -326,14 +338,18 @@ export default function LeaveSettings({
       .insert(inserts);
 
     if (insertError) {
-      setEntitlementError(insertError.message);
       setSavingDefaultEntitlement(false);
+      await alertError(insertError);
       return;
     }
 
     setDefaultEntitlementDirty(false);
-    await refreshPolicies();
+    const refreshProblem = await refreshPolicies();
     setSavingDefaultEntitlement(false);
+    toast("Default entitlements saved");
+    if (refreshProblem) {
+      await alertError(refreshProblem);
+    }
   }
 
   async function handleDeleteEntitlementGroup(
@@ -358,16 +374,20 @@ export default function LeaveSettings({
       .eq("employment_type", group.employment_type);
 
     if (deleteError) {
-      setEntitlementError(deleteError.message);
       setEntitlementLoading(false);
+      await alertError(deleteError);
       return;
     }
 
     if (editingEntitlementKey === group.key) {
       closeEntitlementForm();
     }
-    await refreshPolicies();
+    const refreshProblem = await refreshPolicies();
     setEntitlementLoading(false);
+    toast("Entitlement deleted");
+    if (refreshProblem) {
+      await alertError(refreshProblem);
+    }
   }
 
   const tabs: { id: TabId; label: string }[] = [
@@ -399,18 +419,6 @@ export default function LeaveSettings({
 
       {tab === "approver" ? (
         <div className="space-y-6">
-          {approverError ? (
-            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {approverError}
-            </div>
-          ) : null}
-
-          {approverSuccess ? (
-            <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-              {approverSuccess}
-            </div>
-          ) : null}
-
           <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
             <h3 className="mb-2 text-lg font-semibold text-[#0f2744]">
               Current Leave Approver
@@ -423,27 +431,45 @@ export default function LeaveSettings({
             ) : null}
           </section>
 
+          {canChangeApprover ? (
           <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
             <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
               Change Approver
             </h3>
-            <div className="grid max-w-xl gap-4">
+            <form
+              onSubmit={(event) => void handleChangeApprover(event)}
+              className="grid max-w-xl gap-4"
+            >
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   New Approver
                 </label>
                 <select
+                  name="approver"
+                  required
                   value={selectedAuthUid}
-                  onChange={(event) => setSelectedAuthUid(event.target.value)}
+                  onChange={(event) => {
+                    event.currentTarget.setCustomValidity("");
+                    setSelectedAuthUid(event.target.value);
+                  }}
                   className={inputClassName}
+                  disabled={approverLoading}
                 >
-                  <option value="">Select user account</option>
-                  {userAccounts.map((account) => (
-                    <option key={account.auth_uid} value={account.auth_uid}>
-                      {account.full_name} ({account.email})
+                  <option value="">Select an approver</option>
+                  {approverChoices.map((choice) => (
+                    <option
+                      key={choice.key}
+                      value={choice.authUid ?? ""}
+                      disabled={choice.disabled}
+                    >
+                      {choice.label}
                     </option>
                   ))}
                 </select>
+                <p className="mt-1 text-xs text-slate-500">
+                  Create a staff login for this person under User Accounts
+                  before making them the approver.
+                </p>
               </div>
 
               <div>
@@ -456,19 +482,24 @@ export default function LeaveSettings({
                   rows={2}
                   className={inputClassName}
                   placeholder="Optional reason for approver change"
+                  disabled={approverLoading}
                 />
               </div>
 
               <button
-                type="button"
-                onClick={() => void handleChangeApprover()}
+                type="submit"
                 disabled={approverLoading}
                 className="w-fit rounded-md bg-[#0f2744] px-5 py-2 text-sm font-medium text-white hover:bg-[#1a3a5c] disabled:opacity-50"
               >
                 {approverLoading ? "Saving…" : "Change Approver"}
               </button>
-            </div>
+            </form>
           </section>
+          ) : (
+            <p className="text-sm text-slate-600">
+              Only an administrator can change the leave approver.
+            </p>
+          )}
 
           <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
             <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
@@ -480,9 +511,12 @@ export default function LeaveSettings({
               ) : (
                 history.map((entry) => (
                   <li key={entry.id} className="rounded-md bg-slate-50 px-3 py-2">
-                    {entry.user_accounts?.employees?.full_name ??
-                      entry.user_accounts?.email ??
-                      entry.approver_user_account_id}{" "}
+                    {formatLeaveApproverDisplay({
+                      approverUserAccountId: entry.approver_user_account_id,
+                      fullName: entry.user_accounts?.employees?.full_name,
+                      staffId: entry.user_accounts?.employees?.staff_id,
+                      email: entry.user_accounts?.email,
+                    })}{" "}
                     — effective {entry.effective_from}
                     {entry.notes ? ` (${entry.notes})` : ""}
                   </li>
@@ -510,19 +544,14 @@ export default function LeaveSettings({
                   ? closeEntitlementForm()
                   : openAddEntitlement()
               }
-              className="shrink-0 rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
+              className="shrink-0 rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:opacity-50"
+              disabled={entitlementLoading || savingDefaultEntitlement}
             >
               {showEntitlementForm && !editingEntitlementKey
                 ? "Cancel"
                 : "Add Combination"}
             </button>
           </div>
-
-          {entitlementError ? (
-            <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {entitlementError}
-            </p>
-          ) : null}
 
           <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -542,6 +571,10 @@ export default function LeaveSettings({
               onSubmit={(e) => void handleSaveDefaultEntitlement(e)}
               className="space-y-4"
             >
+              <fieldset
+                disabled={savingDefaultEntitlement}
+                className="min-w-0 space-y-4 border-0 p-0"
+              >
               <div className="grid gap-4 md:grid-cols-3">
                 {LEAVE_ENTITLEMENT_TYPES.map((leaveType) => (
                   <div key={leaveType}>
@@ -577,6 +610,7 @@ export default function LeaveSettings({
               >
                 {savingDefaultEntitlement ? "Saving…" : "Save Default"}
               </button>
+              </fieldset>
             </form>
           </section>
 
@@ -588,6 +622,10 @@ export default function LeaveSettings({
                   : "New Leave Entitlement"}
               </h3>
               <form onSubmit={(e) => void handleSaveEntitlement(e)} className="space-y-4">
+                <fieldset
+                  disabled={entitlementLoading}
+                  className="min-w-0 space-y-4 border-0 p-0"
+                >
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -679,6 +717,7 @@ export default function LeaveSettings({
                     Cancel
                   </button>
                 </div>
+                </fieldset>
               </form>
             </section>
           ) : null}

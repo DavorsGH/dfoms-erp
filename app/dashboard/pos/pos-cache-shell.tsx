@@ -48,6 +48,9 @@ type PosCacheShellProps = {
   activeBusinessUnitId?: string | null;
   /** Workspace id for employee-linked BU scoping of sales-rep options. */
   tenantId?: string | null;
+  /** Paystack settlement ready for Mobile Money collection. */
+  mobileMoneyCollectionReady?: boolean;
+  viewerRole?: string | null;
 };
 
 export default function PosCacheShell({
@@ -70,6 +73,8 @@ export default function PosCacheShell({
   initialCachedAt,
   activeBusinessUnitId = null,
   tenantId = null,
+  mobileMoneyCollectionReady = true,
+  viewerRole = null,
 }: PosCacheShellProps) {
   const router = useRouter();
   const isOnline = useOnlineStatus();
@@ -222,6 +227,8 @@ export default function PosCacheShell({
           fetchError={error}
           activeBusinessUnitId={activeBusinessUnitId}
           tenantId={tenantId}
+          mobileMoneyCollectionReady={mobileMoneyCollectionReady}
+          viewerRole={viewerRole}
           onStockLevelsChanged={async (nextProducts) => {
             setProducts(nextProducts);
             if (!isOnline) {

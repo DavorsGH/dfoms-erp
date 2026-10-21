@@ -11,6 +11,7 @@ import type { NamedLookup } from "../lookup-types";
 import { useOfflineWriteBlocked } from "@/hooks/use-online-status";
 import { invalidateReferenceLookupsAfterWrite } from "@/lib/client-cache/dashboard-summary-cache";
 import { resolveClientCacheSession } from "@/lib/client-cache/session-context";
+import { useLookupSettingsFeedback } from "./lookup-settings-feedback";
 
 type PaymentMethodsProps = {
   tenantId: string;
@@ -28,11 +29,12 @@ export default function PaymentMethods({
 }: PaymentMethodsProps) {
   const supabase = createClient();
   const { isOffline, offlineWriteMessage } = useOfflineWriteBlocked();
+  const { showActionError, showActionSuccess } =
+    useLookupSettingsFeedback(fetchError);
   const [methods, setMethods] = useState(initialMethods);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [deletingName, setDeletingName] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(fetchError);
 
   async function invalidateReferenceCache() {
     const session = await resolveClientCacheSession();
@@ -48,22 +50,20 @@ export default function PaymentMethods({
       .order("name", { ascending: true });
 
     if (refreshError) {
-      setError(refreshError.message);
+      showActionError(refreshError);
       return;
     }
 
     setMethods(data ?? []);
-    setError(null);
   }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (isOffline) {
-      setError(offlineWriteMessage);
+      showActionError(offlineWriteMessage);
       return;
     }
     setLoading(true);
-    setError(null);
 
     const scopedTenantId = assertTenantIdForMutation(tenantId);
     const { error: insertError } = await supabase
@@ -71,8 +71,8 @@ export default function PaymentMethods({
       .insert({ tenant_id: scopedTenantId, name: name.trim() });
 
     if (insertError) {
-      setError(insertError.message);
       setLoading(false);
+      showActionError(insertError);
       return;
     }
 
@@ -80,15 +80,15 @@ export default function PaymentMethods({
     await refreshMethods();
     await invalidateReferenceCache();
     setLoading(false);
+    showActionSuccess("Payment method added.");
   }
 
   async function handleDelete(methodName: string) {
     if (isOffline) {
-      setError(offlineWriteMessage);
+      showActionError(offlineWriteMessage);
       return;
     }
     setDeletingName(methodName);
-    setError(null);
 
     const { error: deleteError } = await tenantScopedDelete(
       supabase,
@@ -98,14 +98,17 @@ export default function PaymentMethods({
     );
 
     if (deleteError) {
-      setError(getNamedLookupDeleteErrorMessage(deleteError, "payment method"));
       setDeletingName(null);
+      showActionError(
+        getNamedLookupDeleteErrorMessage(deleteError, "payment method"),
+      );
       return;
     }
 
     await refreshMethods();
     await invalidateReferenceCache();
     setDeletingName(null);
+    showActionSuccess("Payment method deleted.");
   }
 
   return (
@@ -117,12 +120,6 @@ export default function PaymentMethods({
       {isOffline && (
         <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           {offlineWriteMessage}
-        </p>
-      )}
-
-      {error && (
-        <p className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
         </p>
       )}
 

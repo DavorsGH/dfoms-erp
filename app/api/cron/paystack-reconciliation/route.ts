@@ -28,6 +28,16 @@ async function handleCron(request: Request) {
       windowStart: result.windowStart,
       windowEnd: result.windowEnd,
       paystackTransactions: result.paystackTransactions,
+      productSaleRequests: result.productSaleRequests
+        ? {
+            checked: result.productSaleRequests.checked,
+            applied: result.productSaleRequests.applied,
+            alreadyApplied: result.productSaleRequests.alreadyApplied,
+            notPaid: result.productSaleRequests.notPaid,
+            failed: result.productSaleRequests.failed,
+          }
+        : null,
+      settlementVerification: result.settlementVerification,
       issueCount: result.issues.length,
       issues: result.issues,
     });

@@ -44,6 +44,7 @@ import {
   nullableNumber,
   nullableText,
 } from "./inventory-utils";
+import { formatDate } from "../finance/income-register-utils";
 import { allocateMaterialCode } from "./inventory-ids-api";
 import {
   formatRawMaterialAdjustmentType,
@@ -1871,7 +1872,7 @@ export default function RawMaterials({
                       className={getStripedRowClassName(index)}
                     >
                       <td className="px-4 py-3">
-                        {adjustment.created_at.slice(0, 10)}
+                        {formatDate(adjustment.created_at)}
                       </td>
                       <td className="px-4 py-3">
                         {adjustment.material?.material_name ??

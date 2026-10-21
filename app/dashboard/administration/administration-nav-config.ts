@@ -17,11 +17,19 @@ const PLATFORM_ADMIN_GROUP_IDS: readonly string[] = [
   MONITORING_SUPPORT_GROUP_ID,
 ];
 
+export const DIRECTOR_ADMINISTRATION_GROUP_IDS = [
+  "finance-settings",
+  "hr-settings",
+  "operations-settings",
+] as const;
+
 export type AdministrationSidebarOptions = {
   /** Davors platform super_admin — show Platform Settings + Monitoring & Support. */
   isDavorsPlatformSuperAdmin?: boolean;
   /** Tenant super_admin — reserved for future tenant-scoped monitoring links. */
   showMonitoringSupport?: boolean;
+  /** Director sees only Finance, HR, and Operations settings. */
+  audience?: "super_admin" | "director";
 };
 
 export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
@@ -42,6 +50,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         href: "/dashboard/administration/payment-accounts",
       },
       {
+        label: "Online Payments",
+        href: "/dashboard/administration/online-payments",
+      },
+      {
         label: "VAT/WHT Calculation Basis",
         href: "/dashboard/administration/sales-tax-basis",
       },
@@ -56,10 +68,6 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
       {
         label: "Inventory Go-Live",
         href: "/dashboard/administration/inventory-go-live",
-      },
-      {
-        label: "Scanner Setup (POS Devices)",
-        href: "/dashboard/pos/scanner-setup",
       },
       {
         label: "Approvers",
@@ -94,11 +102,15 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         href: "/dashboard/administration",
       },
       {
-        label: "Contract/Project Assignments",
+        label: "Contract Assignments",
         href: "/dashboard/administration/projects",
       },
       {
-        label: "Roster Settings",
+        label: "Site Assignments",
+        href: "/dashboard/administration/sites",
+      },
+      {
+        label: "Roster & Shift Settings",
         href: "/dashboard/administration/roster-settings",
       },
     ],
@@ -238,11 +250,21 @@ export function getAdministrationGroupDefaultHref(
 export function getAdministrationSidebarLinks(
   options: AdministrationSidebarOptions = {},
 ) {
-  const { isDavorsPlatformSuperAdmin = false } = options;
+  const { isDavorsPlatformSuperAdmin = false, audience = "super_admin" } =
+    options;
 
   const links: { label: string; href: string; groupId: string }[] = [];
 
   for (const group of ADMINISTRATION_GROUPS) {
+    if (
+      audience === "director" &&
+      !(DIRECTOR_ADMINISTRATION_GROUP_IDS as readonly string[]).includes(
+        group.id,
+      )
+    ) {
+      continue;
+    }
+
     if (group.id === PLATFORM_SETTINGS_GROUP_ID) {
       if (isDavorsPlatformSuperAdmin) {
         links.push({

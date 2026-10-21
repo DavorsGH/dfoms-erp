@@ -16,14 +16,17 @@ import {
   canAccessHrPayrollSection,
   canAccessReportCategory,
   getSidebarNavItems,
+  withApproverInboxNav,
   type SidebarNavItem,
 } from "@/utils/rbac-access";
 import {
   getHrManagementSidebarLinks,
   isHrManagementGroupActive,
   isHrManagementPath,
+  ATTENDANCE_APPROVALS_GROUP_ID,
   LEAVE_APPROVALS_GROUP_ID,
 } from "./hr-payroll/hr-management-nav-config";
+import AttendanceApprovalsCountBadge from "./attendance-approvals/attendance-approvals-count-badge";
 import {
   getAdministrationSidebarLinks,
   isAdministrationGroupActive,
@@ -39,11 +42,14 @@ import {
   isInventoryGroupActive,
   isInventoryPath,
 } from "./inventory/inventory-nav-config";
+import Tooltip from "@/components/ui/tooltip";
+import { SidebarOutlineIcon, sidebarIconName } from "./sidebar-icons";
 
 type SidebarProps = {
   userRole: AppRole | null;
   linkedEmployeeId?: string | null;
   showLeaveApprovals?: boolean;
+  showAttendanceApprovals?: boolean;
   showPlatformSettings?: boolean;
   showRealEstate?: boolean;
   tenantBranding: TenantBranding;
@@ -90,6 +96,10 @@ function isActive(pathname: string, href: string) {
 
   if (href === "/dashboard/directors") {
     return pathname.startsWith("/dashboard/directors");
+  }
+
+  if (href === "/dashboard/devices") {
+    return pathname.startsWith("/dashboard/devices");
   }
 
   if (href === "/dashboard/administration") {
@@ -151,6 +161,8 @@ function useSidebarExpandableSection(isActive: boolean) {
 
 type SidebarExpandableNavSectionProps = {
   label: string;
+  icon: React.ReactNode;
+  collapsed: boolean;
   isActive: boolean;
   isExpanded: boolean;
   onToggle: () => void;
@@ -159,24 +171,37 @@ type SidebarExpandableNavSectionProps = {
 
 function SidebarExpandableNavSection({
   label,
+  icon,
+  collapsed,
   isActive,
   isExpanded,
   onToggle,
   children,
 }: SidebarExpandableNavSectionProps) {
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={isExpanded}
-        className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-md px-3 py-2.5 text-left text-sm font-medium transition-colors ${
-          isActive
-            ? "bg-white/15 text-white"
-            : "text-white/75 hover:bg-white/10 hover:text-white"
+  const button = (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={collapsed ? false : isExpanded}
+      aria-label={collapsed ? label : undefined}
+      title={collapsed ? label : undefined}
+      className={`flex min-h-10 w-full items-center gap-2 rounded-md py-2.5 text-left text-sm font-medium transition-colors ${
+        collapsed ? "justify-center px-2" : "justify-between px-3"
+      } ${
+        isActive
+          ? "bg-white/15 text-white"
+          : "text-white/75 hover:bg-white/10 hover:text-white"
+      }`}
+    >
+      <span
+        className={`flex min-w-0 items-center ${
+          collapsed ? "justify-center" : "gap-2.5"
         }`}
       >
-        <span>{label}</span>
+        {icon}
+        <span className={collapsed ? "sr-only" : "truncate"}>{label}</span>
+      </span>
+      {collapsed ? null : (
         <svg
           aria-hidden
           viewBox="0 0 24 24"
@@ -193,8 +218,20 @@ function SidebarExpandableNavSection({
         >
           <path d="M9 6l6 6-6 6" />
         </svg>
-      </button>
-      {isExpanded ? (
+      )}
+    </button>
+  );
+
+  return (
+    <div>
+      {collapsed ? (
+        <Tooltip content={label} side="right" className="w-full">
+          {button}
+        </Tooltip>
+      ) : (
+        button
+      )}
+      {isExpanded && !collapsed ? (
         <div className="ml-3 mt-1 space-y-0.5 border-l border-white/10 pl-2">
           {children}
         </div>
@@ -207,6 +244,7 @@ export default function Sidebar({
   userRole,
   linkedEmployeeId = null,
   showLeaveApprovals = false,
+  showAttendanceApprovals = false,
   showPlatformSettings = false,
   showRealEstate = false,
   tenantBranding,
@@ -215,9 +253,16 @@ export default function Sidebar({
   onClose,
 }: SidebarProps) {
   const pathname = usePathname();
-  const navItems = getSidebarNavItems(userRole, linkedEmployeeId);
+  const [collapsed, setCollapsed] = useState(false);
+  const iconOnly = collapsed && !mobile;
+  const navItems = withApproverInboxNav(
+    getSidebarNavItems(userRole, linkedEmployeeId),
+    { showLeaveApprovals, showAttendanceApprovals },
+  );
   const administrationLinks = getAdministrationSidebarLinks({
-    isDavorsPlatformSuperAdmin: showPlatformSettings,
+    isDavorsPlatformSuperAdmin:
+      showPlatformSettings && userRole === "super_admin",
+    audience: userRole === "director" ? "director" : "super_admin",
   });
   const {
     viewAllBusinessUnits,
@@ -269,8 +314,12 @@ export default function Sidebar({
   } = useSidebarExpandableSection(reportsActive);
   const hrManagementLinks = getHrManagementSidebarLinks({
     showLeaveApprovals,
+    showAttendanceApprovals,
   }).filter((link) => {
-    if (link.groupId === LEAVE_APPROVALS_GROUP_ID) {
+    if (
+      link.groupId === LEAVE_APPROVALS_GROUP_ID ||
+      link.groupId === ATTENDANCE_APPROVALS_GROUP_ID
+    ) {
       return true;
     }
 
@@ -300,15 +349,46 @@ export default function Sidebar({
     onNavigate?.();
   }
 
+  function toggleCollapsed() {
+    setCollapsed((current) => {
+      const next = !current;
+      window.localStorage.setItem("dfoms-sidebar-collapsed", next ? "1" : "0");
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    if (mobile) {
+      return;
+    }
+    setCollapsed(window.localStorage.getItem("dfoms-sidebar-collapsed") === "1");
+  }, [mobile]);
+
+  function openSection(isExpanded: boolean, toggle: () => void) {
+    if (iconOnly) {
+      setCollapsed(false);
+      window.localStorage.setItem("dfoms-sidebar-collapsed", "0");
+      if (!isExpanded) {
+        toggle();
+      }
+      return;
+    }
+    toggle();
+  }
+
   function renderNavItem(item: SidebarNavItem) {
     if (item.href === "/dashboard/administration") {
       return (
         <div key={item.href}>
           <SidebarExpandableNavSection
             label={item.label}
+            icon={<SidebarOutlineIcon name={sidebarIconName(item.href)} />}
+            collapsed={iconOnly}
             isActive={administrationActive}
             isExpanded={administrationExpanded}
-            onToggle={handleAdministrationToggle}
+            onToggle={() =>
+              openSection(administrationExpanded, handleAdministrationToggle)
+            }
           >
             {administrationLinks.map((link) => {
               const groupActive = isAdministrationGroupActive(
@@ -341,9 +421,13 @@ export default function Sidebar({
         <div key={item.href}>
           <SidebarExpandableNavSection
             label={item.label}
+            icon={<SidebarOutlineIcon name={sidebarIconName(item.href)} />}
+            collapsed={iconOnly}
             isActive={hrManagementActive}
             isExpanded={hrManagementExpanded}
-            onToggle={handleHrManagementToggle}
+            onToggle={() =>
+              openSection(hrManagementExpanded, handleHrManagementToggle)
+            }
           >
             {hrManagementLinks.map((link) => {
               const groupActive = isHrManagementGroupActive(
@@ -362,7 +446,12 @@ export default function Sidebar({
                       : "text-white/70 hover:bg-white/10 hover:text-white"
                   }`}
                 >
-                  {link.label}
+                  <span className="inline-flex items-center gap-1">
+                    {link.label}
+                    {link.groupId === ATTENDANCE_APPROVALS_GROUP_ID ? (
+                      <AttendanceApprovalsCountBadge />
+                    ) : null}
+                  </span>
                 </SidebarLink>
               );
             })}
@@ -376,9 +465,11 @@ export default function Sidebar({
         <div key={item.href}>
           <SidebarExpandableNavSection
             label={item.label}
+            icon={<SidebarOutlineIcon name={sidebarIconName(item.href)} />}
+            collapsed={iconOnly}
             isActive={reportsActive}
             isExpanded={reportsExpanded}
-            onToggle={handleReportsToggle}
+            onToggle={() => openSection(reportsExpanded, handleReportsToggle)}
           >
             {reportLinks.map((link) => {
               const categoryActive = isReportCategoryActive(
@@ -411,9 +502,13 @@ export default function Sidebar({
         <div key={item.href}>
           <SidebarExpandableNavSection
             label={item.label}
+            icon={<SidebarOutlineIcon name={sidebarIconName(item.href)} />}
+            collapsed={iconOnly}
             isActive={inventoryActive}
             isExpanded={inventoryExpanded}
-            onToggle={handleInventoryToggle}
+            onToggle={() =>
+              openSection(inventoryExpanded, handleInventoryToggle)
+            }
           >
             {INVENTORY_SIDEBAR_LINKS.map((link) => {
               const groupActive = isInventoryGroupActive(
@@ -442,20 +537,31 @@ export default function Sidebar({
     }
 
     const active = isActive(pathname, item.href);
-
-    return (
+    const link = (
       <SidebarLink
-        key={item.href}
         href={item.href}
         onClick={handleNavigate}
-        className={`block rounded-md px-3 py-2 text-sm font-medium leading-snug transition-colors ${
+        className={`flex min-h-10 w-full items-center rounded-md py-2 text-sm font-medium leading-snug transition-colors ${
+          iconOnly ? "justify-center px-2" : "gap-2.5 px-3"
+        } ${
           active
             ? "bg-white/15 text-white"
             : "text-white/75 hover:bg-white/10 hover:text-white"
         }`}
       >
-        {item.label}
+        <SidebarOutlineIcon name={sidebarIconName(item.href)} />
+        <span className={iconOnly ? "sr-only" : "truncate"}>{item.label}</span>
       </SidebarLink>
+    );
+
+    if (!iconOnly) {
+      return <div key={item.href}>{link}</div>;
+    }
+
+    return (
+      <Tooltip key={item.href} content={item.label} side="right" className="w-full">
+        {link}
+      </Tooltip>
     );
   }
 
@@ -464,12 +570,14 @@ export default function Sidebar({
       className={`flex flex-col bg-[#0f2744] text-white ${
         mobile
           ? "h-full w-[240px] max-w-[72vw] shadow-xl"
-          : "min-h-screen w-56 shrink-0"
+          : iconOnly
+            ? "min-h-screen w-16 shrink-0"
+            : "min-h-screen w-56 shrink-0"
       }`}
     >
       <div
         className={`relative flex items-center gap-2.5 border-b border-white/10 ${
-          mobile ? "px-3 py-4" : "px-3 py-5"
+          iconOnly ? "flex-col px-2 py-4" : mobile ? "px-3 py-4" : "px-3 py-5"
         }`}
       >
         {mobile && onClose ? (
@@ -489,7 +597,13 @@ export default function Sidebar({
           rounded="md"
           className="!h-10 !w-10 !rounded-[6px] object-cover"
         />
-        <div className={`min-w-0 flex-1 ${mobile && onClose ? "pr-8" : ""}`}>
+        <div
+          className={
+            iconOnly
+              ? "sr-only"
+              : `min-w-0 flex-1 ${mobile && onClose ? "pr-8" : ""}`
+          }
+        >
           <p
             className="truncate text-sm font-semibold leading-tight text-emerald-400"
             title={workspaceName}
@@ -500,11 +614,26 @@ export default function Sidebar({
             DavSuite
           </p>
         </div>
+        {mobile ? null : (
+          <Tooltip
+            content={iconOnly ? "Expand sidebar" : "Collapse sidebar"}
+            side="right"
+          >
+            <button
+              type="button"
+              onClick={toggleCollapsed}
+              aria-label={iconOnly ? "Expand sidebar" : "Collapse sidebar"}
+              className="rounded-md p-1.5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              <SidebarOutlineIcon name={iconOnly ? "expand" : "collapse"} />
+            </button>
+          </Tooltip>
+        )}
       </div>
 
       <nav
         className={`flex flex-1 flex-col gap-1 overflow-y-auto py-4 ${
-          mobile ? "px-2" : "px-3"
+          iconOnly ? "px-1.5" : mobile ? "px-2" : "px-3"
         }`}
       >
         {navItems.map((item) => renderNavItem(item))}
@@ -512,13 +641,17 @@ export default function Sidebar({
 
       <footer
         className={`shrink-0 border-t border-white/10 pt-4 pb-4 ${
-          mobile ? "px-2" : "px-3"
+          iconOnly ? "px-1.5" : mobile ? "px-2" : "px-3"
         }`}
       >
-        <p className="text-[10px] leading-snug text-white/45">
-          © 2026 Davors Technologies Ltd. All rights reserved.
-        </p>
-        <div className="mt-2 flex items-center gap-1.5">
+        {iconOnly ? null : (
+          <p className="text-[10px] leading-snug text-white/45">
+            © 2026 Davors Technologies Ltd. All rights reserved.
+          </p>
+        )}
+        <div
+          className={`flex items-center gap-1.5 ${iconOnly ? "justify-center" : "mt-2"}`}
+        >
           <Image
             src={DAVORS_PLATFORM_LOGO}
             alt="DavSuite"
@@ -526,7 +659,11 @@ export default function Sidebar({
             height={36}
             className="h-9 w-9 shrink-0 rounded-sm object-cover"
           />
-          <p className="text-[10px] leading-snug text-white/45">Powered by Davors Technologies</p>
+          {iconOnly ? null : (
+            <p className="text-[10px] leading-snug text-white/45">
+              Powered by Davors Technologies
+            </p>
+          )}
         </div>
       </footer>
     </aside>

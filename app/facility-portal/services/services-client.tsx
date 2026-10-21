@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useQueryTab } from "@/hooks/use-query-tab";
 import { useRouter } from "next/navigation";
 import { formatMaintenanceMoney } from "@/app/dashboard/real-estate/maintenance-utils";
 import type {
@@ -50,7 +51,10 @@ export default function FacilityServicesClient({
   totalCostGhs,
 }: FacilityServicesClientProps) {
   const router = useRouter();
-  const [tab, setTab] = useState<TabId>("list");
+  const { tab, setTab } = useQueryTab<TabId>({
+    values: ["list", "log"],
+    defaultTab: "list",
+  });
   const [propertyId, setPropertyId] = useState(
     properties[0]?.propertyId ?? "",
   );

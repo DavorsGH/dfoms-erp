@@ -32,6 +32,10 @@ type CartModeProps = {
   onClose: () => void;
   /** Called after a payment link is created successfully (clear cart, etc.). */
   onLinkSent?: () => void;
+  /** Charge defaultAmountGhs and create a manual PSI sale after Paystack confirms. */
+  manualSale?: boolean;
+  salesRepId?: string | null;
+  businessUnitId?: string | null;
 };
 
 type InvoiceModeProps = {
@@ -96,7 +100,7 @@ export default function RequestPaymentModal(props: RequestPaymentModalProps) {
   const [sendSms, setSendSms] = useState(Boolean(defaultPhone.trim()));
   const [loading, setLoading] = useState(false);
   /** True when the backend blocked payment because the tenant has no active
-   * settlement account — shows a link to Payment Settings. */
+   * settlement account — shows a link to Online Payments. */
   const [paymentSettingsRequired, setPaymentSettingsRequired] = useState(false);
   const [result, setResult] = useState<InitializeResponse | null>(null);
 
@@ -170,6 +174,13 @@ export default function RequestPaymentModal(props: RequestPaymentModalProps) {
             send_email: sendEmail,
             send_sms: sendSms,
             payment_method: paymentMethod,
+            ...(props.manualSale
+              ? {
+                  manual_sale: true,
+                  sales_rep_id: props.salesRepId ?? null,
+                  business_unit_id: props.businessUnitId ?? null,
+                }
+              : {}),
           }
         : {
             invoice_no: invoiceNo,
@@ -247,12 +258,12 @@ export default function RequestPaymentModal(props: RequestPaymentModalProps) {
         {paymentSettingsRequired ? (
           <p className="mt-4 text-sm text-slate-700">
             <Link
-              href="/dashboard/administration/billing?tab=payment"
+              href="/dashboard/administration/online-payments"
               className="font-medium text-[#0f2744] underline"
             >
-              Set up Payment Settings
+              Set up Online Payments
             </Link>{" "}
-            (Administration → Billing Settings → Payment Settings) to send payment
+            (Administration → Finance Settings → Online Payments) to send payment
             links.
           </p>
         ) : null}

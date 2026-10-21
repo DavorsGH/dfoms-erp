@@ -96,7 +96,12 @@ export default function SalaryRates({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(fetchError);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError);
+    }
+  }, [alertError, fetchError]);
 
   const [positionFilter, setPositionFilter] =
     useState<RegisterColumnFilterValue>(null);
@@ -166,12 +171,11 @@ export default function SalaryRates({
     ).order("effective_date", { ascending: false });
 
     if (refreshError) {
-      setError(refreshError.message);
+      await alertError(refreshError);
       return;
     }
 
     setRates(sortSalaryRates((data as SalaryRateEntry[] | null) ?? []));
-    setError(null);
   }
 
   function openAddForm() {
@@ -208,7 +212,6 @@ export default function SalaryRates({
     }
 
     setDeletingId(id);
-    setError(null);
 
     const { error: deleteError } = await tenantScopedDelete(
       supabase,
@@ -218,8 +221,8 @@ export default function SalaryRates({
     );
 
     if (deleteError) {
-      setError(deleteError.message);
       setDeletingId(null);
+      await alertError(deleteError);
       return;
     }
 
@@ -229,6 +232,7 @@ export default function SalaryRates({
 
     await refreshRates();
     setDeletingId(null);
+    toast("Salary rate deleted.");
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -238,11 +242,10 @@ export default function SalaryRates({
     }
     submitGuardRef.current = true;
     setLoading(true);
-    setError(null);
 
     try {
       if (!editingId && !stampBusinessUnit.ok) {
-        setError(stampBusinessUnit.error);
+        await alertError(stampBusinessUnit.error);
         return;
       }
 
@@ -370,12 +373,6 @@ export default function SalaryRates({
           {showForm ? "Cancel" : "Add Rate"}
         </button>
       </div>
-
-      {error && (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       {showForm && (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

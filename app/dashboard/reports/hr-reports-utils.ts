@@ -54,6 +54,8 @@ export type HrReportEmployee = HrEmployee & {
 
 /** Batch inputs for open-period live recalculation (display-only). */
 export type PayrollSummaryLiveContext = {
+  /** staff_ids with attendance mode exempt; never deducted for absence. */
+  exemptStaffIds?: string[];
   attendance: PayrollAttendanceSource[];
   overtime: PayrollOvertimeSource[];
   loans: LoanRegisterEntry[];
@@ -277,6 +279,8 @@ function summaryRowFromLivePayroll(
         source.staff_id,
         period.year,
         period.month,
+        [],
+        liveContext.exemptStaffIds ?? [],
       ),
       overtimeAmount: sumOvertimeForEmployeeInPeriod(
         liveContext.overtime,

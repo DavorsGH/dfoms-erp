@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
+import { useQueryTab } from "@/hooks/use-query-tab";
 import {
   formatDepositStatus,
   formatLeaseDate,
@@ -56,7 +56,10 @@ export default function LandlordLeaseDetailView({
   canManage,
   fetchError,
 }: LandlordLeaseDetailViewProps) {
-  const [activeTab, setActiveTab] = useState<LeaseDetailTabId>("overview");
+  const { tab: activeTab, setTab: setActiveTab } = useQueryTab<LeaseDetailTabId>({
+    values: ["overview", "charges", "documents", "more"],
+    defaultTab: "overview",
+  });
 
   if (!detail) {
     return (

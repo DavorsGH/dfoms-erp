@@ -9,7 +9,16 @@ import {
   type StaffWelfareFundLedgerEntry,
 } from "@/app/dashboard/finance/staff-welfare-fund-utils";
 import { fetchPayrollLiveRecalcBundle } from "@/app/dashboard/hr-payroll/payroll-live-recalc-utils";
-import { resolvePayrollPolicyCompensation } from "@/app/dashboard/hr-payroll/payroll-processing-utils";
+import {
+  getPeriodEndDate,
+  resolveSelectedPeriod,
+} from "@/app/dashboard/hr-payroll/payroll-period-utils";
+import {
+  calculatePayrollRow,
+  countAbsencesForStaff,
+  resolvePayrollPolicyCompensation,
+  type PayrollEmployeeSource,
+} from "@/app/dashboard/hr-payroll/payroll-processing-utils";
 import {
   fetchLoanRegisterSummaryReportData,
   fetchMonthlyPayrollSummaryReportData,
@@ -24,17 +33,20 @@ import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
 import {
   HR_PAYROLL_SETTINGS_SELECT,
   normalizeHrPayrollSettingsRow,
+  resolvePayrollWelfareConfigForEmployee,
   type HrPayrollSettingsRow,
 } from "@/utils/hr-payroll-settings-types";
 import { scopeToBusinessUnitId } from "@/utils/phase5e-key-structure";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import { canAccessHrPayrollSection } from "@/utils/rbac-access";
+import { parseAssistantYearMonth } from "@/utils/assistant-period-resolve";
 import {
   STAFF_DATA_UNAVAILABLE_MESSAGE,
   getStaffSupabase,
   requireStaffSession,
 } from "@/utils/assistant-staff-tool-common";
 import {
+  HR_ASSISTANT_LIST_LIMIT,
   fetchAssistantDirectoryEmployees,
   loadStaffBusinessUnitScope,
   parseOptionalStringField,
@@ -42,8 +54,12 @@ import {
   resolveEmployeeInScope,
   resolveHrAssistantPeriodSelection,
 } from "@/utils/assistant-staff-tools-hr-common";
+import { payrollAbsenceSummaryAccessError } from "@/utils/assistant-staff-r55-helpers";
+
+export { payrollAbsenceSummaryAccessError } from "@/utils/assistant-staff-r55-helpers";
 
 const STAFF_WELFARE_FUND_HISTORY_LIMIT = 15;
+const PAYROLL_ABSENCE_SUMMARY_LIMIT = HR_ASSISTANT_LIST_LIMIT;
 
 export async function getStaffWelfareFundStatus(): Promise<unknown> {
   const sessionResult = await requireStaffSession();
@@ -457,6 +473,140 @@ export async function getEmployeeLoans(toolInput?: unknown): Promise<unknown> {
     };
   } catch (error) {
     console.error("[assistant] get_employee_loans threw:", error);
+    return { error: STAFF_DATA_UNAVAILABLE_MESSAGE };
+  }
+}
+
+export async function getPayrollAbsenceSummary(
+  toolInput?: unknown,
+): Promise<unknown> {
+  const sessionResult = await requireStaffSession();
+  if ("error" in sessionResult) {
+    return sessionResult;
+  }
+  const accessError = payrollAbsenceSummaryAccessError(
+    sessionResult.session.role,
+  );
+  if (accessError) {
+    return { error: accessError };
+  }
+
+  const { year, month } = parseAssistantYearMonth(toolInput);
+  const period = resolveSelectedPeriod(year, month);
+
+  try {
+    const supabase = await getStaffSupabase();
+    const buScope = await loadStaffBusinessUnitScope();
+    const liveBundle = await fetchPayrollLiveRecalcBundle(supabase, {
+      tenantId: sessionResult.session.tenantId,
+      buScope,
+    });
+    if (liveBundle.error) {
+      return {
+        error: STAFF_DATA_UNAVAILABLE_MESSAGE,
+        fetchWarning: liveBundle.error,
+      };
+    }
+
+    const asOf = new Date(getPeriodEndDate(period.year, period.month));
+    const employeesWithAbsence: Array<{
+      staffId: string;
+      employeeName: string;
+      absenceDays: number;
+      absenceAmountGhs: number;
+    }> = [];
+
+    for (const employee of liveBundle.employees) {
+      const source: PayrollEmployeeSource = {
+        employee_id: employee.employee_id,
+        staff_id: employee.staff_id,
+        full_name: employee.full_name,
+        employment_type: employee.employment_type,
+        employment_status: employee.employment_status ?? null,
+        date_hired: employee.date_hired ?? null,
+        appointment_end_date: employee.appointment_end_date ?? null,
+        position: employee.position ?? null,
+        shift: employee.shift ?? null,
+        basic_salary: employee.basic_salary ?? null,
+        housing_allowance: employee.housing_allowance ?? null,
+        transport_allowance: employee.transport_allowance ?? null,
+        other_allowances: employee.other_allowances ?? null,
+        welfare_deduction_rate: employee.welfare_deduction_rate ?? null,
+        business_unit_id: employee.business_unit_id ?? null,
+        department: employee.department ?? null,
+        contract_project: employee.contract_project,
+      };
+
+      const absenceDays = countAbsencesForStaff(
+        liveBundle.liveContext.attendance,
+        source.staff_id,
+        period.year,
+        period.month,
+        [],
+        liveBundle.liveContext.exemptStaffIds ?? [],
+      );
+      if (absenceDays <= 0) {
+        continue;
+      }
+
+      const policy = resolvePayrollPolicyCompensation(
+        source,
+        liveBundle.liveContext.compensationPolicyConfig,
+        asOf,
+      );
+      const calculated = calculatePayrollRow(
+        source,
+        period,
+        liveBundle.liveContext.taxConfigs,
+        {
+          absenceCount: absenceDays,
+          overtimeAmount: 0,
+          loanRepayment: 0,
+        },
+        { days_to_pay: period.totalWorkingDays },
+        policy,
+        resolvePayrollWelfareConfigForEmployee(
+          source.business_unit_id,
+          liveBundle.liveContext.hrPayrollSettingsRows,
+        ),
+      );
+
+      employeesWithAbsence.push({
+        staffId: source.staff_id,
+        employeeName: source.full_name,
+        absenceDays,
+        absenceAmountGhs: calculated.absence_deduction,
+      });
+    }
+
+    employeesWithAbsence.sort(
+      (a, b) =>
+        b.absenceAmountGhs - a.absenceAmountGhs ||
+        a.employeeName.localeCompare(b.employeeName),
+    );
+
+    const rows = employeesWithAbsence.slice(0, PAYROLL_ABSENCE_SUMMARY_LIMIT);
+
+    return {
+      year,
+      month,
+      periodLabel: period.payrollMonth.slice(0, 7),
+      totalEmployeesWithAbsence: employeesWithAbsence.length,
+      totalAbsenceDays: Math.round(
+        employeesWithAbsence.reduce((sum, row) => sum + row.absenceDays, 0) * 100,
+      ) / 100,
+      totalAbsenceAmountGhs: Math.round(
+        employeesWithAbsence.reduce(
+          (sum, row) => sum + row.absenceAmountGhs,
+          0,
+        ) * 100,
+      ) / 100,
+      employees: rows,
+      truncated: employeesWithAbsence.length > rows.length,
+      note: "Absence days from Absent/Half day decisions (same as Payroll Processing). absenceAmountGhs is PayrollCalculatedRow.absence_deduction.",
+    };
+  } catch (error) {
+    console.error("[assistant] get_payroll_absence_summary threw:", error);
     return { error: STAFF_DATA_UNAVAILABLE_MESSAGE };
   }
 }

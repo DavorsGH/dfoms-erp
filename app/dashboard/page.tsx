@@ -12,7 +12,8 @@ import {
 } from "@/utils/dashboard-auth";
 import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import type { AppRole } from "@/app/dashboard/user-account-types";
-import { getDashboardVisibility } from "@/utils/rbac-access";
+import { canAccessDevicesHub, getDashboardVisibility } from "@/utils/rbac-access";
+import OfflineDeviceAlertProbe from "./devices/offline-device-alert-probe";
 import { buildClientDashboardSummary } from "./client-dashboard-utils";
 import ClientDashboard from "./client-dashboard";
 import { buildEmployeeDashboardSummary } from "./employee-dashboard-utils";
@@ -341,6 +342,7 @@ export default async function DashboardPage() {
 
   return (
     <>
+      {canAccessDevicesHub(role) ? <OfflineDeviceAlertProbe /> : null}
       <DashboardPagePerfMeta
         renderStartedAt={renderStartedAt}
         supabaseCallsBefore={supabaseCallsBefore}

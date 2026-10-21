@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { InventoryBalanceConfigRow } from "@/utils/inventory-balance-config-types";
+import { useAlert, useToast } from "@/components/feedback";
 
 type InventoryGoLiveSettingsProps = {
   initialConfig: InventoryBalanceConfigRow | null;
@@ -24,6 +25,8 @@ export default function InventoryGoLiveSettings({
   fetchError,
 }: InventoryGoLiveSettingsProps) {
   const router = useRouter();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
   const [goLiveDate, setGoLiveDate] = useState(
     initialConfig?.go_live_date ?? todayDate(),
   );
@@ -31,23 +34,32 @@ export default function InventoryGoLiveSettings({
     String(initialConfig?.opening_inventory_value ?? 0),
   );
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(fetchError);
-  const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError);
+    }
+  }, [alertError, fetchError]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setSaving(true);
-    setError(null);
-    setSuccess(null);
 
-    const response = await fetch("/api/inventory-balance-config", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        go_live_date: goLiveDate,
-        opening_inventory_value: openingInventoryValue,
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch("/api/inventory-balance-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          go_live_date: goLiveDate,
+          opening_inventory_value: openingInventoryValue,
+        }),
+      });
+    } catch (saveError) {
+      setSaving(false);
+      await alertError(saveError);
+      return;
+    }
     const payload = (await response.json().catch(() => null)) as
       | {
           error?: string;
@@ -56,8 +68,10 @@ export default function InventoryGoLiveSettings({
       | null;
 
     if (!response.ok || !payload?.inventory_balance_config) {
-      setError(payload?.error ?? "Unable to save inventory go-live settings.");
       setSaving(false);
+      await alertError(
+        payload?.error ?? "Unable to save inventory go-live settings.",
+      );
       return;
     }
 
@@ -65,8 +79,8 @@ export default function InventoryGoLiveSettings({
     setOpeningInventoryValue(
       String(payload.inventory_balance_config.opening_inventory_value),
     );
-    setSuccess("Inventory go-live settings saved.");
     setSaving(false);
+    toast("Inventory go-live settings saved.");
     router.refresh();
   }
 
@@ -80,18 +94,6 @@ export default function InventoryGoLiveSettings({
           Controls when live inventory accounting starts for this workspace and
           the opening inventory equity recognized on that date.
         </p>
-
-        {error ? (
-          <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </p>
-        ) : null}
-
-        {success ? (
-          <p className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            {success}
-          </p>
-        ) : null}
 
         {!initialConfig ? (
           <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

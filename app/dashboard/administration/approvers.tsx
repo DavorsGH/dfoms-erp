@@ -8,6 +8,7 @@ import {
 } from "@/utils/tenant-scoped-supabase";
 import type { Approver, Employee } from "../lookup-types";
 import { mapApproverRows } from "../approver-utils";
+import { useLookupSettingsFeedback } from "./lookup-settings-feedback";
 
 type ApproversProps = {
   tenantId: string;
@@ -31,12 +32,13 @@ export default function Approvers({
   fetchError,
 }: ApproversProps) {
   const supabase = createClient();
+  const { showActionError, showActionSuccess } =
+    useLookupSettingsFeedback(fetchError);
   const [approvers, setApprovers] = useState(initialApprovers);
   const [employees, setEmployees] = useState(initialEmployees);
   const [employeeId, setEmployeeId] = useState("");
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(fetchError);
 
   async function refreshApprovers() {
     const { data, error: refreshError } = await supabase
@@ -45,12 +47,11 @@ export default function Approvers({
       .order("employee_id", { ascending: true });
 
     if (refreshError) {
-      setError(refreshError.message);
+      showActionError(refreshError);
       return;
     }
 
     setApprovers(mapApproverRows((data as ApproverRow[] | null) ?? []));
-    setError(null);
   }
 
   async function refreshEmployees() {
@@ -60,18 +61,16 @@ export default function Approvers({
       .order("full_name", { ascending: true });
 
     if (refreshError) {
-      setError(refreshError.message);
+      showActionError(refreshError);
       return;
     }
 
     setEmployees(data ?? []);
-    setError(null);
   }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setError(null);
 
     const scopedTenantId = assertTenantIdForMutation(tenantId);
     const { error: insertError } = await supabase
@@ -79,19 +78,19 @@ export default function Approvers({
       .insert({ tenant_id: scopedTenantId, employee_id: employeeId });
 
     if (insertError) {
-      setError(insertError.message);
       setLoading(false);
+      showActionError(insertError);
       return;
     }
 
     setEmployeeId("");
     await Promise.all([refreshApprovers(), refreshEmployees()]);
     setLoading(false);
+    showActionSuccess("Approver added.");
   }
 
   async function handleDelete(approverEmployeeId: string) {
     setDeletingId(approverEmployeeId);
-    setError(null);
 
     const { error: deleteError } = await tenantScopedDelete(
       supabase,
@@ -101,13 +100,14 @@ export default function Approvers({
     );
 
     if (deleteError) {
-      setError("Unable to remove this approver. Try again.");
       setDeletingId(null);
+      showActionError("Unable to remove this approver. Try again.");
       return;
     }
 
     await Promise.all([refreshApprovers(), refreshEmployees()]);
     setDeletingId(null);
+    showActionSuccess("Approver removed.");
   }
 
   const availableEmployees = employees.filter(
@@ -118,12 +118,6 @@ export default function Approvers({
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="mb-4 text-lg font-semibold text-[#0f2744]">Approvers</h2>
-
-      {error && (
-        <p className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       <form onSubmit={handleAdd} className="mb-6 flex flex-col gap-3 sm:flex-row">
         <select

@@ -6,6 +6,7 @@ import {
 import { verifyPosCartLinesMatchWriteBusinessUnit } from "@/lib/inventory/inventory-item-business-unit-guard.client";
 import type { FinishedProductRecord } from "../inventory/finished-products-utils";
 import type { ClientEntry } from "../operations/clients-utils";
+import { getIncomeCustomerDisplayName } from "../finance/income-register-utils";
 import { formatInventoryQuantity } from "../inventory/inventory-utils";
 
 export type PosCartLine = {
@@ -260,14 +261,14 @@ export function getCustomerDisplayName(
   customerName: string | null,
   clients: ClientEntry[],
 ): string {
-  if (clientId) {
-    return (
-      clients.find((client) => client.client_id === clientId)?.client_name ??
-      clientId
-    );
-  }
-
-  return customerName?.trim() || "—";
+  return getIncomeCustomerDisplayName(
+    {
+      client_id: clientId,
+      customer_name: customerName,
+      client: null,
+    },
+    clients,
+  );
 }
 
 /** Customer name for the live POS customer display (always a non-empty string). */

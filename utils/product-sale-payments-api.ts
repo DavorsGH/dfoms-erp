@@ -11,7 +11,9 @@ import {
   roundGhs,
   type ProductSaleIncomeLine,
 } from "@/utils/product-sale-paystack";
+import { notesWithTransactionReference } from "@/utils/manual-sale-paystack";
 import {
+  notesWithPaymentMethod,
   PRODUCT_SALE_PAYMENT_SELECT,
   type ProductSalePaymentRow,
   type RecordProductSalePaymentBody,
@@ -20,7 +22,7 @@ import {
 type DbClient = SupabaseClient;
 
 const INCOME_ROW_SELECT =
-  "id, tenant_id, entry_type, invoice_no, client_id, customer_name, amount, amount_received, outstanding_balance, payment_status, sale_status, wht_amount, business_unit_id" as const;
+  "id, tenant_id, entry_type, invoice_no, client_id, customer_name, amount, amount_received, outstanding_balance, payment_status, sale_status, wht_amount, business_unit_id, notes" as const;
 
 type ProductSaleIncomeRow = ProductSaleIncomeLine & {
   tenant_id: string;
@@ -30,6 +32,7 @@ type ProductSaleIncomeRow = ProductSaleIncomeLine & {
   customer_name: string | null;
   wht_amount: number | null;
   business_unit_id?: string | null;
+  notes?: string | null;
 };
 
 function nullableText(value: string | null | undefined) {
@@ -119,6 +122,12 @@ export async function recordProductSalePayment(
     };
   }
 
+  const transactionReference = nullableText(body.transaction_reference ?? null);
+  const paymentNotes = notesWithTransactionReference(
+    nullableText(body.notes ?? null),
+    transactionReference,
+  );
+
   const { data: payment, error: paymentError } = await supabase
     .from("product_sale_payments")
     .insert({
@@ -127,7 +136,7 @@ export async function recordProductSalePayment(
       payment_date: body.payment_date,
       amount,
       payment_method: nullableText(body.payment_method ?? null),
-      notes: nullableText(body.notes ?? null),
+      notes: paymentNotes,
       recorded_by: recordedBy,
     })
     .select(PRODUCT_SALE_PAYMENT_SELECT)
@@ -155,12 +164,25 @@ export async function recordProductSalePayment(
     };
   }
 
+  const method = nullableText(body.payment_method ?? null);
+  const withMethod =
+    method && !/^Payment method:\s*\S/m.test(row.notes ?? "")
+      ? notesWithPaymentMethod(row.notes, method)
+      : (row.notes ?? "");
+  const withReference = notesWithTransactionReference(
+    withMethod,
+    transactionReference,
+  );
+  const nextNotes =
+    (withReference ?? "").trim() !== (row.notes ?? "").trim() ? withReference : null;
+
   const { data: updatedIncome, error: updateError } = await supabase
     .from("income_register")
     .update({
       amount_received: allocation.nextAmountReceived,
       outstanding_balance: allocation.nextOutstanding,
       payment_status: allocation.nextPaymentStatus,
+      ...(nextNotes ? { notes: nextNotes } : {}),
     })
     .eq("id", incomeId)
     .eq("tenant_id", tenantId)

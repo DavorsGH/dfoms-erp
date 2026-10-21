@@ -7,10 +7,12 @@ import {
 } from "../../administration/projects-utils";
 import {
   buildDutyRosterCycleSummary,
+  buildDutyRosterShiftHeader,
   getDutyRosterShiftRole,
   getDutyRosterShiftTime,
   type RosterHistoryRecord,
 } from "../../operations/duty-roster-utils";
+import type { ShiftTimeRecord } from "@/lib/shift-attendance";
 import { getRosterConfigForClient } from "../../operations/roster-config-utils";
 import { SITE_ASSIGNMENT_SELECT } from "../../operations/sites-utils";
 import MyRoster, {
@@ -42,6 +44,7 @@ export default async function SelfServiceRosterPage() {
     { data: projects, error: projectsError },
     { data: sites, error: sitesError },
     { data: rosterConfigs, error: configError },
+    { data: shiftRows, error: shiftError },
   ] = await Promise.all([
     supabase
       .from("employees")
@@ -62,6 +65,11 @@ export default async function SelfServiceRosterPage() {
     supabase.from("roster_config").select(
       "id, client_id, cycle_start_date, cycle_length_days, morning_time, afternoon_time, supervisor_time",
     ),
+    supabase
+      .from("contract_shift_times")
+      .select(
+        "client_id, shift, day_type, start_time, end_time, late_grace_minutes, early_leave_grace_minutes",
+      ),
   ]);
 
   const fetchError =
@@ -71,6 +79,7 @@ export default async function SelfServiceRosterPage() {
     projectsError?.message ??
     sitesError?.message ??
     configError?.message ??
+    shiftError?.message ??
     null;
 
   const projectLookup = new Map(
@@ -110,9 +119,15 @@ export default async function SelfServiceRosterPage() {
       position: employee.position,
       shift: employee.shift,
     });
-    const shiftTime = rosterConfig
-      ? getDutyRosterShiftTime(rosterConfig, shiftRole)
-      : null;
+    const shiftHeader =
+      rosterConfig && shiftRole && assignedSite?.client_id
+        ? buildDutyRosterShiftHeader({
+            clientId: assignedSite.client_id,
+            role: shiftRole,
+            shiftTimes: (shiftRows as ShiftTimeRecord[] | null) ?? [],
+            legacyTime: getDutyRosterShiftTime(rosterConfig, shiftRole),
+          })
+        : null;
 
     const cycleSummary = rosterConfig
       ? buildDutyRosterCycleSummary(
@@ -125,7 +140,7 @@ export default async function SelfServiceRosterPage() {
       staffId: employee.staff_id,
       fullName: employee.full_name,
       shiftRole,
-      shiftTime,
+      shiftHeader,
       shiftFallback: employee.shift?.trim() || null,
       contractProjectLabel,
       assignedSiteLabel,

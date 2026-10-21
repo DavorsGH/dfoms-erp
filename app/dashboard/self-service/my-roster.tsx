@@ -5,13 +5,17 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
-import type { DutyRosterShiftRole } from "../operations/duty-roster-utils";
+import type {
+  DutyRosterShiftHeader,
+  DutyRosterShiftRole,
+} from "../operations/duty-roster-utils";
+import DutyRosterShiftHeaderLines from "../operations/duty-roster-shift-header";
 
 export type MyRosterAssignment = {
   staffId: string;
   fullName: string;
   shiftRole: DutyRosterShiftRole | null;
-  shiftTime: string | null;
+  shiftHeader: DutyRosterShiftHeader | null;
   shiftFallback: string | null;
   contractProjectLabel: string;
   assignedSiteLabel: string;
@@ -35,14 +39,10 @@ type MyRosterProps = {
   fetchError: string | null;
 };
 
-function formatShiftDisplay(
+function formatShiftFallback(
   role: DutyRosterShiftRole | null,
-  time: string | null,
   fallback: string | null,
 ): string {
-  if (role && time) {
-    return `${role} (${time})`;
-  }
   if (role) {
     return role;
   }
@@ -111,10 +111,20 @@ export default function MyRoster({
           <div>
             <dt className="text-sm font-medium text-slate-600">Shift</dt>
             <dd className="mt-1 text-sm text-slate-900">
-              {formatShiftDisplay(
-                assignment.shiftRole,
-                assignment.shiftTime,
-                assignment.shiftFallback,
+              {assignment.shiftHeader ? (
+                <>
+                  {assignment.shiftRole && !assignment.shiftHeader.legacy ? (
+                    <span className="mb-0.5 block text-sm font-medium text-slate-900">
+                      {assignment.shiftRole}
+                    </span>
+                  ) : null}
+                  <DutyRosterShiftHeaderLines
+                    header={assignment.shiftHeader}
+                    variant="detail"
+                  />
+                </>
+              ) : (
+                formatShiftFallback(assignment.shiftRole, assignment.shiftFallback)
               )}
             </dd>
           </div>

@@ -47,6 +47,28 @@ export type LeaveApproverConfig = {
   created_at: string;
   user_accounts?: {
     email: string;
-    employees?: { full_name: string } | null;
+    employees?: { full_name: string; staff_id?: string | null } | null;
   } | null;
 };
+
+export function formatLeaveApproverDisplay(input: {
+  approverUserAccountId: string;
+  fullName?: string | null;
+  staffId?: string | null;
+  email?: string | null;
+}): string {
+  const name = input.fullName?.trim() ?? "";
+  const staffId = input.staffId?.trim() ?? "";
+  if (name && staffId) {
+    return `${name} (${staffId})`;
+  }
+  if (name) {
+    return name;
+  }
+  const email = input.email?.trim() ?? "";
+  if (email) {
+    return email;
+  }
+  const prefix = input.approverUserAccountId.slice(0, 8);
+  return `Unknown user (${prefix}…)`;
+}

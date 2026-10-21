@@ -11,7 +11,10 @@ import { createClient } from "@/utils/supabase/server";
 import { resolveAuthorizedByFields } from "@/utils/client-invoices-types";
 import { loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
 import {
+  buildClientAssignmentProjectCodes,
   buildDutyRosterViewModel,
+  buildRotationEmployeeUpdates,
+  filterHistoryForClient,
   normalizeDutyRosterEmployee,
   normalizeDutyRosterSite,
   type DutyRosterProject,
@@ -125,7 +128,7 @@ export async function POST(request: Request) {
     supabase
       .from("employees")
       .select(
-        "employee_id, staff_id, full_name, position, shift, contract_project, employment_status, project_ref:projects!employees_contract_project_fkey(project_code, project_name)",
+        "employee_id, staff_id, full_name, position, shift, contract_project, assigned_site_id, employment_status, project_ref:projects!employees_contract_project_fkey(project_code, project_name)",
       )
       .eq("tenant_id", tenantId),
     applyBusinessUnitScope(
@@ -276,6 +279,38 @@ export async function POST(request: Request) {
         );
       }
       insertBusinessUnitId = writeBu.businessUnitId;
+    }
+  }
+
+  const normalizedSites = (
+    (sites as unknown as Parameters<typeof normalizeDutyRosterSite>[0][] | null) ??
+    []
+  ).map((site) => normalizeDutyRosterSite(site));
+  const clientProjectCodes = buildClientAssignmentProjectCodes(
+    normalizedSites,
+    normalizedProjects,
+    clientId,
+  );
+  const rotationMoves = filterHistoryForClient(
+    (history as RosterHistoryRecord[] | null) ?? [],
+    normalizedEmployees,
+    clientProjectCodes,
+  ).filter((row) => Number(row.rotation_number) === rotationNumber);
+  const siteUpdates = buildRotationEmployeeUpdates({
+    moves: rotationMoves,
+    employees: normalizedEmployees,
+    projects: normalizedProjects,
+    sites: normalizedSites,
+  });
+  for (const update of siteUpdates) {
+    const { employee_id, ...patch } = update;
+    const { error: employeeError } = await supabase
+      .from("employees")
+      .update(patch)
+      .eq("tenant_id", tenantId)
+      .eq("employee_id", employee_id);
+    if (employeeError) {
+      return NextResponse.json({ error: employeeError.message }, { status: 500 });
     }
   }
 

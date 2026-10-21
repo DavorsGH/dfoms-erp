@@ -114,7 +114,7 @@ export const MANUAL_FINANCIAL_ENTRY_SELECT =
   "period_month, business_unit_id, cash_on_hand, bank_balance, prepayments_wht_receivable, inventory_consumables, accrued_expenses, withholding_tax_payable, vat_payable, bank_loans, other_long_term_liabilities, directors_loan, retained_earnings_prior_years, share_capital, purchase_of_fixed_assets, loan_proceeds, loan_repayments, opening_cash_balance, other_cash_inflows";
 
 export const BALANCE_SHEET_INCOME_SELECT =
-  "date, amount, amount_received, outstanding_balance, wht_amount, service_category, description, entry_type, sale_status, net_of_tax_amount, output_vat_amount, id, invoice_no, client_id, product_id, payment_status, client:customers!income_register_client_id_fkey(client_id, client_name), product:finished_products!product_id(product_code, product_name, unit_of_measure, standard_selling_price)";
+  "date, amount, amount_received, outstanding_balance, wht_amount, service_category, description, entry_type, sale_status, notes, net_of_tax_amount, output_vat_amount, id, invoice_no, client_id, product_id, payment_status, client:customers!income_register_client_id_fkey(client_id, client_name), product:finished_products!product_id(product_code, product_name, unit_of_measure, standard_selling_price)";
 
 export type BalanceSheetDateRange = {
   from: string;

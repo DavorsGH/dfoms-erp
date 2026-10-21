@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useToast } from "@/components/feedback/feedback-context";
 import {
   useBusinessUnitReadScope,
   useStampBusinessUnitId,
@@ -32,7 +33,9 @@ import {
 } from "../hr-payroll/employee-utils";
 import { formatDate, inputClassName } from "../hr-payroll/hr-register-utils";
 import { WarningHint } from "@/components/feedback/warning-hint";
-import type { ClientEntry } from "./clients-utils";
+import type { RosterContractProject } from "@/lib/roster-contract-choices";
+import type { SiteEntry } from "./sites-utils";
+import { useOperationsContracts } from "./use-operations-contracts";
 import {
   CORRECTIVE_ACTION_SELECT,
   getCorrectiveActionClientName,
@@ -52,7 +55,8 @@ import { useOperationsReadOnly } from "./operations-read-only-context";
 
 type CorrectiveActionsProps = {
   initialEntries: CorrectiveActionEntry[];
-  initialClients: ClientEntry[];
+  initialProjects: RosterContractProject[];
+  initialSites: SiteEntry[];
   initialWorkOrders: WorkOrderLookupOption[];
   initialFailedIssues: FailedIssueLookupOption[];
   initialEmployees: HrEmployee[];
@@ -78,7 +82,8 @@ const emptyForm = {
 
 export default function CorrectiveActions({
   initialEntries,
-  initialClients,
+  initialProjects,
+  initialSites,
   initialWorkOrders,
   initialFailedIssues,
   initialEmployees,
@@ -86,6 +91,7 @@ export default function CorrectiveActions({
   tenantId = null,
 }: CorrectiveActionsProps) {
   const supabase = createClient();
+  const { toast } = useToast();
   const operationsReadOnly = useOperationsReadOnly();
   const buReadScope = useBusinessUnitReadScope();
   const stampBusinessUnit = useStampBusinessUnitId();
@@ -155,7 +161,19 @@ export default function CorrectiveActions({
     setError(null);
   }
 
+  const contracts = useOperationsContracts(initialProjects, initialSites);
+
+  function chooseContract(groupKey: string) {
+    const choice = contracts.choices.find((entry) => entry.groupKey === groupKey);
+    contracts.setFormContractKey(groupKey);
+    setForm((current) => ({
+      ...current,
+      client_id: choice?.clientId ?? "",
+    }));
+  }
+
   function openAddForm() {
+    contracts.setFormContractKey("");
     setEditingId(null);
     setForm({
       ...emptyForm,
@@ -166,12 +184,14 @@ export default function CorrectiveActions({
   }
 
   function closeForm() {
+    contracts.setFormContractKey("");
     setEditingId(null);
     setForm(emptyForm);
     setShowForm(false);
   }
 
   function openEditForm(entry: CorrectiveActionEntry) {
+    contracts.setFormContractKey(contracts.keyFor(entry.client_id, null));
     setEditingId(entry.action_no);
     setForm({
       action_no: entry.action_no,
@@ -285,12 +305,21 @@ export default function CorrectiveActions({
       createBusinessUnitId = stampResult.businessUnitId;
     }
 
+    if (contracts.formContractKey && !contracts.formChoice?.clientId) {
+      setError(
+        contracts.formChoice?.dataIssue ??
+          "This contract has no customer, so the corrective action cannot be saved.",
+      );
+      setLoading(false);
+      return;
+    }
+
     const payload = {
       action_no: form.action_no.trim(),
       related_work_order: nullableText(form.related_work_order),
       related_issue_no: nullableText(form.related_issue_no),
       date_raised: form.date_raised,
-      client_id: nullableText(form.client_id),
+      client_id: nullableText(contracts.formChoice?.clientId ?? form.client_id),
       issue_description: nullableText(form.issue_description),
       responsible_person: nullableText(form.responsible_person),
       target_date: nullableText(form.target_date),
@@ -363,6 +392,7 @@ export default function CorrectiveActions({
     closeForm();
     await refreshEntries();
     setLoading(false);
+    toast("Corrective action saved");
   }
 
   return (
@@ -478,20 +508,25 @@ export default function CorrectiveActions({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Customer
+                  Contract
                 </label>
                 <select
-                  value={form.client_id}
-                  onChange={(event) => updateField("client_id", event.target.value)}
+                  value={contracts.formContractKey}
+                  onChange={(event) => chooseContract(event.target.value)}
                   className={inputClassName}
                 >
-                  <option value="">Select customer</option>
-                  {initialClients.map((client) => (
-                    <option key={client.client_id} value={client.client_id}>
-                      {client.client_name}
+                  <option value="">Select contract</option>
+                  {contracts.choices.map((choice) => (
+                    <option key={choice.groupKey} value={choice.groupKey}>
+                      {choice.label}
                     </option>
                   ))}
                 </select>
+                {contracts.formChoice?.dataIssue ? (
+                  <p className="mt-1 text-sm text-amber-700">
+                    {contracts.formChoice.dataIssue}
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -613,7 +648,7 @@ export default function CorrectiveActions({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Date Raised</th>
-              <th className={scrollableTableThClassName}>Customer</th>
+              <th className={scrollableTableThClassName}>Contract</th>
               <th className={scrollableTableWrapThClassName}>Issue Description</th>
               <th className={scrollableTableThClassName}>Responsible Person</th>
               <th className={scrollableTableThClassName}>Target Date</th>
@@ -654,7 +689,11 @@ export default function CorrectiveActions({
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      {getCorrectiveActionClientName(entry)}
+                      {contracts.labelFor(
+                        entry.client_id,
+                        null,
+                        getCorrectiveActionClientName(entry),
+                      )}
                     </td>
                     <td className={scrollableTableWrapTdClassName}>
                       {entry.issue_description?.trim() || "—"}

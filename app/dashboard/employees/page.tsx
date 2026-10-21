@@ -1,5 +1,7 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
+import { canManageRemoteWorkArrangements } from "@/lib/attendance-mode";
 import {
   getActiveBusinessUnitId,
   getCurrentUserRole,
@@ -41,6 +43,33 @@ import {
   DashboardPagePerfMeta,
   readSupabasePerfCallIndex,
 } from "@/lib/dashboard-page-perf-probe";
+
+/** Linked user role per employee, for the "Role default (X)" attendance label. */
+async function loadRoleByEmployeeId(
+  tenantId: string | null,
+): Promise<Record<string, string>> {
+  if (!tenantId) {
+    return {};
+  }
+  try {
+    const { data } = await createAdminClient()
+      .from("user_accounts")
+      .select("employee_id, role, is_active")
+      .eq("tenant_id", tenantId)
+      .not("employee_id", "is", null);
+    const roles: Record<string, string> = {};
+    for (const row of data ?? []) {
+      const employeeId = row.employee_id as string | null;
+      if (!employeeId || (row.is_active === false && roles[employeeId])) {
+        continue;
+      }
+      roles[employeeId] = row.role as string;
+    }
+    return roles;
+  } catch {
+    return {};
+  }
+}
 
 export default async function EmployeesPage() {
   const renderStartedAt = Date.now();
@@ -92,6 +121,7 @@ export default async function EmployeesPage() {
   );
 
   const role = (await getCurrentUserRole()) as AppRole | null;
+  const roleByEmployeeId = await loadRoleByEmployeeId(tenantId);
   const defaultWelfareDeductionRate =
     normalizeHrPayrollSettingsRow(
       hrPayrollSettingsResult.data as HrPayrollSettingsRow | null,
@@ -122,6 +152,12 @@ export default async function EmployeesPage() {
         canUseEmployeeBulkImport={canUseEmployeeBulkImport(role)}
         defaultWelfareDeductionRate={defaultWelfareDeductionRate}
         canViewSalary={canViewEmployeeSalary(role)}
+        canEditRemoteAttendance={
+          role === "super_admin" || role === "director" || role === "hr"
+        }
+        canEditAttendanceMode={canManageRemoteWorkArrangements(role)}
+        tenantId={tenantId}
+        roleByEmployeeId={roleByEmployeeId}
         activeBusinessUnitId={activeBusinessUnitId}
       />
     </HrPayrollShell>

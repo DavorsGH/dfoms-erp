@@ -1,23 +1,42 @@
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
-import { POS_SECTION_ROLES } from "@/utils/rbac-access";
+import { PRODUCT_SALE_PAYSTACK_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { verifyPaystackTransaction } from "@/utils/paystack";
+import { loadPaymentRequestForFulfillment } from "@/utils/pos-momo-fulfillment";
 import {
-  fulfillPosCartSnapshotPaymentRequest,
-  loadPaymentRequestForFulfillment,
-} from "@/utils/pos-momo-fulfillment";
-import { roundGhs } from "@/utils/product-sale-paystack";
+  confirmProductSalePaystackPayment,
+  PAYSTACK_CONFIRM_SOURCES,
+  paystackConfirmResponse,
+  type PaystackConfirmSource,
+} from "@/utils/paystack-product-sale-confirm";
 
 export const runtime = "nodejs";
 
 type ConfirmBody = {
   payment_request_id?: string;
   reference?: string;
+  /**
+   * popup_success, popup_closed or check_payment. The server always verifies with
+   * Paystack and never trusts the client's claim of success.
+   */
+  source?: string;
+  /** Explicit cancel only. The popup no longer sends this on close. */
+  abandon?: boolean;
 };
 
+function parseSource(raw: unknown): PaystackConfirmSource {
+  if (
+    typeof raw === "string" &&
+    raw !== "nightly_reconciliation" &&
+    (PAYSTACK_CONFIRM_SOURCES as readonly string[]).includes(raw)
+  ) {
+    return raw as PaystackConfirmSource;
+  }
+  return "popup_success";
+}
+
 export async function POST(request: Request) {
-  const auth = await requireTenantRoleIn(POS_SECTION_ROLES);
+  const auth = await requireTenantRoleIn(PRODUCT_SALE_PAYSTACK_ROLES);
   if (!auth.ok) {
     return auth.response;
   }
@@ -43,75 +62,45 @@ export async function POST(request: Request) {
     );
   }
 
-  const admin = createAdminClient();
-  const requestRow = await loadPaymentRequestForFulfillment(admin, {
+  if (body.abandon === true) {
+    const admin = createAdminClient();
+    const requestRow = await loadPaymentRequestForFulfillment(admin, {
+      paymentRequestId: paymentRequestId || null,
+      reference: reference || null,
+    });
+    if (!requestRow) {
+      return NextResponse.json({ error: "Payment request not found." }, { status: 404 });
+    }
+    if (requestRow.tenant_id !== auth.tenantId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (requestRow.status === "paid") {
+      return NextResponse.json(
+        { error: "This payment is already confirmed." },
+        { status: 409 },
+      );
+    }
+    const { error: abandonError } = await admin
+      .from("product_sale_payment_requests")
+      .update({
+        status: "cancelled",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", requestRow.id)
+      .eq("tenant_id", auth.tenantId)
+      .in("status", ["pending", "sent"]);
+    if (abandonError) {
+      return NextResponse.json({ error: abandonError.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, abandoned: true });
+  }
+
+  const result = await confirmProductSalePaystackPayment({
     paymentRequestId: paymentRequestId || null,
     reference: reference || null,
+    source: parseSource(body.source),
+    tenantId: auth.tenantId,
   });
-
-  if (!requestRow) {
-    return NextResponse.json(
-      { error: "Payment request not found." },
-      { status: 404 },
-    );
-  }
-
-  if (requestRow.tenant_id !== auth.tenantId) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const refToVerify =
-    reference || (requestRow.paystack_reference ?? "").trim();
-  if (!refToVerify) {
-    return NextResponse.json(
-      { error: "Missing Paystack reference." },
-      { status: 400 },
-    );
-  }
-
-  const verified = await verifyPaystackTransaction(refToVerify);
-  if (!verified.ok) {
-    return NextResponse.json({ error: verified.error }, { status: 502 });
-  }
-  if (verified.status !== "success") {
-    return NextResponse.json(
-      {
-        error: `Payment not successful yet (status: ${verified.status}).`,
-        status: verified.status,
-      },
-      { status: 409 },
-    );
-  }
-
-  const paidAmountGhs =
-    verified.amount != null ? roundGhs(verified.amount / 100) : null;
-
-  try {
-    const result = await fulfillPosCartSnapshotPaymentRequest(admin, requestRow, {
-      reference: verified.reference,
-      paidAmountGhs,
-      paidAt: verified.paidAt,
-      skipVerify: true,
-      paystackChannel: verified.channel,
-    });
-
-    return NextResponse.json({
-      ok: true,
-      invoice_no: result.invoiceNo,
-      income_ids: result.incomeIds,
-      already_fulfilled: result.alreadyFulfilled,
-      payment_method: result.paymentMethod,
-      reference: verified.reference,
-    });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to create sale after payment.",
-      },
-      { status: 500 },
-    );
-  }
+  const response = paystackConfirmResponse(result);
+  return NextResponse.json(response.body, { status: response.status });
 }

@@ -153,6 +153,34 @@ export function formatProductSaleStatusForDisplay(
   return String(status);
 }
 
+function isStoredCustomerName(
+  name: string | null | undefined,
+  clientId: string | null | undefined,
+): name is string {
+  const trimmed = name?.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const id = clientId?.trim();
+  if (id && trimmed.localeCompare(id, undefined, { sensitivity: "accent" }) === 0) {
+    return false;
+  }
+  return true;
+}
+
+function clientNameFromList(
+  clientId: string | null | undefined,
+  clients: ClientEntry[] | undefined,
+): string | null {
+  const id = clientId?.trim();
+  if (!id || !clients?.length) {
+    return null;
+  }
+  const match = clients.find((client) => client.client_id === id);
+  const name = match?.client_name?.trim();
+  return name || null;
+}
+
 export function getIncomeCustomerDisplayName(
   entry: {
     client?: IncomeRegisterClient | null;
@@ -161,19 +189,24 @@ export function getIncomeCustomerDisplayName(
   },
   clients?: ClientEntry[],
 ): string {
-  if (entry.client?.client_name?.trim()) {
-    return entry.client.client_name.trim();
+  const clientId = entry.client_id?.trim() || null;
+
+  const joinedName = entry.client?.client_name?.trim();
+  if (isStoredCustomerName(joinedName, clientId)) {
+    return joinedName;
   }
 
-  if (entry.client_id && clients) {
-    const match = clients.find((client) => client.client_id === entry.client_id);
-    if (match?.client_name?.trim()) {
-      return match.client_name.trim();
-    }
+  const listedName = clientNameFromList(clientId, clients);
+  if (listedName) {
+    return listedName;
   }
 
-  if (entry.customer_name?.trim()) {
+  if (isStoredCustomerName(entry.customer_name, clientId)) {
     return entry.customer_name.trim();
+  }
+
+  if (clientId) {
+    return clientId;
   }
 
   return "—";

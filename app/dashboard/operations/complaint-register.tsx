@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useToast } from "@/components/feedback/feedback-context";
 import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import RegisterRowActions, {
@@ -22,7 +23,8 @@ import {
   type HrEmployee,
 } from "../hr-payroll/employee-utils";
 import { formatDate, inputClassName } from "../hr-payroll/hr-register-utils";
-import type { ClientEntry } from "./clients-utils";
+import type { RosterContractProject } from "@/lib/roster-contract-choices";
+import { useOperationsContracts } from "./use-operations-contracts";
 import {
   COMPLAINT_REGISTER_SELECT,
   getComplaintClientName,
@@ -43,7 +45,7 @@ import { useOperationsReadOnly } from "./operations-read-only-context";
 
 type ComplaintRegisterProps = {
   initialEntries: ComplaintRegisterEntry[];
-  initialClients: ClientEntry[];
+  initialProjects: RosterContractProject[];
   initialSites: SiteEntry[];
   initialEmployees: HrEmployee[];
   fetchError: string | null;
@@ -69,13 +71,14 @@ const emptyForm = {
 
 export default function ComplaintRegister({
   initialEntries,
-  initialClients,
+  initialProjects,
   initialSites,
   initialEmployees,
   fetchError,
   tenantId = null,
 }: ComplaintRegisterProps) {
   const supabase = createClient();
+  const { toast } = useToast();
   const operationsReadOnly = useOperationsReadOnly();
   const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(
@@ -88,7 +91,7 @@ export default function ComplaintRegister({
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
-  const [filterClient, setFilterClient] = useState("");
+  const contracts = useOperationsContracts(initialProjects, initialSites);
   const [filterPriority, setFilterPriority] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const skipFirstEmployeeScopeRefresh = useRef(true);
@@ -126,17 +129,9 @@ export default function ComplaintRegister({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
   }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
-  const formSiteOptions = useMemo(() => {
-    if (!form.client_id) {
-      return [];
-    }
-
-    return initialSites.filter((site) => site.client_id === form.client_id);
-  }, [form.client_id, initialSites]);
-
   const filteredEntries = useMemo(() => {
     return entries.filter((entry) => {
-      if (filterClient && (entry.client_id ?? "") !== filterClient) {
+      if (!contracts.matchesFilter(entry.client_id)) {
         return false;
       }
 
@@ -150,7 +145,7 @@ export default function ComplaintRegister({
 
       return true;
     });
-  }, [entries, filterClient, filterPriority, filterStatus]);
+  }, [contracts, entries, filterPriority, filterStatus]);
 
   async function refreshEntries() {
     const { data, error: refreshError } = await supabase
@@ -173,6 +168,7 @@ export default function ComplaintRegister({
   }
 
   function openAddForm() {
+    contracts.setFormContractKey("");
     setEditingId(null);
     setForm({
       ...emptyForm,
@@ -182,13 +178,25 @@ export default function ComplaintRegister({
     setShowForm(true);
   }
 
+  function chooseContract(groupKey: string) {
+    const choice = contracts.choices.find((entry) => entry.groupKey === groupKey);
+    contracts.setFormContractKey(groupKey);
+    setForm((current) => ({
+      ...current,
+      client_id: choice?.clientId ?? "",
+      site_id: "",
+    }));
+  }
+
   function closeForm() {
+    contracts.setFormContractKey("");
     setEditingId(null);
     setForm(emptyForm);
     setShowForm(false);
   }
 
   function openEditForm(entry: ComplaintRegisterEntry) {
+    contracts.setFormContractKey(contracts.keyFor(entry.client_id, entry.site_id));
     setEditingId(entry.complaint_no);
     setForm({
       complaint_no: entry.complaint_no,
@@ -258,10 +266,19 @@ export default function ComplaintRegister({
     setLoading(true);
     setError(null);
 
+    if (contracts.formContractKey && !contracts.formChoice?.clientId) {
+      setError(
+        contracts.formChoice?.dataIssue ??
+          "This contract has no customer, so the complaint cannot be saved.",
+      );
+      setLoading(false);
+      return;
+    }
+
     const payload = {
       complaint_no: form.complaint_no.trim(),
       date_received: form.date_received,
-      client_id: nullableText(form.client_id),
+      client_id: nullableText(contracts.formChoice?.clientId ?? form.client_id),
       site_id: nullableText(form.site_id),
       area: nullableText(form.area),
       complaint_details: nullableText(form.complaint_details),
@@ -322,8 +339,7 @@ export default function ComplaintRegister({
       }
 
       const complaintDetail =
-        initialClients.find((client) => client.client_id === payload.client_id)
-          ?.client_name ||
+        contracts.formChoice?.label ||
         payload.complaint_details?.trim() ||
         allocated.complaintNo;
 
@@ -337,6 +353,7 @@ export default function ComplaintRegister({
     closeForm();
     await refreshEntries();
     setLoading(false);
+    toast("Complaint saved");
   }
 
   return (
@@ -345,17 +362,17 @@ export default function ComplaintRegister({
         <div className="grid gap-4 md:grid-cols-3">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Filter by Customer
+              Filter by Contract
             </label>
             <select
-              value={filterClient}
-              onChange={(event) => setFilterClient(event.target.value)}
+              value={contracts.filterContractKey}
+              onChange={(event) => contracts.setFilterContractKey(event.target.value)}
               className={inputClassName}
             >
-              <option value="">All customers</option>
-              {initialClients.map((client) => (
-                <option key={client.client_id} value={client.client_id}>
-                  {client.client_name}
+              <option value="">All contracts</option>
+              {contracts.choices.map((choice) => (
+                <option key={choice.groupKey} value={choice.groupKey}>
+                  {choice.label}
                 </option>
               ))}
             </select>
@@ -464,20 +481,25 @@ export default function ComplaintRegister({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Customer
+                  Contract
                 </label>
                 <select
-                  value={form.client_id}
-                  onChange={(event) => updateField("client_id", event.target.value)}
+                  value={contracts.formContractKey}
+                  onChange={(event) => chooseContract(event.target.value)}
                   className={inputClassName}
                 >
-                  <option value="">Select customer</option>
-                  {initialClients.map((client) => (
-                    <option key={client.client_id} value={client.client_id}>
-                      {client.client_name}
+                  <option value="">Select contract</option>
+                  {contracts.choices.map((choice) => (
+                    <option key={choice.groupKey} value={choice.groupKey}>
+                      {choice.label}
                     </option>
                   ))}
                 </select>
+                {contracts.formChoice?.dataIssue ? (
+                  <p className="mt-1 text-sm text-amber-700">
+                    {contracts.formChoice.dataIssue}
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -486,13 +508,15 @@ export default function ComplaintRegister({
                 <select
                   value={form.site_id}
                   onChange={(event) => updateField("site_id", event.target.value)}
-                  disabled={!form.client_id}
+                  disabled={!contracts.formContractKey}
                   className={inputClassName}
                 >
                   <option value="">
-                    {form.client_id ? "Select site" : "Select a customer first"}
+                    {contracts.formContractKey
+                      ? "Select site"
+                      : "Select a contract first"}
                   </option>
-                  {formSiteOptions.map((site) => (
+                  {contracts.formSites.map((site) => (
                     <option key={site.site_code} value={site.site_code}>
                       {site.site_name}
                     </option>
@@ -649,7 +673,7 @@ export default function ComplaintRegister({
         totalCount={entries.length}
         itemSingular="complaint"
         hasActiveFilters={Boolean(
-          filterClient || filterPriority || filterStatus,
+          contracts.filterContractKey || filterPriority || filterStatus,
         )}
       />
 
@@ -658,7 +682,7 @@ export default function ComplaintRegister({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Date Received</th>
-              <th className={scrollableTableThClassName}>Customer</th>
+              <th className={scrollableTableThClassName}>Contract</th>
               <th className={scrollableTableThClassName}>Site</th>
               <th className={scrollableTableWrapThClassName}>Complaint Details</th>
               <th className={scrollableTableThClassName}>Priority</th>
@@ -688,7 +712,13 @@ export default function ComplaintRegister({
                   }
                 >
                   <td className="px-4 py-3">{formatDate(entry.date_received)}</td>
-                  <td className="px-4 py-3">{getComplaintClientName(entry)}</td>
+                  <td className="px-4 py-3">
+                    {contracts.labelFor(
+                      entry.client_id,
+                      entry.site_id,
+                      getComplaintClientName(entry),
+                    )}
+                  </td>
                   <td className="px-4 py-3">{getComplaintSiteName(entry)}</td>
                   <td className={scrollableTableWrapTdClassName}>
                     {entry.complaint_details?.trim() || "—"}

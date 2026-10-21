@@ -77,6 +77,7 @@ async function DashboardLayoutInner({
       <DashboardShell
         userRole={shell.userRole as AppRole | null}
         showLeaveApprovals={shell.showLeaveApprovals}
+        showAttendanceApprovals={shell.showAttendanceApprovals}
         showPlatformSettings={shell.showPlatformSettings}
         showRealEstate={shell.showRealEstate}
         tenantBranding={shell.tenantBranding}

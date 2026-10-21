@@ -1255,10 +1255,14 @@ export default function Budget({
                 className={inputClassName}
               >
                 <option value={COMPANY_WIDE_PROJECT_VALUE}>Company-wide</option>
-                {projects.map((project) => (
+                {projects
+                  .filter(
+                    (project) =>
+                      !project.is_archived || project.id === form.project_id,
+                  )
+                  .map((project) => (
                   <option key={project.id} value={project.id}>
                     {project.project_code} — {project.project_name}
-                    {project.is_archived ? " (Inactive)" : ""}
                   </option>
                 ))}
               </select>

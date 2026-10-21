@@ -8,8 +8,16 @@ import {
   normalizeSiteEntry,
   type SiteEntry,
 } from "./sites-utils";
+import {
+  formatShiftClockLabel,
+  shiftTimeDayType,
+  timeInputValue,
+  type ShiftTimeRecord,
+} from "@/lib/shift-attendance";
 import type { RosterConfigRecord } from "./roster-config-utils";
 import { resolveUniformBusinessUnitId } from "@/utils/business-unit-document-contact-types";
+import { isLegacyPerSiteProject } from "@/lib/employee-contract-site";
+import { staffGroupKeyForProject } from "@/lib/attendance-staff-groups";
 
 export type { RosterConfigRecord } from "./roster-config-utils";
 
@@ -26,6 +34,9 @@ export type DutyRosterEmployee = {
   position: string | null;
   shift: string | null;
   contract_project: string | null;
+  assigned_site_id?: string | null;
+  /** Remote/hybrid attendance allowed on the employee record. */
+  remote_attendance_allowed?: boolean | null;
   employment_status: string | null;
   project_ref?: {
     project_code: string;
@@ -78,9 +89,19 @@ export type DutyRosterSummary = {
   /** Required staff across displayed facility rows (matches table TOTAL Required). */
   totalActiveCount: number;
   staffAssignedPercent: number;
-  morningTime: string;
-  afternoonTime: string;
-  supervisorTime: string;
+  morningTime: DutyRosterShiftHeader;
+  afternoonTime: DutyRosterShiftHeader;
+  supervisorTime: DutyRosterShiftHeader;
+};
+
+/** Clock line under a Morning / Afternoon / Supervisor column. */
+export type DutyRosterShiftHeader = {
+  /** Weekday line, or the old free-text time when no shift row exists. */
+  primary: string;
+  /** Set when the weekend clocks differ from the weekday clocks. */
+  weekend: string | null;
+  /** True when primary is the old roster_config text. */
+  legacy: boolean;
 };
 
 export type DutyRosterViewModel = {
@@ -146,6 +167,8 @@ export function normalizeDutyRosterEmployee(raw: {
   position: string | null;
   shift: string | null;
   contract_project: string | null;
+  assigned_site_id?: string | null;
+  remote_attendance_allowed?: boolean | null;
   employment_status: string | null;
   project_ref?:
     | DutyRosterEmployee["project_ref"]
@@ -163,6 +186,8 @@ export function normalizeDutyRosterEmployee(raw: {
     position: raw.position,
     shift: raw.shift,
     contract_project: raw.contract_project,
+    assigned_site_id: raw.assigned_site_id ?? null,
+    remote_attendance_allowed: raw.remote_attendance_allowed ?? null,
     employment_status: raw.employment_status,
     project_ref: projectRef,
   };
@@ -196,6 +221,164 @@ export function getDutyRosterShiftRole(employee: {
   }
 
   return null;
+}
+
+export function formatDutyRosterShiftRange(
+  start: string | null | undefined,
+  end: string | null | undefined,
+): string | null {
+  const startValue = timeInputValue(start);
+  const endValue = timeInputValue(end);
+  if (!startValue || !endValue) {
+    return null;
+  }
+  return `${formatShiftClockLabel(startValue)} – ${formatShiftClockLabel(endValue)}`;
+}
+
+function shiftTimeRow(
+  rows: ShiftTimeRecord[],
+  clientId: string,
+  role: DutyRosterShiftRole,
+  dayType: "weekday" | "weekend",
+): ShiftTimeRecord | null {
+  return (
+    rows.find(
+      (row) =>
+        row.client_id === clientId &&
+        row.shift === role &&
+        shiftTimeDayType(row.day_type) === dayType,
+    ) ?? null
+  );
+}
+
+/**
+ * Weekday clocks from contract_shift_times. A different weekend row adds a
+ * second line. No row for the shift keeps the old roster_config text.
+ */
+export function buildDutyRosterShiftHeader(input: {
+  clientId: string;
+  role: DutyRosterShiftRole;
+  shiftTimes: ShiftTimeRecord[];
+  legacyTime: string | null | undefined;
+}): DutyRosterShiftHeader {
+  const weekdayRange = formatDutyRosterShiftRange(
+    shiftTimeRow(input.shiftTimes, input.clientId, input.role, "weekday")
+      ?.start_time,
+    shiftTimeRow(input.shiftTimes, input.clientId, input.role, "weekday")
+      ?.end_time,
+  );
+  const weekendRange = formatDutyRosterShiftRange(
+    shiftTimeRow(input.shiftTimes, input.clientId, input.role, "weekend")
+      ?.start_time,
+    shiftTimeRow(input.shiftTimes, input.clientId, input.role, "weekend")
+      ?.end_time,
+  );
+
+  if (weekdayRange) {
+    return {
+      primary: weekdayRange,
+      weekend:
+        weekendRange && weekendRange !== weekdayRange
+          ? `Weekend ${weekendRange}`
+          : null,
+      legacy: false,
+    };
+  }
+
+  if (weekendRange) {
+    return {
+      primary: `Weekend ${weekendRange}`,
+      weekend: null,
+      legacy: false,
+    };
+  }
+
+  return {
+    primary: input.legacyTime?.trim() || "—",
+    weekend: null,
+    legacy: true,
+  };
+}
+
+const CONTRACT_SHIFT_TIME_ORDER = [
+  "Full Day",
+  "Morning",
+  "Afternoon",
+  "Night",
+  "Supervisor",
+] as const;
+
+/** Weekday and weekend clocks saved for a contract, for the non-rotating staff list. */
+export function listContractShiftTimeLines(
+  clientId: string,
+  shiftTimes: ShiftTimeRecord[],
+): Array<{ primary: string; weekend: string | null }> {
+  const lines: Array<{ primary: string; weekend: string | null }> = [];
+  for (const shift of CONTRACT_SHIFT_TIME_ORDER) {
+    const weekday = shiftTimes.find(
+      (row) =>
+        row.client_id === clientId &&
+        row.shift === shift &&
+        shiftTimeDayType(row.day_type) === "weekday",
+    );
+    const weekend = shiftTimes.find(
+      (row) =>
+        row.client_id === clientId &&
+        row.shift === shift &&
+        shiftTimeDayType(row.day_type) === "weekend",
+    );
+    const weekdayRange = formatDutyRosterShiftRange(
+      weekday?.start_time,
+      weekday?.end_time,
+    );
+    const weekendRange = formatDutyRosterShiftRange(
+      weekend?.start_time,
+      weekend?.end_time,
+    );
+    if (weekdayRange) {
+      lines.push({
+        primary: `${shift} ${weekdayRange}`,
+        weekend:
+          weekendRange && weekendRange !== weekdayRange
+            ? `Weekend ${weekendRange}`
+            : null,
+      });
+    } else if (weekendRange) {
+      lines.push({ primary: `Weekend ${weekendRange}`, weekend: null });
+    }
+  }
+  return lines;
+}
+
+/** Active staff on this contract, including people who already have a site. */
+export function listStandingContractStaff(input: {
+  groupKey: string;
+  employees: DutyRosterEmployee[];
+  projects: DutyRosterProject[];
+}): DutyRosterEmployee[] {
+  if (!input.groupKey) {
+    return [];
+  }
+  return input.employees
+    .filter((employee) => {
+      if (employee.employment_status !== ACTIVE_EMPLOYMENT_STATUS) {
+        return false;
+      }
+      return (
+        staffGroupKeyForProject(employee.contract_project, input.projects) ===
+        input.groupKey
+      );
+    })
+    .sort((left, right) => compareStaffIds(left.staff_id, right.staff_id));
+}
+
+export function formatAttendanceMode(
+  remoteAttendanceAllowed: boolean | null | undefined,
+): string {
+  if (remoteAttendanceAllowed == null) {
+    return "—";
+  }
+  return remoteAttendanceAllowed ? "Remote / hybrid" : "On site";
 }
 
 export function getDutyRosterShiftTime(
@@ -638,33 +821,250 @@ export function isRosterSiteAssignment(
   );
 }
 
+function siteOwnerProjectCode(
+  site: DutyRosterSite,
+  projects: DutyRosterProject[],
+): string | null {
+  if (site.project?.project_code) {
+    return site.project.project_code;
+  }
+  if (!site.project_id) {
+    return null;
+  }
+  return (
+    projects.find((project) => project.id === site.project_id)?.project_code ??
+    null
+  );
+}
+
+function legacySiteRecords(
+  sites: DutyRosterSite[],
+  projects: DutyRosterProject[],
+) {
+  return sites.map((site) => ({
+    site_name: site.site_name,
+    project_code: siteOwnerProjectCode(site, projects),
+  }));
+}
+
+/**
+ * Count on a facility only when assigned_site_id is that site.
+ * A blank site is Unassigned, not a name-matched facility.
+ */
+export function employeeCountsOnFacility(
+  employee: Pick<DutyRosterEmployee, "assigned_site_id">,
+  site: Pick<DutyRosterSite, "site_code">,
+): boolean {
+  const assigned = employee.assigned_site_id?.trim() ?? "";
+  return Boolean(assigned) && assigned === site.site_code;
+}
+
+export function resolveRotationDestinationSite(
+  location: string | null | undefined,
+  sites: DutyRosterSite[],
+  projects: DutyRosterProject[],
+): DutyRosterSite | null {
+  const normalized = location?.trim().toLowerCase() ?? "";
+  if (!normalized) {
+    return null;
+  }
+  const byCode = sites.find(
+    (site) => site.site_code.trim().toLowerCase() === normalized,
+  );
+  if (byCode) {
+    return byCode;
+  }
+  const byName = sites.find(
+    (site) => site.site_name.trim().toLowerCase() === normalized,
+  );
+  if (byName) {
+    return byName;
+  }
+  const project = projects.find(
+    (entry) =>
+      entry.project_code.trim().toLowerCase() === normalized ||
+      entry.project_name.trim().toLowerCase() === normalized,
+  );
+  if (!project) {
+    return null;
+  }
+  return (
+    sites.find(
+      (site) =>
+        site.site_name.trim().toLowerCase() ===
+        project.project_name.trim().toLowerCase(),
+    ) ?? null
+  );
+}
+
+/**
+ * Always move assigned_site_id. Rewrite contract_project only while the
+ * employee is still on a legacy per-site project (before migration 392).
+ */
+export function planFacilityRotation(input: {
+  contractProject: string | null;
+  destinationSiteCode: string;
+  projects: DutyRosterProject[];
+  sites: DutyRosterSite[];
+}): { contract_project: string | null; assigned_site_id: string } {
+  const destination = input.sites.find(
+    (site) => site.site_code === input.destinationSiteCode,
+  );
+  const current = input.projects.find(
+    (project) => project.project_code === input.contractProject,
+  );
+  const onLegacy = current
+    ? isLegacyPerSiteProject(
+        current,
+        legacySiteRecords(input.sites, input.projects),
+      )
+    : false;
+  if (!onLegacy || !destination) {
+    return {
+      contract_project: input.contractProject,
+      assigned_site_id: input.destinationSiteCode,
+    };
+  }
+  const siteRecords = legacySiteRecords(input.sites, input.projects);
+  const destinationName = destination.site_name.trim().toLowerCase();
+  const legacyMatch = input.projects.find(
+    (project) =>
+      isLegacyPerSiteProject(project, siteRecords) &&
+      project.project_name.trim().toLowerCase() === destinationName,
+  );
+  const legacyCode = legacyMatch?.project_code ?? input.contractProject;
+  return {
+    contract_project: legacyCode,
+    assigned_site_id: input.destinationSiteCode,
+  };
+}
+
+export function buildRotationEmployeeUpdates(input: {
+  moves: Array<{ employee_id: string | null; new_location: string | null }>;
+  employees: Array<{ employee_id: string; contract_project: string | null }>;
+  projects: DutyRosterProject[];
+  sites: DutyRosterSite[];
+}): Array<{
+  employee_id: string;
+  assigned_site_id: string;
+  contract_project?: string | null;
+}> {
+  const updates: Array<{
+    employee_id: string;
+    assigned_site_id: string;
+    contract_project?: string | null;
+  }> = [];
+
+  for (const move of input.moves) {
+    if (!move.employee_id) {
+      continue;
+    }
+    const employee = input.employees.find(
+      (row) => row.employee_id === move.employee_id,
+    );
+    const destination = resolveRotationDestinationSite(
+      move.new_location,
+      input.sites,
+      input.projects,
+    );
+    if (!employee || !destination) {
+      continue;
+    }
+    const next = planFacilityRotation({
+      contractProject: employee.contract_project,
+      destinationSiteCode: destination.site_code,
+      projects: input.projects,
+      sites: input.sites,
+    });
+    const patch: {
+      employee_id: string;
+      assigned_site_id: string;
+      contract_project?: string | null;
+    } = {
+      employee_id: employee.employee_id,
+      assigned_site_id: next.assigned_site_id,
+    };
+    if (next.contract_project !== employee.contract_project) {
+      patch.contract_project = next.contract_project;
+    }
+    updates.push(patch);
+  }
+
+  return updates;
+}
+
+export const UNASSIGNED_ROSTER_SITE_CODE = "";
+export const UNASSIGNED_ROSTER_FACILITY_NAME = "Unassigned";
+
+/** Active people on this contract group who do not have a site yet. */
+export function listUnassignedRosterEmployees(input: {
+  clientId: string;
+  employees: DutyRosterEmployee[];
+  projects: DutyRosterProject[];
+  sites: DutyRosterSite[];
+}): DutyRosterEmployee[] {
+  const anchor = getContractProjectCodeForClient(
+    input.sites,
+    input.projects,
+    input.clientId,
+  );
+  const groupKey = anchor
+    ? staffGroupKeyForProject(anchor, input.projects)
+    : null;
+  if (!groupKey) {
+    return [];
+  }
+
+  return input.employees
+    .filter((employee) => {
+      if (employee.employment_status !== ACTIVE_EMPLOYMENT_STATUS) {
+        return false;
+      }
+      if (employee.assigned_site_id?.trim()) {
+        return false;
+      }
+      return (
+        staffGroupKeyForProject(employee.contract_project, input.projects) ===
+        groupKey
+      );
+    })
+    .sort((left, right) => compareStaffIds(left.staff_id, right.staff_id));
+}
+
+function buildUnassignedFacilityRow(
+  employees: DutyRosterEmployee[],
+): DutyRosterFacilityRow {
+  const morningEmployees = employees.filter(
+    (employee) => employee.shift === "Morning",
+  );
+  const afternoonEmployees = employees.filter(
+    (employee) => employee.shift === "Afternoon",
+  );
+  const supervisorEmployees = employees.filter((employee) =>
+    isSupervisorEmployee(employee),
+  );
+
+  return {
+    siteCode: UNASSIGNED_ROSTER_SITE_CODE,
+    facilityName: UNASSIGNED_ROSTER_FACILITY_NAME,
+    morningShift: joinEmployeeNames(morningEmployees),
+    afternoonShift: joinEmployeeNames(afternoonEmployees),
+    supervisors: joinEmployeeNames(supervisorEmployees),
+    requiredStaff: 0,
+    totalStaff: employees.length,
+    isUnderStaffed: false,
+  };
+}
+
 function buildDutyRosterFacilityRows(
   staffingSites: DutyRosterSite[],
   activeEmployees: DutyRosterEmployee[],
-  projects: DutyRosterProject[],
 ): DutyRosterFacilityRow[] {
   return staffingSites
     .map((site) => {
-      const legacyProjectCodes = resolveLegacyProjectCodesForSite(
-        site,
-        projects,
+      const siteEmployees = activeEmployees.filter((employee) =>
+        employeeCountsOnFacility(employee, site),
       );
-      const normalizedSiteName = site.site_name.trim().toLowerCase();
-      const siteEmployees = activeEmployees.filter((employee) => {
-        if (
-          employee.contract_project &&
-          legacyProjectCodes.includes(employee.contract_project)
-        ) {
-          return true;
-        }
-
-        const displayName = getProjectDisplayName(
-          employee.contract_project,
-          projects,
-          employee.project_ref,
-        );
-        return displayName.trim().toLowerCase() === normalizedSiteName;
-      });
       const morningEmployees = siteEmployees.filter(
         (employee) => employee.shift === "Morning",
       );
@@ -756,6 +1156,7 @@ export function reconstructEmployeesForRotation(
   clientHistory: RosterHistoryRecord[],
   rotationNumber: number,
   projects: DutyRosterProject[],
+  sites: DutyRosterSite[] = [],
 ): DutyRosterEmployee[] {
   return employees.map((employee) => {
     const rows = clientHistory
@@ -788,9 +1189,16 @@ export function reconstructEmployeesForRotation(
     );
     const project = findProjectByCode(projects, projectCode);
 
+    const historicalSite = resolveRotationDestinationSite(
+      latest.new_location,
+      sites,
+      projects,
+    );
+
     return {
       ...employee,
       contract_project: projectCode || employee.contract_project,
+      assigned_site_id: historicalSite?.site_code ?? null,
       shift: latest.shift ?? employee.shift,
       position: latest.position ?? employee.position,
       project_ref: project
@@ -866,6 +1274,7 @@ export function buildDutyRosterViewModel(input: {
   referenceDate?: Date;
   /** When set to a past rotation, renders historical assignments (read-only). */
   viewRotationNumber?: number | null;
+  shiftTimes?: ShiftTimeRecord[];
 }): DutyRosterViewModel {
   const clientSites = filterSitesForClient(input.sites, input.clientId);
   const staffingSites = filterRosterStaffingSites(clientSites);
@@ -911,6 +1320,7 @@ export function buildDutyRosterViewModel(input: {
         clientHistory,
         selectedRotation,
         input.projects,
+        input.sites,
       )
     : input.employees;
 
@@ -928,11 +1338,20 @@ export function buildDutyRosterViewModel(input: {
     ? 0
     : liveCycleSummary.daysToRotation;
 
-  const rows = buildDutyRosterFacilityRows(
+  const facilityRows = buildDutyRosterFacilityRows(
     staffingSites,
     activeEmployees,
-    input.projects,
   );
+  const unassignedEmployees = listUnassignedRosterEmployees({
+    clientId: input.clientId,
+    employees: activeEmployees,
+    projects: input.projects,
+    sites: input.sites,
+  });
+  const rows =
+    unassignedEmployees.length > 0
+      ? [...facilityRows, buildUnassignedFacilityRow(unassignedEmployees)]
+      : facilityRows;
 
   const totals = rows.reduce(
     (accumulator, row) => ({
@@ -951,16 +1370,31 @@ export function buildDutyRosterViewModel(input: {
       cycleEndDate,
       nextRotationDate,
       daysToRotation,
-      // Match facility table TOTAL row: only linked staffing sites (excludes unassigned sites).
+      // TOTAL Actual includes the Unassigned line. Required stays the staffing-site total.
       staffAssignedCount: totals.totalStaff,
       totalActiveCount: totals.requiredStaff,
       staffAssignedPercent:
         totals.requiredStaff > 0
           ? Math.round((totals.totalStaff / totals.requiredStaff) * 100)
           : 0,
-      morningTime: input.config.morning_time?.trim() || "—",
-      afternoonTime: input.config.afternoon_time?.trim() || "—",
-      supervisorTime: input.config.supervisor_time?.trim() || "—",
+      morningTime: buildDutyRosterShiftHeader({
+        clientId: input.clientId,
+        role: "Morning",
+        shiftTimes: input.shiftTimes ?? [],
+        legacyTime: input.config.morning_time,
+      }),
+      afternoonTime: buildDutyRosterShiftHeader({
+        clientId: input.clientId,
+        role: "Afternoon",
+        shiftTimes: input.shiftTimes ?? [],
+        legacyTime: input.config.afternoon_time,
+      }),
+      supervisorTime: buildDutyRosterShiftHeader({
+        clientId: input.clientId,
+        role: "Supervisor",
+        shiftTimes: input.shiftTimes ?? [],
+        legacyTime: input.config.supervisor_time,
+      }),
     },
     rows,
     totals: {

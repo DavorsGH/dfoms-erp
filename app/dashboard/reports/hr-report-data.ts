@@ -121,7 +121,7 @@ export async function fetchAttendanceSummaryReportData(
     applyStaffIdScope(
       supabase
         .from("attendance_register")
-        .select("staff_id, date, attendance_status"),
+        .select("staff_id, date, attendance_status, exception_status"),
       scopedStaff.staffIds,
     ).order("date", { ascending: true }),
   ]);

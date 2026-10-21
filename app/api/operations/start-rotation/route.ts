@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { Client } from "pg";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import {
   assertServerRowWriteAccess,
@@ -8,19 +9,26 @@ import {
 import { START_ROTATION_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
+import { resolveDatabaseUrl } from "@/utils/database-url";
+import { commitRotationStart } from "@/lib/rotation-start-commit";
 import { getCurrentUserFullName } from "@/utils/current-user";
 import {
   PROJECT_SELECT,
   normalizeProjectEntry,
 } from "@/app/dashboard/administration/projects-utils";
 import {
-  buildRotationHistoryInserts,
   normalizeDutyRosterEmployee,
   normalizeDutyRosterSite,
   type DutyRosterProject,
   type DutyRosterSite,
   type RosterHistoryRecord,
 } from "@/app/dashboard/operations/duty-roster-utils";
+import {
+  buildRotationStartFromPlan,
+  keepEveryoneNextSites,
+  listRotationPlanEmployees,
+  listRotationPlanSites,
+} from "@/app/dashboard/operations/rotation-plan";
 import {
   ROSTER_CONFIG_SELECT,
   type RosterConfigRecord,
@@ -45,6 +53,7 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => ({}))) as {
     client_id?: string;
+    assignments?: Array<{ employee_id?: string; next_site_code?: string }>;
   };
   const clientId = body.client_id?.trim();
 
@@ -84,7 +93,7 @@ export async function POST(request: Request) {
     supabase
       .from("employees")
       .select(
-        "employee_id, staff_id, full_name, position, shift, contract_project, employment_status, project_ref:projects!employees_contract_project_fkey(project_code, project_name)",
+        "employee_id, staff_id, full_name, position, shift, contract_project, assigned_site_id, employment_status, project_ref:projects!employees_contract_project_fkey(project_code, project_name)",
       )
       .eq("tenant_id", tenantId),
     supabase.from("projects").select(PROJECT_SELECT).eq("tenant_id", tenantId),
@@ -148,6 +157,12 @@ export async function POST(request: Request) {
     }
     metadataBusinessUnitId = writeBu.businessUnitId;
   }
+  if (!metadataBusinessUnitId) {
+    return NextResponse.json(
+      { error: "A business unit is required to start a rotation." },
+      { status: 400 },
+    );
+  }
 
   const normalizedProjects =
     ((projects as unknown as DutyRosterProject[] | null) ?? []).map((project) =>
@@ -158,75 +173,121 @@ export async function POST(request: Request) {
       normalizeDutyRosterSite(site),
     );
 
-  const { inserts, nextCycleStartDate, nextRotationNumber } =
-    buildRotationHistoryInserts({
-      clientId,
-      employees:
-        (
-          employees as Array<
-            Parameters<typeof normalizeDutyRosterEmployee>[0]
-          > | null
-        )?.map((employee) => normalizeDutyRosterEmployee(employee)) ?? [],
-      projects: normalizedProjects,
-      sites: normalizedSites,
-      history: (history as RosterHistoryRecord[] | null) ?? [],
-      config,
-      generatedBy,
-      generatedDate,
-    });
+  const normalizedEmployees =
+    (
+      employees as Array<
+        Parameters<typeof normalizeDutyRosterEmployee>[0]
+      > | null
+    )?.map((employee) => normalizeDutyRosterEmployee(employee)) ?? [];
+  const rosterHistory = (history as RosterHistoryRecord[] | null) ?? [];
+  const planEmployees = listRotationPlanEmployees({
+    clientId,
+    employees: normalizedEmployees,
+    projects: normalizedProjects,
+    sites: normalizedSites,
+  });
+  const allowedSiteCodes = new Set(
+    listRotationPlanSites(clientId, normalizedSites, normalizedProjects).map(
+      (site) => site.siteCode,
+    ),
+  );
+  const eligible = new Map(
+    planEmployees.map((employee) => [employee.employeeId, employee]),
+  );
+  const nextSiteByEmployee: Record<string, string> = {};
 
-  if (inserts.length > 0) {
-    const insertsWithTenant = inserts.map((insert) => ({
-      ...insert,
-      tenant_id: tenantId,
-    }));
-
-    const { error: insertError } = await supabase
-      .from("roster_history")
-      .insert(insertsWithTenant);
-
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 });
+  if (!Array.isArray(body.assignments)) {
+    Object.assign(nextSiteByEmployee, keepEveryoneNextSites(planEmployees));
+  } else {
+    for (const assignment of body.assignments) {
+      const employeeId = assignment.employee_id?.trim() ?? "";
+      const nextSite = assignment.next_site_code?.trim() ?? "";
+      const employee = eligible.get(employeeId);
+      if (!employee) {
+        return NextResponse.json(
+          { error: "One of the planned employees is not on this customer's roster." },
+          { status: 400 },
+        );
+      }
+      if (nextSite && !allowedSiteCodes.has(nextSite)) {
+        return NextResponse.json(
+          { error: "A planned site is not part of this contract." },
+          { status: 400 },
+        );
+      }
+      if (!nextSite && employee.currentSiteCode) {
+        return NextResponse.json(
+          { error: "Choose a next site for every employee who already has one." },
+          { status: 400 },
+        );
+      }
+      nextSiteByEmployee[employeeId] = nextSite;
+    }
+    for (const employee of planEmployees) {
+      if (!(employee.employeeId in nextSiteByEmployee)) {
+        nextSiteByEmployee[employee.employeeId] = employee.currentSiteCode ?? "";
+      }
     }
   }
 
-  const { error: updateError } = await supabase
-    .from("roster_config")
-    .update({ cycle_start_date: nextCycleStartDate })
-    .eq("tenant_id", tenantId)
-    .eq("id", config.id);
+  const plan = buildRotationStartFromPlan({
+    clientId,
+    employees: normalizedEmployees,
+    projects: normalizedProjects,
+    sites: normalizedSites,
+    history: rosterHistory,
+    config,
+    nextSiteByEmployee,
+    generatedBy,
+    generatedDate,
+  });
 
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  const databaseUrl = resolveDatabaseUrl();
+  if (!databaseUrl) {
+    return NextResponse.json(
+      {
+        error:
+          "Rotation start needs a database transaction, and no database URL is configured.",
+      },
+      { status: 500 },
+    );
   }
 
+  const pgClient = new Client({
+    connectionString: databaseUrl,
+    ssl: databaseUrl.includes("localhost")
+      ? undefined
+      : { rejectUnauthorized: false },
+  });
   const startedAt = new Date().toISOString();
-  const { error: metadataError } = await supabase
-    .from("roster_rotation_metadata")
-    .upsert(
-      {
-        tenant_id: tenantId,
-        client_id: clientId,
-        rotation_number: nextRotationNumber,
-        started_by_name: generatedBy,
-        started_by_auth_uid: user.id,
-        started_at: startedAt,
-        business_unit_id: metadataBusinessUnitId,
-      },
-      { onConflict: "tenant_id,client_id,rotation_number" },
-    );
 
-  if (metadataError) {
-    return NextResponse.json({ error: metadataError.message }, { status: 500 });
+  try {
+    await pgClient.connect();
+    await commitRotationStart({
+      client: pgClient,
+      tenantId,
+      clientId,
+      configId: config.id,
+      plan,
+      startedByName: generatedBy,
+      startedByAuthUid: user.id,
+      startedAt,
+      businessUnitId: metadataBusinessUnitId,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to start rotation.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  } finally {
+    await pgClient.end().catch(() => undefined);
   }
 
   return NextResponse.json({
     message:
-      inserts.length > 0
-        ? `Rotation ${nextRotationNumber} started with ${inserts.length} assignment change(s).`
-        : `Rotation ${nextRotationNumber} started. No assignment changes were recorded.`,
-    insertedCount: inserts.length,
-    nextCycleStartDate,
-    nextRotationNumber,
+      plan.updates.length > 0
+        ? `Rotation ${plan.nextRotationNumber} started with ${plan.updates.length} assignment change(s).`
+        : `Rotation ${plan.nextRotationNumber} started. No assignment changes were recorded.`,
+    insertedCount: plan.history.length,
+    nextCycleStartDate: plan.nextCycleStartDate,
+    nextRotationNumber: plan.nextRotationNumber,
   });
 }

@@ -11,6 +11,13 @@ export type AttendanceRegisterEntry = {
   hours_worked: number | null;
   overtime_hours: number | null;
   attendance_status: string;
+  scheduled_shift?: string | null;
+  scheduled_day_type?: string | null;
+  scheduled_start?: string | null;
+  scheduled_end?: string | null;
+  late_minutes?: number | null;
+  early_leave_minutes?: number | null;
+  exception_status?: string | null;
 };
 
 export const ATTENDANCE_STATUS_OPTIONS = [

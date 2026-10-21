@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useAlert, useToast } from "@/components/feedback";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryTab } from "@/hooks/use-query-tab";
 import { createClient } from "@/utils/supabase/client";
 import { getStripedRowClassName } from "./register-row-actions";
 import ScrollableTable, {
@@ -434,7 +435,10 @@ export default function TaxLedger({
   const { viewAllBusinessUnits } = useBusinessUnitView();
   const currentPeriodMonth = getCurrentPeriodMonth();
 
-  const [activeTab, setActiveTab] = useState<LedgerTab>("overview");
+  const { tab: activeTab, setTab: setActiveTab } = useQueryTab<LedgerTab>({
+    values: ["overview", "gra", "paye", "ssnit", "settings"],
+    defaultTab: "overview",
+  });
   const [settings, setSettings] = useState(initialSettings);
   const [form, setForm] = useState(() => settingsToForm(initialSettings));
   const [entries, setEntries] = useState(initialEntries);

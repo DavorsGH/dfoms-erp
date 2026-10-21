@@ -9,6 +9,7 @@ import {
   SALARY_SETTINGS_GENERIC_SAVE_ERROR,
 } from "@/lib/administration/salary-settings-save-errors";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryTab } from "@/hooks/use-query-tab";
 import { createClient } from "@/utils/supabase/client";
 import {
   formatGHS,
@@ -82,11 +83,13 @@ export default function SalarySettings({
   const policySubmitGuardRef = useRef(false);
   const typeSubmitGuardRef = useRef(false);
   const localPolicyMutationRef = useRef(false);
-  const [tab, setTab] = useState<TabId>("basic");
+  const { tab, setTab } = useQueryTab<TabId>({
+    values: ["basic", "allowances", "types"],
+    defaultTab: "basic",
+  });
   const [positions, setPositions] = useState(initialPositions);
   const [allowanceTypes, setAllowanceTypes] = useState(initialAllowanceTypes);
   const [policies, setPolicies] = useState(initialPolicies);
-  const [error, setError] = useState<string | null>(fetchError);
   const [loading, setLoading] = useState(false);
   const [defaultWelfareRateDraft, setDefaultWelfareRateDraft] = useState(() =>
     formatDefaultWelfareDeductionRate(
@@ -94,9 +97,6 @@ export default function SalarySettings({
     ),
   );
   const [savingDefaultWelfare, setSavingDefaultWelfare] = useState(false);
-  const [defaultWelfareSuccess, setDefaultWelfareSuccess] = useState<string | null>(
-    null,
-  );
   const [includeOvertimeInWelfare, setIncludeOvertimeInWelfare] = useState(
     () => initialHrPayrollSettings?.include_overtime_in_welfare !== false,
   );
@@ -132,6 +132,12 @@ export default function SalarySettings({
     initialPolicies,
     initialHrPayrollSettings,
   ]);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError);
+    }
+  }, [alertError, fetchError]);
 
   const activeTypes = useMemo(
     () =>
@@ -182,25 +188,34 @@ export default function SalarySettings({
     );
   }, [policies]);
 
-  async function handleSaveDefaultWelfareRate(event: React.FormEvent) {
+  async function handleSaveDefaultWelfareRate(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
+    const rateInput = event.currentTarget.elements.namedItem("default_welfare_rate");
     setSavingDefaultWelfare(true);
-    setError(null);
-    setDefaultWelfareSuccess(null);
 
     const default_welfare_deduction_rate = parseDefaultWelfareDeductionRateInput(
       defaultWelfareRateDraft,
     );
 
     if (defaultWelfareRateDraft.trim() && default_welfare_deduction_rate === null) {
-      setError("Enter a valid welfare deduction rate (0 or greater), or leave blank.");
       setSavingDefaultWelfare(false);
+      if (rateInput instanceof HTMLInputElement) {
+        rateInput.setCustomValidity(
+          "Enter a valid welfare deduction rate (0 or greater), or leave blank.",
+        );
+        rateInput.reportValidity();
+      }
       return;
+    }
+    if (rateInput instanceof HTMLInputElement) {
+      rateInput.setCustomValidity("");
     }
 
     if (!stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
       setSavingDefaultWelfare(false);
+      await alertError(stampBusinessUnit.error);
       return;
     }
 
@@ -218,8 +233,8 @@ export default function SalarySettings({
     );
 
     if (saveError) {
-      setError(saveError.message);
       setSavingDefaultWelfare(false);
+      await alertError(saveError);
       return;
     }
 
@@ -237,17 +252,17 @@ export default function SalarySettings({
     const { error: bulkError } = await bulkQuery;
 
     if (bulkError) {
-      setError(
-        `Default rate saved, but applying it to active employees in this business unit failed: ${bulkError.message}`,
-      );
       setSavingDefaultWelfare(false);
+      await alertError(
+        "The default rate was saved, but it could not be applied to active employees in this business unit. Try again.",
+      );
       return;
     }
 
-    setDefaultWelfareSuccess(
+    setSavingDefaultWelfare(false);
+    toast(
       "Default welfare deduction rate saved and applied to active employees in this business unit.",
     );
-    setSavingDefaultWelfare(false);
   }
 
   async function refreshPoliciesAndTypes() {
@@ -265,13 +280,12 @@ export default function SalarySettings({
       ]);
 
     if (typesError || policyError) {
-      setError(typesError?.message ?? policyError?.message ?? "Refresh failed");
+      await alertError(typesError ?? policyError ?? "Refresh failed");
       return;
     }
 
     setAllowanceTypes((types as AllowanceTypeRow[] | null) ?? []);
     setPolicies((policyRows as CompensationPolicyRow[] | null) ?? []);
-    setError(null);
   }
 
   function openAddPolicy() {
@@ -309,18 +323,13 @@ export default function SalarySettings({
     if (policySubmitGuardRef.current) {
       return;
     }
-    if (!policyForm.position || !policyForm.employment_type || !policyForm.shift) {
-      setError("Position, employment type, and shift are required.");
-      return;
-    }
     if (activeTypes.length === 0) {
-      setError("Add at least one active allowance type first.");
+      await alertError("Add at least one active allowance type first.");
       return;
     }
 
     policySubmitGuardRef.current = true;
     setLoading(true);
-    setError(null);
 
     try {
       const { error: deleteError } = await supabase
@@ -391,8 +400,8 @@ export default function SalarySettings({
       .eq("shift", group.shift);
 
     if (deleteError) {
-      setError(deleteError.message);
       setLoading(false);
+      await alertError(deleteError);
       return;
     }
 
@@ -401,6 +410,7 @@ export default function SalarySettings({
     }
     await refreshPoliciesAndTypes();
     setLoading(false);
+    toast("Allowance combination deleted.");
   }
 
   function openAddType() {
@@ -432,14 +442,9 @@ export default function SalarySettings({
     }
     const code = typeForm.code.trim().toUpperCase().replace(/\s+/g, "_");
     const name = typeForm.name.trim();
-    if (!code || !name) {
-      setError("Code and name are required.");
-      return;
-    }
 
     typeSubmitGuardRef.current = true;
     setLoading(true);
-    setError(null);
 
     try {
       const payload = {
@@ -507,7 +512,6 @@ export default function SalarySettings({
     }
 
     setDeactivatingId(type.id);
-    setError(null);
 
     const { error: updateError } = await supabase
       .from("allowance_types")
@@ -516,8 +520,8 @@ export default function SalarySettings({
       .eq("tenant_id", tenantId);
 
     if (updateError) {
-      setError(updateError.message);
       setDeactivatingId(null);
+      await alertError(updateError);
       return;
     }
 
@@ -526,6 +530,7 @@ export default function SalarySettings({
     }
     await refreshPoliciesAndTypes();
     setDeactivatingId(null);
+    toast("Allowance type deactivated.");
   }
 
   async function handleReactivateType(type: AllowanceTypeRow) {
@@ -537,13 +542,14 @@ export default function SalarySettings({
       .eq("tenant_id", tenantId);
 
     if (updateError) {
-      setError(updateError.message);
       setDeactivatingId(null);
+      await alertError(updateError);
       return;
     }
 
     await refreshPoliciesAndTypes();
     setDeactivatingId(null);
+    toast("Allowance type reactivated.");
   }
 
   const tabs: { id: TabId; label: string }[] = [
@@ -575,13 +581,14 @@ export default function SalarySettings({
               Default Welfare Deduction Rate (%)
             </label>
             <input
+              name="default_welfare_rate"
               type="number"
               min="0"
               step="0.01"
               value={defaultWelfareRateDraft}
               onChange={(event) => {
+                event.currentTarget.setCustomValidity("");
                 setDefaultWelfareRateDraft(event.target.value);
-                setDefaultWelfareSuccess(null);
               }}
               placeholder="e.g. 2.50"
               className={inputClassName}
@@ -594,7 +601,6 @@ export default function SalarySettings({
               checked={includeOvertimeInWelfare}
               onChange={(event) => {
                 setIncludeOvertimeInWelfare(event.target.checked);
-                setDefaultWelfareSuccess(null);
               }}
               className="mt-1 h-4 w-4 rounded border-slate-300 text-[#0f2744] focus:ring-[#0f2744]"
             />
@@ -607,11 +613,6 @@ export default function SalarySettings({
               </span>
             </span>
           </label>
-          {defaultWelfareSuccess ? (
-            <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              {defaultWelfareSuccess}
-            </p>
-          ) : null}
           <button
             type="submit"
             disabled={savingDefaultWelfare}
@@ -629,7 +630,6 @@ export default function SalarySettings({
             type="button"
             onClick={() => {
               setTab(item.id);
-              setError(null);
             }}
             className={`rounded-t-md px-4 py-2 text-sm font-medium transition-colors ${
               tab === item.id
@@ -641,12 +641,6 @@ export default function SalarySettings({
           </button>
         ))}
       </div>
-
-      {error && tab !== "basic" ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       {tab === "basic" ? (
         <SalaryRates

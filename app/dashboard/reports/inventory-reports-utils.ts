@@ -27,6 +27,7 @@ export type ProductSaleReportRecord = {
   product_id: string | null;
   cogs_expense_id: string | null;
   sale_status?: ProductSaleStatus | null;
+  notes?: string | null;
   client?: {
     client_id: string;
     client_name: string;

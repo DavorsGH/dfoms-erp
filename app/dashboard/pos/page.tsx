@@ -49,6 +49,7 @@ import {
   DashboardPagePerfMeta,
   readSupabasePerfCallIndex,
 } from "@/lib/dashboard-page-perf-probe";
+import { isMobileMoneyCollectionReady } from "@/utils/product-sale-settlement";
 
 type PosPageProps = {
   searchParams: Promise<{
@@ -98,6 +99,10 @@ export default async function PosPage({ searchParams }: PosPageProps) {
     getViewAllBusinessUnits(),
   ]);
   const showCrmNav = canAccessCrmSection(role as AppRole | null);
+
+  const mobileMoneyCollectionReady = tenantId
+    ? await isMobileMoneyCollectionReady(tenantId, activeBusinessUnitId)
+    : false;
 
   if (!tenantId || !authUid) {
     throw new Error("Unable to resolve workspace session for POS cache.");
@@ -287,6 +292,8 @@ export default async function PosPage({ searchParams }: PosPageProps) {
       initialCachedAt={new Date().toISOString()}
       activeBusinessUnitId={activeBusinessUnitId}
       tenantId={tenantId}
+      mobileMoneyCollectionReady={mobileMoneyCollectionReady}
+      viewerRole={role}
     />
   );
 

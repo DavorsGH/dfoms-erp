@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useToast } from "@/components/feedback/feedback-context";
+import { claimSingleSubmit } from "@/lib/inventory/finished-product-wac";
 import { createClient } from "@/utils/supabase/client";
 import { inputClassName } from "../employees/employee-record-utils";
 import {
@@ -95,6 +97,8 @@ export default function InternalConsumption({
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const { toast } = useToast();
+  const saveLock = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
   const [formError, setFormError] = useState<string | null>(null);
@@ -110,6 +114,9 @@ export default function InternalConsumption({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (!claimSingleSubmit(saveLock)) {
+      return;
+    }
     setLoading(true);
     setFormError(null);
 
@@ -194,10 +201,12 @@ export default function InternalConsumption({
       }
     }
 
+    const wasEdit = Boolean(editingEntryId);
     setEditingEntryId(null);
     setForm(emptyForm);
     setShowForm(false);
     setFormError(null);
+    toast(wasEdit ? "Internal use updated." : "Internal use recorded.");
     try {
       await onInventoryMutated();
     } catch {
@@ -210,6 +219,7 @@ export default function InternalConsumption({
           : "Unable to save this entry.",
       );
     } finally {
+      saveLock.current = false;
       setLoading(false);
     }
   }
@@ -433,7 +443,11 @@ export default function InternalConsumption({
               {formError}
             </p>
           ) : null}
-          <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
+          <form onSubmit={handleSubmit}>
+            <fieldset
+              disabled={loading}
+              className="grid gap-4 border-0 p-0 disabled:opacity-70 md:grid-cols-2"
+            >
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">
                 Customer/Contract (optional)
@@ -554,6 +568,7 @@ export default function InternalConsumption({
                 {loading ? "Saving…" : editingEntryId ? "Save Changes" : "Save Entry"}
               </button>
             </div>
+            </fieldset>
           </form>
         </section>
       ) : null}

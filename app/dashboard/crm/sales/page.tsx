@@ -3,7 +3,8 @@ import { createClient } from "@/utils/supabase/server";
 import {
   getActiveBusinessUnitId,
   getCurrentUserEmployeeId,
-    getCurrentUserTenantId,
+  getCurrentUserRole,
+  getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
 import { fetchScopedEmployeeIds, applyEmployeeIdScope } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
@@ -29,6 +30,7 @@ import {
 import { CLIENT_SELECT, type ClientEntry } from "../../operations/clients-utils";
 import CrmShell from "../crm-shell";
 import SalesRegister from "./sales-register";
+import { isMobileMoneyCollectionReady } from "@/utils/product-sale-settlement";
 import {
   normalizeProductSaleEntry,
   PRODUCT_SALES_SELECT,
@@ -50,11 +52,13 @@ export default async function SalesPage() {
     viewAllBusinessUnits,
     tenantId,
     defaultSalesRepId,
+    viewerRole,
   ] = await Promise.all([
     getActiveBusinessUnitId(),
     getViewAllBusinessUnits(),
     getCurrentUserTenantId(),
     getCurrentUserEmployeeId(),
+    getCurrentUserRole(),
   ]);
   const buScope = resolveBusinessUnitReadScope({
     viewAllBusinessUnits,
@@ -134,8 +138,13 @@ export default async function SalesPage() {
     (webhookRows as WebhookSaleRow[] | null) ?? []
   ).map((row) => normalizeWebhookSale(row));
 
+  const mobileMoneyCollectionReady = await isMobileMoneyCollectionReady(
+    tenantId,
+    activeBusinessUnitId,
+  );
+
   return (
-    <CrmShell sectionTitle="Sales">
+    <CrmShell sectionTitle="Sales" hideSectionTitle>
       <SalesRegister
         initialIncomeEntries={initialIncomeEntries}
         initialWebhookSales={initialWebhookSales}
@@ -153,6 +162,8 @@ export default async function SalesPage() {
         fetchError={fetchError}
         activeBusinessUnitId={activeBusinessUnitId}
         tenantId={tenantId}
+        viewerRole={viewerRole}
+        mobileMoneyCollectionReady={mobileMoneyCollectionReady}
       />
     </CrmShell>
   );

@@ -12,6 +12,21 @@ import {
   getTopCustomers,
 } from "@/utils/assistant-staff-tools-crm";
 import {
+  getMobileMoneyStatus,
+  getPaystackPaymentsPending,
+} from "@/utils/assistant-staff-tools-crm-payments";
+import {
+  getAttendanceExceptions,
+  getEmployeeAttendanceMode,
+  getRemoteWorkArrangements,
+  getShiftTimes,
+} from "@/utils/assistant-staff-tools-attendance";
+import {
+  canAccessShiftTimesAssistant,
+  canCollectPaystackPayments,
+  canViewPaystackAttentionList,
+} from "@/utils/assistant-staff-r55-helpers";
+import {
   getBalanceSheetStatus,
   getBudgetStatus,
   getExpenseBreakdown,
@@ -49,6 +64,7 @@ import {
   getEmployeeLoans,
   getEmployeeOvertimeSummary,
   getEmployeePayDetail,
+  getPayrollAbsenceSummary,
   getStaffWelfareFundStatus,
 } from "@/utils/assistant-staff-tools-hr-payroll";
 import { getDisciplinaryRecords } from "@/utils/assistant-staff-tools-hr-disciplinary";
@@ -80,6 +96,7 @@ import {
   canAccessInventorySection,
   canAccessOperationsSection,
   canAccessPosSection,
+  canViewAttendanceExceptions,
 } from "@/utils/rbac-access";
 
 export {
@@ -146,6 +163,17 @@ export const GET_DIRECTOR_SCORECARD_TOOL_NAME = "get_director_scorecard";
 export const GET_CONSUMABLES_STORE_STOCK_TOOL_NAME =
   "get_consumables_store_stock";
 export const GET_CONSUMABLES_SITE_USAGE_TOOL_NAME = "get_consumables_site_usage";
+export const GET_ATTENDANCE_EXCEPTIONS_TOOL_NAME = "get_attendance_exceptions";
+export const GET_SHIFT_TIMES_TOOL_NAME = "get_shift_times";
+export const GET_EMPLOYEE_ATTENDANCE_MODE_TOOL_NAME =
+  "get_employee_attendance_mode";
+export const GET_REMOTE_WORK_ARRANGEMENTS_TOOL_NAME =
+  "get_remote_work_arrangements";
+export const GET_PAYSTACK_PAYMENTS_PENDING_TOOL_NAME =
+  "get_paystack_payments_pending";
+export const GET_MOBILE_MONEY_STATUS_TOOL_NAME = "get_mobile_money_status";
+export const GET_PAYROLL_ABSENCE_SUMMARY_TOOL_NAME =
+  "get_payroll_absence_summary";
 
 export type StaffAssistantToolsOptions = {
   showRealEstate?: boolean;
@@ -356,6 +384,22 @@ export function getStaffAssistantTools(
         "Sales totals and top products for this_month (default), last_month, or ytd.",
         PERIOD_SCHEMA,
       ),
+      tool(
+        GET_MOBILE_MONEY_STATUS_TOOL_NAME,
+        "Whether Mobile Money (Paystack) collection is ready for this workspace — explains why MoMo is greyed out / Not set up when settlement is missing.",
+      ),
+    );
+  }
+
+  if (
+    canCollectPaystackPayments(role) ||
+    canViewPaystackAttentionList(role)
+  ) {
+    tools.push(
+      tool(
+        GET_PAYSTACK_PAYMENTS_PENDING_TOOL_NAME,
+        "Paystack payments awaiting confirmation (pending/sent) and Payments needing attention (open). Amount, reference, customer name, age.",
+      ),
     );
   }
 
@@ -448,6 +492,59 @@ export function getStaffAssistantTools(
         GET_CONTRACT_EXPIRY_LIST_TOOL_NAME,
         "Contracts expiring within 30 days or past expiry while still active — Headcount & Contract Expiry report.",
       ),
+      tool(
+        GET_EMPLOYEE_ATTENDANCE_MODE_TOOL_NAME,
+        "Resolved attendance mode for one employee (Exempt / Quick remote / Standard), whether it is the role default, and the role default mode.",
+        EMPLOYEE_ID_SCHEMA,
+        ["employeeId"],
+      ),
+    );
+  }
+
+  if (canViewAttendanceExceptions(role)) {
+    tools.push(
+      tool(
+        GET_ATTENDANCE_EXCEPTIONS_TOOL_NAME,
+        "Attendance exceptions (late/early) for a payroll month — pending (default), decided, or all. Optional employeeName, staffId, contractName filters.",
+        {
+          month: { type: "number", description: "Calendar month 1–12." },
+          year: { type: "number", description: "Calendar year (optional)." },
+          view: {
+            type: "string",
+            enum: ["pending", "decided", "all"],
+            description: "pending (default), decided, or all.",
+          },
+          employeeName: {
+            type: "string",
+            description: "Optional partial employee name filter.",
+          },
+          staffId: {
+            type: "string",
+            description: "Optional staff ID filter (e.g. DF-STAFF-001).",
+          },
+          contractName: {
+            type: "string",
+            description:
+              "Optional contract/project name filter (matches employee contract or scheduled shift text).",
+          },
+        },
+      ),
+    );
+  }
+
+  if (canAccessShiftTimesAssistant(role)) {
+    tools.push(
+      tool(
+        GET_SHIFT_TIMES_TOOL_NAME,
+        "Contract shift times (weekday and weekend/holiday) with grace minutes per shift — Full Day, Morning, Afternoon, Night, Supervisor. Optional contractName filter.",
+        {
+          contractName: {
+            type: "string",
+            description:
+              "Optional client/contract name filter; omit to list contracts in scope (capped).",
+          },
+        },
+      ),
     );
   }
 
@@ -488,6 +585,18 @@ export function getStaffAssistantTools(
         GET_EMPLOYEE_LOANS_TOOL_NAME,
         "Loan/advance balances — optional employee filter; all scoped employees when omitted.",
         EMPLOYEE_ID_SCHEMA,
+      ),
+      tool(
+        GET_REMOTE_WORK_ARRANGEMENTS_TOOL_NAME,
+        "Active remote work arrangements — staff name, weekdays, start/end dates, location, auto_approve.",
+      ),
+      tool(
+        GET_PAYROLL_ABSENCE_SUMMARY_TOOL_NAME,
+        "Per-employee unpaid absence days and absence deduction (GHS) for a payroll month — from Absent/Half day decisions, same as Payroll Processing. Absence reduces GROSS before SSNIT/PAYE from Oct 2026 (never net pay). For half-day / absence pay questions, call this and offer a worked example from real data.",
+        {
+          month: { type: "number", description: "Payroll month 1–12." },
+          year: { type: "number", description: "Payroll year (optional)." },
+        },
       ),
     );
   }
@@ -657,6 +766,20 @@ export async function executeStaffAssistantTool(
       return getConsumablesSiteUsage(toolInput);
     case GET_DIRECTOR_SCORECARD_TOOL_NAME:
       return getDirectorScorecard(toolInput);
+    case GET_ATTENDANCE_EXCEPTIONS_TOOL_NAME:
+      return getAttendanceExceptions(toolInput);
+    case GET_SHIFT_TIMES_TOOL_NAME:
+      return getShiftTimes(toolInput);
+    case GET_EMPLOYEE_ATTENDANCE_MODE_TOOL_NAME:
+      return getEmployeeAttendanceMode(toolInput);
+    case GET_REMOTE_WORK_ARRANGEMENTS_TOOL_NAME:
+      return getRemoteWorkArrangements();
+    case GET_PAYSTACK_PAYMENTS_PENDING_TOOL_NAME:
+      return getPaystackPaymentsPending();
+    case GET_MOBILE_MONEY_STATUS_TOOL_NAME:
+      return getMobileMoneyStatus();
+    case GET_PAYROLL_ABSENCE_SUMMARY_TOOL_NAME:
+      return getPayrollAbsenceSummary(toolInput);
     default:
       return { error: `Unknown tool: ${toolName}` };
   }
@@ -708,6 +831,16 @@ export function staffAccountToolsSystemPromptAddition(
   if (canAccessCrmSection(role) || canAccessPosSection(role)) {
     lines.push(
       "- get_sales_summary: sales totals for this_month, last_month, or ytd",
+      "- get_mobile_money_status: MoMo collection status — Connected / Not connected / Needs attention / Checking (never checked); includes lastVerifiedAt and reason when Needs attention. For Not connected / Needs attention, point roles that can open it to Administration → Finance Settings → Online Payments (why Mobile Money is greyed out / Not set up)",
+    );
+  }
+
+  if (
+    canCollectPaystackPayments(role) ||
+    canViewPaystackAttentionList(role)
+  ) {
+    lines.push(
+      "- get_paystack_payments_pending: awaiting Paystack confirmation and Payments needing attention (amount, reference, customer, age)",
     );
   }
 
@@ -725,10 +858,23 @@ export function staffAccountToolsSystemPromptAddition(
     lines.push(
       "- search_employees: find employees by name, staff ID, or department (no pay data)",
       "- get_employee_profile / get_employee_attendance_summary / get_contract_expiry_list: HR employee lookup and attendance/contract data",
+      "- get_employee_attendance_mode: resolved attendance mode vs role default for one employee",
       "- get_employee_leave_balance: current-year entitlement remaining (entitled/used/days left) — use for 'how many days left' questions; same as HR → Leave Balances",
       "- get_employee_leave_history_register: manual Leave register episodes in report shape — NOT days remaining",
       "- get_employee_leave_history: chronological manual Leave register episodes with dates — NOT days remaining; does not include self-service leave_requests unless mirrored in Leave",
       "- get_employee_headcount: active headcount by employment type",
+    );
+  }
+
+  if (canViewAttendanceExceptions(role)) {
+    lines.push(
+      "- get_attendance_exceptions: pending/decided attendance exceptions for a month (late/early decisions)",
+    );
+  }
+
+  if (canAccessShiftTimesAssistant(role)) {
+    lines.push(
+      "- get_shift_times: weekday and weekend/holiday shift times per contract (Administration → Roster & Shift Settings)",
     );
   }
 
@@ -737,6 +883,8 @@ export function staffAccountToolsSystemPromptAddition(
       "- get_payroll_status: Dashboard Payroll Status card — pendingPayrollLiabilitiesGhs is open PAYE/SSNIT only (not Staff Welfare). Payroll lock is blocked if platform statutory rates are missing for the period (handbook §8.2a)",
       "- get_staff_welfare_fund_status: Staff Welfare Fund balance and recent accrual/disbursement history",
       "- get_employee_compensation / get_employee_pay_detail / get_employee_overtime_summary / get_employee_loans: sensitive payroll and loan data",
+      "- get_remote_work_arrangements: active HR → Remote Work arrangements",
+      "- get_payroll_absence_summary: unpaid absence days and absence deduction (GHS) per employee for a payroll month (absence reduces GROSS before SSNIT/PAYE from Oct 2026 — never say net pay). For half-day / absence pay questions, call this and offer a worked example from real data (basic, days to pay, amount off gross)",
     );
   }
 

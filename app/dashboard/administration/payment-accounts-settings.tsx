@@ -1,10 +1,15 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
-import { useMemo, useState } from "react";
+import { useAlert, useToast } from "@/components/feedback";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import PaymentAccountFormFields from "@/components/payment-account-form-fields";
 import type { BusinessUnitRow } from "@/utils/business-units-types";
+import {
+  PAYMENT_ACCOUNT_IN_USE_CODE,
+  PAYMENT_ACCOUNT_IN_USE_TITLE,
+} from "@/utils/payment-account-usage";
 import {
   emptyPaymentAccountForm,
   formatPaymentAccountAvailabilityLabel,
@@ -52,14 +57,20 @@ export default function PaymentAccountsSettings({
   fetchError,
 }: PaymentAccountsSettingsProps) {
   const router = useRouter();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
   const [accounts, setAccounts] = useState(initialAccounts);
   const [formOpen, setFormOpen] = useState<"new" | string | null>(null);
   const [form, setForm] = useState<FormState>(() => emptyPaymentAccountForm());
-  const [error, setError] = useState<string | null>(fetchError);
   const [warning, setWarning] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError);
+    }
+  }, [alertError, fetchError]);
 
   const unitNameById = useMemo(
     () => new Map(businessUnits.map((unit) => [unit.id, unit.name])),
@@ -77,17 +88,13 @@ export default function PaymentAccountsSettings({
   function openCreateForm() {
     setForm(emptyPaymentAccountForm());
     setFormOpen("new");
-    setError(null);
     setWarning(null);
-    setSuccess(null);
   }
 
   function openEditForm(account: PaymentAccountRow) {
     setForm(paymentAccountToForm(account));
     setFormOpen(account.id);
-    setError(null);
     setWarning(null);
-    setSuccess(null);
   }
 
   function closeForm() {
@@ -103,24 +110,21 @@ export default function PaymentAccountsSettings({
       | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to refresh payment accounts.");
+      await alertError(payload?.error ?? "Unable to refresh payment accounts.");
       return;
     }
 
     setAccounts(payload?.payment_accounts ?? []);
-    setError(null);
   }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setSaving(true);
-    setError(null);
-    setSuccess(null);
 
     const validationError = validatePaymentAccountInput(form);
     if (validationError) {
-      setError(validationError);
       setSaving(false);
+      await alertError(validationError);
       return;
     }
 
@@ -152,8 +156,8 @@ export default function PaymentAccountsSettings({
       | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to save payment account.");
       setSaving(false);
+      await alertError(payload?.error ?? "Unable to save payment account.");
       return;
     }
 
@@ -175,11 +179,54 @@ export default function PaymentAccountsSettings({
       await refreshAccounts();
     }
 
-    setSuccess(
-      isEditing ? "Payment account updated." : "Payment account created.",
-    );
+    toast(isEditing ? "Payment account updated." : "Payment account created.");
     closeForm();
     setSaving(false);
+    router.refresh();
+  }
+
+  async function deactivateAccount(account: PaymentAccountRow) {
+    setDeletingId(account.id);
+    const response = await fetch("/api/payment-accounts", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: account.id,
+        account_name: account.account_name,
+        bank_name: account.bank_name,
+        bank_account_number: account.bank_account_number,
+        momo_provider: account.momo_provider,
+        momo_number: account.momo_number,
+        momo_merchant_name: account.momo_merchant_name,
+        momo_merchant_id: account.momo_merchant_id,
+        is_active: false,
+        availability:
+          account.business_unit_ids.length > 0 ? "selected" : "all",
+        business_unit_ids: account.business_unit_ids,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as
+      | { payment_account?: PaymentAccountRow; error?: string }
+      | null;
+
+    if (!response.ok) {
+      setDeletingId(null);
+      await alertError(payload?.error ?? "Unable to deactivate payment account.");
+      return;
+    }
+
+    const updated = payload?.payment_account;
+    if (updated) {
+      setAccounts((current) =>
+        current.map((entry) => (entry.id === updated.id ? updated : entry)),
+      );
+    } else {
+      await refreshAccounts();
+    }
+
+    toast("Account deactivated");
+    setDeletingId(null);
     router.refresh();
   }
 
@@ -195,8 +242,6 @@ export default function PaymentAccountsSettings({
     }
 
     setDeletingId(account.id);
-    setError(null);
-    setSuccess(null);
 
     const response = await fetch("/api/payment-accounts", {
       method: "DELETE",
@@ -205,12 +250,38 @@ export default function PaymentAccountsSettings({
     });
 
     const payload = (await response.json().catch(() => null)) as
-      | { error?: string }
+      | {
+          error?: string;
+          code?: string;
+          title?: string;
+          canDeactivate?: boolean;
+        }
       | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to delete payment account.");
       setDeletingId(null);
+      const inUse =
+        response.status === 409 ||
+        payload?.code === PAYMENT_ACCOUNT_IN_USE_CODE;
+
+      if (inUse && payload?.canDeactivate !== false) {
+        const deactivate = await confirmDialog({
+          title: payload?.title?.trim() || PAYMENT_ACCOUNT_IN_USE_TITLE,
+          message:
+            payload?.error?.trim() ||
+            `${account.account_name} is linked to other records, so it can't be deleted. Deactivate it instead — it will no longer be offered for new records, and past records stay intact.`,
+          confirmLabel: "Deactivate account",
+          cancelLabel: "Cancel",
+        });
+        if (deactivate) {
+          await deactivateAccount(account);
+        }
+        return;
+      }
+
+      await alertError(payload?.error ?? "Unable to delete payment account.", {
+        title: "Couldn't delete payment account",
+      });
       return;
     }
 
@@ -220,35 +291,18 @@ export default function PaymentAccountsSettings({
       closeForm();
     }
 
-    setSuccess("Payment account deleted.");
+    toast("Payment account deleted.");
     setDeletingId(null);
     router.refresh();
   }
 
   return (
     <div className="space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
-      {success ? (
-        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          {success}
-        </p>
-      ) : null}
-
       <section className={cardClassName}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h3 className="text-sm font-medium text-slate-700">
-              Saved Payment Accounts
-            </h3>
-            <p className="mt-1 text-xs text-slate-500">
-              Company bank and mobile-money profiles used on customer invoices.
-            </p>
-          </div>
+          <h3 className="text-sm font-medium text-slate-700">
+            Saved Payment Accounts
+          </h3>
           <button
             type="button"
             onClick={openCreateForm}

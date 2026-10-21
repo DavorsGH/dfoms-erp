@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useQueryTab } from "@/hooks/use-query-tab";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -63,7 +64,10 @@ export default function ReportAProblem({
   initialTab,
 }: ReportAProblemProps) {
   const router = useRouter();
-  const [tab, setTab] = useState<ReportTab>(initialTab);
+  const { tab, setTab } = useQueryTab<ReportTab>({
+    values: ["report", "my-reports"],
+    defaultTab: initialTab,
+  });
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);

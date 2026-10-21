@@ -154,8 +154,8 @@ export function validateProductPurchaseBody(
     return "Quantity must be greater than zero.";
   }
 
-  if (!Number.isFinite(trimmed.cost_per_unit) || trimmed.cost_per_unit < 0) {
-    return "Cost per unit must be zero or greater.";
+  if (!Number.isFinite(trimmed.cost_per_unit) || trimmed.cost_per_unit <= 0) {
+    return "Enter a cost per unit greater than zero.";
   }
 
   if (!trimmed.payment_method) {

@@ -156,12 +156,10 @@ export default function PosCartLines({
   holdTooltip,
   heldListDisabled,
   heldListTooltip,
-  subtotal,
   promoDiscount,
   appliedPromoCode,
   loyaltyDiscount,
   loyaltyPointsRedeemed,
-  payableTotal,
   formatLoyaltyPoints,
 }: PosCartLinesProps) {
   return (
@@ -227,29 +225,21 @@ export default function PosCartLines({
         </ul>
       )}
 
-      <div className="mt-4 border-t border-slate-100 pt-4">
-        <p className="text-sm text-slate-700">
-          Cart subtotal:{" "}
-          <span className="font-semibold text-[#0f2744]">{formatGHS(subtotal)}</span>
-        </p>
-        {promoDiscount > 0 ? (
-          <p className="mt-1 text-sm text-emerald-800">
-            Promo discount ({appliedPromoCode}): -{formatGHS(promoDiscount)}
-          </p>
-        ) : null}
-        {loyaltyDiscount > 0 ? (
-          <p className="mt-1 text-sm text-emerald-800">
-            Loyalty redemption ({formatLoyaltyPoints(loyaltyPointsRedeemed)} pts): -
-            {formatGHS(loyaltyDiscount)}
-          </p>
-        ) : null}
-        <p className="mt-2 text-sm text-slate-700">
-          Amount due:{" "}
-          <span className="text-lg font-semibold text-[#0f2744]">
-            {formatGHS(payableTotal)}
-          </span>
-        </p>
-      </div>
+      {promoDiscount > 0 || loyaltyDiscount > 0 ? (
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          {promoDiscount > 0 ? (
+            <p className="text-sm text-emerald-800">
+              Promo discount ({appliedPromoCode}): -{formatGHS(promoDiscount)}
+            </p>
+          ) : null}
+          {loyaltyDiscount > 0 ? (
+            <p className="mt-1 text-sm text-emerald-800">
+              Loyalty redemption ({formatLoyaltyPoints(loyaltyPointsRedeemed)} pts): -
+              {formatGHS(loyaltyDiscount)}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }

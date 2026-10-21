@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useToast } from "@/components/feedback/feedback-context";
 import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import RegisterRowActions, {
@@ -19,7 +20,7 @@ import {
   type HrEmployee,
 } from "../hr-payroll/employee-utils";
 import { inputClassName } from "../hr-payroll/hr-register-utils";
-import type { ClientEntry } from "./clients-utils";
+import type { SiteFormContractChoice } from "@/lib/site-form-contracts";
 import {
   nullableInteger,
   nullableText,
@@ -37,7 +38,7 @@ import { useOperationsReadOnly } from "./operations-read-only-context";
 
 type SitesProps = {
   initialSites: SiteEntry[];
-  initialClients: ClientEntry[];
+  initialContracts: SiteFormContractChoice[];
   initialEmployees: HrEmployee[];
   fetchError: string | null;
   tenantId?: string | null;
@@ -45,7 +46,7 @@ type SitesProps = {
 
 const emptyForm = {
   site_code: "",
-  client_id: "",
+  contract_key: "",
   site_name: "",
   building: "",
   floor_zone: "",
@@ -58,14 +59,28 @@ const emptyForm = {
   notes: "",
 };
 
+function contractForSite(
+  site: SiteEntry,
+  contracts: SiteFormContractChoice[],
+): SiteFormContractChoice | null {
+  const code = site.project?.project_code?.trim() ?? "";
+  if (!code) {
+    return null;
+  }
+  return (
+    contracts.find((contract) => contract.projectCodes.includes(code)) ?? null
+  );
+}
+
 export default function Sites({
   initialSites,
-  initialClients,
+  initialContracts,
   initialEmployees,
   fetchError,
   tenantId = null,
 }: SitesProps) {
   const supabase = createClient();
+  const { toast } = useToast();
   const operationsReadOnly = useOperationsReadOnly();
   const buReadScope = useBusinessUnitReadScope();
   const [sites, setSites] = useState(initialSites.map(normalizeSiteEntry));
@@ -76,7 +91,7 @@ export default function Sites({
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
-  const [filterClient, setFilterClient] = useState("");
+  const [filterContract, setFilterContract] = useState("");
   const [filterRiskLevel, setFilterRiskLevel] = useState("");
   const skipFirstEmployeeScopeRefresh = useRef(true);
 
@@ -113,10 +128,20 @@ export default function Sites({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
   }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
+  const selectedContract =
+    initialContracts.find((contract) => contract.groupKey === form.contract_key) ??
+    null;
+
   const filteredSites = useMemo(() => {
+    const contract = initialContracts.find(
+      (entry) => entry.groupKey === filterContract,
+    );
     return sites.filter((site) => {
-      if (filterClient && (site.client_id ?? "") !== filterClient) {
-        return false;
+      if (contract) {
+        const code = site.project?.project_code?.trim() ?? "";
+        if (!contract.projectCodes.includes(code)) {
+          return false;
+        }
       }
 
       if (filterRiskLevel && (site.risk_level ?? "") !== filterRiskLevel) {
@@ -125,7 +150,7 @@ export default function Sites({
 
       return true;
     });
-  }, [filterClient, filterRiskLevel, sites]);
+  }, [filterContract, filterRiskLevel, initialContracts, sites]);
 
   async function refreshSites() {
     const { data, error: refreshError } = await supabase
@@ -158,7 +183,7 @@ export default function Sites({
     setEditingCode(site.site_code);
     setForm({
       site_code: site.site_code,
-      client_id: site.client_id ?? "",
+      contract_key: contractForSite(site, initialContracts)?.groupKey ?? "",
       site_name: site.site_name,
       building: site.building ?? "",
       floor_zone: site.floor_zone ?? "",
@@ -205,6 +230,7 @@ export default function Sites({
 
     await refreshSites();
     setDeletingCode(null);
+    toast("Site removed");
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -212,9 +238,24 @@ export default function Sites({
     setLoading(true);
     setError(null);
 
+    if (!selectedContract) {
+      setError("Select a contract before saving a site.");
+      setLoading(false);
+      return;
+    }
+    if (!selectedContract.clientId || selectedContract.dataIssue) {
+      setError(
+        selectedContract.dataIssue ??
+          "This contract has no customer, so the site cannot be saved.",
+      );
+      setLoading(false);
+      return;
+    }
+
     const payload = {
       site_code: form.site_code.trim(),
-      client_id: nullableText(form.client_id),
+      client_id: selectedContract.clientId,
+      project_id: selectedContract.anchorProjectId,
       site_name: form.site_name.trim(),
       building: nullableText(form.building),
       floor_zone: nullableText(form.floor_zone),
@@ -232,6 +273,7 @@ export default function Sites({
         .from("sites")
         .update({
           client_id: payload.client_id,
+          project_id: payload.project_id,
           site_name: payload.site_name,
           building: payload.building,
           floor_zone: payload.floor_zone,
@@ -274,6 +316,7 @@ export default function Sites({
     closeForm();
     await refreshSites();
     setLoading(false);
+    toast(editingCode ? "Site saved" : "Site created");
   }
 
   return (
@@ -282,17 +325,17 @@ export default function Sites({
         <div className="flex flex-wrap gap-4">
           <div className="min-w-[220px]">
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Filter by Customer
+              Filter by Contract
             </label>
             <select
-              value={filterClient}
-              onChange={(event) => setFilterClient(event.target.value)}
+              value={filterContract}
+              onChange={(event) => setFilterContract(event.target.value)}
               className={inputClassName}
             >
-              <option value="">All customers</option>
-              {initialClients.map((client) => (
-                <option key={client.client_id} value={client.client_id}>
-                  {client.client_name}
+              <option value="">All contracts</option>
+              {initialContracts.map((contract) => (
+                <option key={contract.groupKey} value={contract.groupKey}>
+                  {contract.label}
                 </option>
               ))}
             </select>
@@ -354,20 +397,28 @@ export default function Sites({
               ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Customer
+                  Contract
                 </label>
                 <select
-                  value={form.client_id}
-                  onChange={(event) => updateField("client_id", event.target.value)}
+                  required
+                  value={form.contract_key}
+                  onChange={(event) =>
+                    updateField("contract_key", event.target.value)
+                  }
                   className={inputClassName}
                 >
-                  <option value="">Select customer</option>
-                  {initialClients.map((client) => (
-                    <option key={client.client_id} value={client.client_id}>
-                      {client.client_name}
+                  <option value="">Select contract</option>
+                  {initialContracts.map((contract) => (
+                    <option key={contract.groupKey} value={contract.groupKey}>
+                      {contract.label}
                     </option>
                   ))}
                 </select>
+                {selectedContract?.dataIssue ? (
+                  <p className="mt-1 text-sm text-amber-700">
+                    {selectedContract.dataIssue}
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -527,7 +578,7 @@ export default function Sites({
         filteredCount={filteredSites.length}
         totalCount={sites.length}
         itemSingular="site"
-        hasActiveFilters={Boolean(filterClient || filterRiskLevel)}
+        hasActiveFilters={Boolean(filterContract || filterRiskLevel)}
       />
 
       <ScrollableTable>
@@ -535,7 +586,7 @@ export default function Sites({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Site Name</th>
-              <th className={scrollableTableThClassName}>Customer</th>
+              <th className={scrollableTableThClassName}>Contract</th>
               <th className={scrollableTableThClassName}>Building/Zone</th>
               <th className={scrollableTableThClassName}>Cleaning Frequency</th>
               <th className={scrollableTableThClassName}>Risk Level</th>
@@ -559,7 +610,10 @@ export default function Sites({
                   <td className="px-4 py-3 font-medium text-[#0f2744]">
                     {site.site_name}
                   </td>
-                  <td className="px-4 py-3">{getSiteClientName(site)}</td>
+                  <td className="px-4 py-3">
+                    {contractForSite(site, initialContracts)?.label ??
+                      getSiteClientName(site)}
+                  </td>
                   <td className="px-4 py-3">{getSiteBuildingZone(site)}</td>
                   <td className="px-4 py-3">{site.cleaning_frequency ?? "—"}</td>
                   <td className="px-4 py-3">{site.risk_level ?? "—"}</td>

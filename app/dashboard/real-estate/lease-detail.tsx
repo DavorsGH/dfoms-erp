@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQueryTab } from "@/hooks/use-query-tab";
 import { inputClassName } from "../hr-payroll/hr-register-utils";
 import {
   LATE_FEE_TYPE_OPTIONS,
@@ -73,7 +74,10 @@ export default function LeaseDetailView({
   >("returned");
   const [amountReturned, setAmountReturned] = useState("");
   const [resolutionNotes, setResolutionNotes] = useState("");
-  const [activeTab, setActiveTab] = useState<LeaseDetailTabId>("overview");
+  const { tab: activeTab, setTab: setActiveTab } = useQueryTab<LeaseDetailTabId>({
+    values: ["overview", "charges", "documents", "more"],
+    defaultTab: "overview",
+  });
 
   const [startDate, setStartDate] = useState(initialDetail.startDate);
   const [endDate, setEndDate] = useState(initialDetail.endDate);

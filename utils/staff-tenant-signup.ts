@@ -26,6 +26,10 @@ import {
   captureReferralAtSignup,
   createReferralCodeForTenant,
 } from "@/utils/referral-codes";
+import {
+  DEFAULT_EARLY_LEAVE_GRACE_MINUTES,
+  DEFAULT_LATE_GRACE_MINUTES,
+} from "@/lib/shift-attendance";
 
 type AdminClient = SupabaseClient;
 
@@ -89,6 +93,10 @@ async function rollbackStaffTenantSignup(
     await admin.from("leave_types").delete().eq("tenant_id", state.tenantId);
     await admin
       .from("inventory_balance_config")
+      .delete()
+      .eq("tenant_id", state.tenantId);
+    await admin
+      .from("attendance_grace_policy")
       .delete()
       .eq("tenant_id", state.tenantId);
     await admin.from("tenants").delete().eq("id", state.tenantId);
@@ -178,6 +186,21 @@ export async function provisionStaffTenantSignup(
   }
 
   rollbackState.tenantId = tenantRow.id;
+
+  const { error: gracePolicyError } = await admin
+    .from("attendance_grace_policy")
+    .insert({
+      tenant_id: tenantRow.id,
+      late_grace_minutes: DEFAULT_LATE_GRACE_MINUTES,
+      early_leave_grace_minutes: DEFAULT_EARLY_LEAVE_GRACE_MINUTES,
+    });
+  if (
+    gracePolicyError &&
+    !/duplicate|unique/i.test(gracePolicyError.message)
+  ) {
+    await rollbackStaffTenantSignup(admin, rollbackState);
+    return { ok: false, error: gracePolicyError.message, status: 400 };
+  }
 
   const { error: userAccountError } = await admin.from("user_accounts").insert({
     auth_uid: authUserId,

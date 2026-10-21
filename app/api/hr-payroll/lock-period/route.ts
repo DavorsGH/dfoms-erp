@@ -10,10 +10,12 @@ import { createAdminClient } from "@/utils/supabase/admin";
 import {
   PAYROLL_STATUS_LOCKED,
   PAYROLL_STATUS_PARTIALLY_LOCKED,
-  formatPeriodLabel,
-  isPayrollMonthEnded,
   type MonthEndCloseRecord,
 } from "@/app/dashboard/hr-payroll/payroll-period-utils";
+import {
+  fullLockServerBlock,
+  payrollTodayIso,
+} from "@/lib/payroll-full-lock-guard";
 import {
   filterPayrollRowsToEmployeeScope,
   resolvePayrollPeriodScopedEmployeeIds,
@@ -23,6 +25,8 @@ import {
   fetchStatutoryPayrollTaxConfigs,
   validateStatutoryPayrollBeforeLock,
 } from "@/app/dashboard/hr-payroll/statutory-payroll-config-utils";
+import { getAttendanceMonthBounds } from "@/app/dashboard/hr-payroll/attendance-register-utils";
+import { pendingExceptionLockRefusal } from "@/lib/shift-attendance";
 
 type LockPeriodBody = {
   payrollMonth?: string;
@@ -126,20 +130,6 @@ export async function POST(request: Request) {
       scopedRows = scopedRowsResult.rows;
     }
 
-    if (
-      lockStatus === PAYROLL_STATUS_LOCKED &&
-      body.periodYear &&
-      body.periodMonth &&
-      !isPayrollMonthEnded(body.periodYear, body.periodMonth)
-    ) {
-      return NextResponse.json(
-        {
-          error: `Permanent lock is only allowed on or after ${formatPeriodLabel(body.periodYear, body.periodMonth)} ends. Use Partial Lock Period until then.`,
-        },
-        { status: 400 },
-      );
-    }
-
     const periodYear =
       body.periodYear ??
       (payrollMonth ? Number(payrollMonth.slice(0, 4)) : undefined);
@@ -190,6 +180,51 @@ export async function POST(request: Request) {
       });
       if (statutoryBlock) {
         return NextResponse.json({ error: statutoryBlock }, { status: 400 });
+      }
+    }
+
+    if (periodYear && periodMonth) {
+      const { start, end } = getAttendanceMonthBounds(periodYear, periodMonth);
+      const { count, error: pendingError } = await admin
+        .from("attendance_register")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .eq("exception_status", "pending")
+        .gte("date", start)
+        .lte("date", end);
+      if (pendingError) {
+        return NextResponse.json({ error: pendingError.message }, { status: 400 });
+      }
+      const pendingCount = count ?? 0;
+      if (lockStatus === PAYROLL_STATUS_LOCKED) {
+        const block = fullLockServerBlock({
+          lockStatus,
+          payrollMonth,
+          periodYear,
+          periodMonth,
+          todayIso: payrollTodayIso(),
+          pendingExceptionCount: pendingCount,
+        });
+        if (block) {
+          return NextResponse.json(
+            block.status === 409
+              ? {
+                  error: block.error,
+                  pendingExceptionCount: block.pendingExceptionCount,
+                  exceptionsHref: block.exceptionsHref,
+                }
+              : { error: block.error },
+            { status: block.status },
+          );
+        }
+      } else {
+        const refusal = pendingExceptionLockRefusal(pendingCount, {
+          year: periodYear,
+          month: periodMonth,
+        });
+        if (refusal) {
+          return NextResponse.json(refusal, { status: 409 });
+        }
       }
     }
 

@@ -10,7 +10,6 @@ import {
 const navItems = [
   { label: "Duty Roster", href: "/dashboard/operations/duty-roster" },
   { label: "Roster History", href: "/dashboard/operations/roster-history" },
-  { label: "Sites", href: "/dashboard/operations/sites" },
   { label: "Consumables", href: "/dashboard/operations/consumables" },
   { label: "Work Orders", href: "/dashboard/operations/work-orders" },
   {
@@ -37,18 +36,29 @@ const navItems = [
 
 type OperationsNavProps = {
   showCustomerList?: boolean;
+  showOutageAttendance?: boolean;
 };
 
 export default function OperationsNav({
   showCustomerList = false,
+  showOutageAttendance = false,
 }: OperationsNavProps) {
   const pathname = usePathname();
+  const withOutage = showOutageAttendance
+    ? [
+        ...navItems,
+        {
+          label: "Outage attendance",
+          href: "/dashboard/operations/outage-attendance",
+        },
+      ]
+    : navItems;
   const visibleItems = showCustomerList
     ? [
         { label: "Customer List", href: "/dashboard/crm/customers" },
-        ...navItems,
+        ...withOutage,
       ]
-    : navItems;
+    : withOutage;
 
   return (
     <nav className="mb-6 border-b border-slate-200 pb-4">

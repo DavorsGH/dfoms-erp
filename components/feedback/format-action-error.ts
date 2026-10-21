@@ -1,3 +1,9 @@
+import {
+  isPostgresForeignKeyViolation,
+  looksLikeRawPostgresForeignKeyError,
+  tryFormatRawForeignKeyDeleteMessage,
+} from "@/utils/postgres-fk-violation";
+
 const NETWORK_ERROR_PATTERN =
   /failed to fetch|networkerror|network request failed|load failed/i;
 
@@ -29,10 +35,27 @@ function messageFromPostgresLike(error: PostgresLikeError): string | null {
   return parts.join(" ");
 }
 
+function friendlyIfForeignKey(
+  message: string,
+  itemName?: string | null,
+): string {
+  const friendly = tryFormatRawForeignKeyDeleteMessage(message, {
+    itemName: itemName ?? "This item",
+  });
+  if (friendly) {
+    return friendly;
+  }
+  return message;
+}
+
 /**
  * Maps thrown values, RPC/Postgres errors, and network failures to user-facing text.
+ * Postgres FK violations (23503 / raw constraint text) never surface as raw SQL.
  */
-export function formatActionError(error: unknown): string {
+export function formatActionError(
+  error: unknown,
+  options?: { itemName?: string | null },
+): string {
   if (error === null || error === undefined) {
     return "Something went wrong.";
   }
@@ -43,9 +66,9 @@ export function formatActionError(error: unknown): string {
       return "Something went wrong.";
     }
     if (NETWORK_ERROR_PATTERN.test(trimmed)) {
-      return "Couldn't reach the server — check your connection and try again.";
+      return "Couldn't reach the server. Check your connection and try again.";
     }
-    return trimmed;
+    return friendlyIfForeignKey(trimmed, options?.itemName);
   }
 
   if (error instanceof Error) {
@@ -54,18 +77,34 @@ export function formatActionError(error: unknown): string {
       return "Something went wrong.";
     }
     if (NETWORK_ERROR_PATTERN.test(trimmed)) {
-      return "Couldn't reach the server — check your connection and try again.";
+      return "Couldn't reach the server. Check your connection and try again.";
     }
-    return trimmed;
+    return friendlyIfForeignKey(trimmed, options?.itemName);
   }
 
   if (typeof error === "object") {
-    const fromPostgres = messageFromPostgresLike(error as PostgresLikeError);
+    const pg = error as PostgresLikeError;
+    const pgLike = {
+      code: pg.code ?? "",
+      message: pg.message ?? "",
+    };
+    if (
+      isPostgresForeignKeyViolation(pgLike) ||
+      looksLikeRawPostgresForeignKeyError(pg.message)
+    ) {
+      return (
+        tryFormatRawForeignKeyDeleteMessage(pg.message, {
+          itemName: options?.itemName ?? "This item",
+        }) ?? "This item is linked to other records and can't be deleted."
+      );
+    }
+
+    const fromPostgres = messageFromPostgresLike(pg);
     if (fromPostgres) {
       if (NETWORK_ERROR_PATTERN.test(fromPostgres)) {
-        return "Couldn't reach the server — check your connection and try again.";
+        return "Couldn't reach the server. Check your connection and try again.";
       }
-      return fromPostgres;
+      return friendlyIfForeignKey(fromPostgres, options?.itemName);
     }
   }
 

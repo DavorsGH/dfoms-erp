@@ -5,6 +5,8 @@ import Tooltip from "@/components/ui/tooltip";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useAlert, useToast } from "@/components/feedback/feedback-context";
+import { ensureEmployeeDevicePin } from "@/lib/employee-device-pin";
 import { uploadEmployeePhoto } from "@/utils/employee-photo";
 import { prefetchEmployeePhotoSignedUrls } from "@/utils/employee-photo-signed-url-cache";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
@@ -46,11 +48,9 @@ import { allocateNewEmployeeCodes } from "./employee-ids-api";
 import {
   getDepartmentName,
   getPositionName,
-  getProjectName,
   type DepartmentLookup,
   type EmployeeLookups,
   type EmployeePayConfig,
-  type ProjectLookup,
 } from "./lookup-utils";
 import {
   calculateEstimatedNetMonthlyPay,
@@ -63,6 +63,15 @@ import {
 } from "../administration/compensation-policy-utils";
 import { isActiveEmployee } from "../hr-payroll/employee-utils";
 import {
+  contractChangeClearsSite,
+  contractGroupKeyForStoredProject,
+  contractLabelForStoredProject,
+  contractProjectToPersist,
+  contractTypeLabel,
+  listContractChoices,
+  type ContractSiteProject,
+} from "@/lib/employee-contract-site";
+import {
   buildEmploymentHistoryInsert,
   EMPLOYMENT_HISTORY_SELECT,
   hasTrackedEmploymentChange,
@@ -74,6 +83,13 @@ import {
 import type { SupabaseClient } from "@supabase/supabase-js";
 import FilteredListCount from "../filtered-list-count";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
+import {
+  ATTENDANCE_MODES,
+  attendanceModeLabel,
+  attendanceModeToStored,
+  roleDefaultOptionLabel,
+} from "@/lib/attendance-mode";
+import RemoteWorkArrangementsManager from "../hr-payroll/remote-work-arrangements-manager";
 import {
   useBusinessUnitReadScope,
   useStampBusinessUnitId,
@@ -133,6 +149,12 @@ type EmployeesDirectoryProps = {
   canRecordEmploymentHistory: boolean;
   canUseEmployeeBulkImport: boolean;
   canViewSalary: boolean;
+  canEditRemoteAttendance?: boolean;
+  /** super_admin, director, hr: may set the attendance mode and manage arrangements. */
+  canEditAttendanceMode?: boolean;
+  tenantId?: string | null;
+  /** employee_id → linked user role, for the "Role default (X)" label. */
+  roleByEmployeeId?: Record<string, string>;
   /** Tenant default from HR Settings → Salary Settings; pre-fills new employee form only. */
   defaultWelfareDeductionRate?: number | null;
   /** Active business-unit context for create-only stamping; null = All Businesses. */
@@ -166,8 +188,8 @@ const emptyForm = {
   appointment_end_date: "",
   employment_status: DEFAULT_EMPLOYMENT_STATUS,
   contract_project: "",
+  contract_group_key: "",
   shift: "",
-  assigned_site_id: "",
   basic_salary: "",
   housing_allowance: "",
   transport_allowance: "",
@@ -238,8 +260,8 @@ function employeeToForm(employee: EmployeeRecord) {
       : "",
     employment_status: employee.employment_status ?? DEFAULT_EMPLOYMENT_STATUS,
     contract_project: employee.contract_project ?? "",
+    contract_group_key: "",
     shift: employee.shift ?? "",
-    assigned_site_id: employee.assigned_site_id ?? "",
     basic_salary:
       employee.basic_salary === null ? "" : String(employee.basic_salary),
     housing_allowance:
@@ -317,7 +339,6 @@ function buildPayload(
     employment_status: form.employment_status || DEFAULT_EMPLOYMENT_STATUS,
     contract_project: form.contract_project || null,
     shift: form.shift || null,
-    assigned_site_id: form.assigned_site_id || null,
     basic_salary: resolved
       ? resolved.basic_salary
       : form.basic_salary
@@ -457,15 +478,24 @@ export default function EmployeesDirectory({
   canRecordEmploymentHistory,
   canUseEmployeeBulkImport,
   canViewSalary,
+  canEditRemoteAttendance = false,
+  canEditAttendanceMode = false,
+  tenantId = null,
+  roleByEmployeeId = {},
   defaultWelfareDeductionRate = null,
   activeBusinessUnitId = null,
 }: EmployeesDirectoryProps) {
   const payFieldsReadOnly = canEditEmployees && !canEditEmployeePayFields;
   const supabase = createClient();
+  const { toast } = useToast();
+  const { alertError } = useAlert();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const formRef = useRef<HTMLElement>(null);
   const [employees, setEmployees] = useState(initialEmployees);
+  const [remoteAttendanceAllowed, setRemoteAttendanceAllowed] = useState(false);
+  /** "" = role default (stored as NULL). */
+  const [attendanceModeChoice, setAttendanceModeChoice] = useState("");
   const [lookups] = useState(initialLookups);
   const [payConfig] = useState(initialPayConfig);
   const [netPayByEmployeeId] = useState(initialNetPayByEmployeeId);
@@ -491,6 +521,10 @@ export default function EmployeesDirectory({
     null,
   );
   const [form, setForm] = useState(emptyForm);
+  // Role default needs a linked user; a new employee has none yet.
+  const roleDefaultAttendanceLabel = roleDefaultOptionLabel(
+    editingEmployeeId ? (roleByEmployeeId[editingEmployeeId] ?? null) : null,
+  );
   const [changeReason, setChangeReason] = useState("");
   const [employmentHistory, setEmploymentHistory] = useState<
     EmploymentHistoryEntry[]
@@ -505,6 +539,7 @@ export default function EmployeesDirectory({
   const [filterEmploymentType, setFilterEmploymentType] = useState("");
   const [filterPosition, setFilterPosition] = useState("");
   const [filterShift, setFilterShift] = useState("");
+  const [filterContract, setFilterContract] = useState("");
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -571,6 +606,33 @@ export default function EmployeesDirectory({
     [lookups.positions],
   );
 
+  const contractProjects = useMemo<ContractSiteProject[]>(
+    () =>
+      lookups.projects.map((project) => ({
+        project_code: project.code,
+        project_name: project.name,
+        service_contract_id: project.service_contract_id,
+        is_archived: project.is_archived,
+        contract_type: project.contract_type,
+      })),
+    [lookups.projects],
+  );
+  const contractSites = lookups.contractSites ?? [];
+  const contractChoices = useMemo(
+    () => listContractChoices(contractProjects, contractSites),
+    [contractProjects, contractSites],
+  );
+
+  function contractLabel(employee: Pick<EmployeeRecord, "contract_project">) {
+    return (
+      contractLabelForStoredProject(
+        employee.contract_project,
+        contractProjects,
+        contractSites,
+      ) || "—"
+    );
+  }
+
   const filteredEmployees = useMemo(() => {
     const query = searchName.trim().toLowerCase();
 
@@ -608,10 +670,22 @@ export default function EmployeesDirectory({
         return false;
       }
 
+      if (
+        filterContract &&
+        contractGroupKeyForStoredProject(
+          employee.contract_project,
+          contractProjects,
+        ) !== filterContract
+      ) {
+        return false;
+      }
+
       return true;
     });
   }, [
+    contractProjects,
     employees,
+    filterContract,
     filterDepartment,
     filterEmploymentType,
     filterPosition,
@@ -654,17 +728,7 @@ export default function EmployeesDirectory({
           ).localeCompare(getPositionName(lookups.positions, right.position));
           break;
         case "contract_project":
-          comparison = getProjectName(
-            projectNameMap,
-            left.contract_project,
-            left.project_ref,
-          ).localeCompare(
-            getProjectName(
-              projectNameMap,
-              right.contract_project,
-              right.project_ref,
-            ),
-          );
+          comparison = contractLabel(left).localeCompare(contractLabel(right));
           break;
         case "employment_type":
           comparison = (left.employment_type ?? "").localeCompare(
@@ -699,12 +763,13 @@ export default function EmployeesDirectory({
 
     return sorted;
   }, [
+    contractProjects,
+    contractSites,
     departmentNameMap,
     filteredEmployees,
     listCompensationByEmployeeId,
     lookups.positions,
     netPayByEmployeeId,
-    projectNameMap,
     sortColumn,
     sortDirection,
   ]);
@@ -715,7 +780,8 @@ export default function EmployeesDirectory({
       filterDepartment ||
       filterEmploymentType ||
       filterPosition ||
-      filterShift,
+      filterShift ||
+      filterContract,
   );
 
   useEffect(() => {
@@ -728,7 +794,7 @@ export default function EmployeesDirectory({
     );
   }, [displayEmployees]);
 
-  const tableColumnCount = (canViewSalary ? 12 : 9) + 1;
+  const tableColumnCount = canViewSalary ? 13 : 10;
 
   const allVisibleSelected =
     displayEmployees.length > 0 &&
@@ -839,7 +905,6 @@ export default function EmployeesDirectory({
         : null,
     [editingEmployeeId, employees],
   );
-
   const pendingPayloadSnapshot = useMemo(
     () =>
       snapshotFromPayload(
@@ -935,6 +1000,8 @@ export default function EmployeesDirectory({
       ),
     });
     setChangeReason("");
+    setRemoteAttendanceAllowed(false);
+    setAttendanceModeChoice("");
     setEmploymentHistory([]);
     setShowForm(true);
     scrollToForm();
@@ -944,6 +1011,8 @@ export default function EmployeesDirectory({
     setLoading(false);
     setEditingEmployeeId(null);
     setForm(emptyForm);
+    setRemoteAttendanceAllowed(false);
+    setAttendanceModeChoice("");
     setChangeReason("");
     setEmploymentHistory([]);
     setShowForm(false);
@@ -952,7 +1021,15 @@ export default function EmployeesDirectory({
   function openEmployeeForm(employee: EmployeeRecord) {
     setLoading(false);
     setEditingEmployeeId(employee.employee_id);
-    setForm(employeeToForm(employee));
+    setForm({
+      ...employeeToForm(employee),
+      contract_group_key: contractGroupKeyForStoredProject(
+        employee.contract_project,
+        contractProjects,
+      ),
+    });
+    setRemoteAttendanceAllowed(employee.remote_attendance_allowed === true);
+    setAttendanceModeChoice(attendanceModeToStored(employee.attendance_mode) ?? "");
     setChangeReason("");
     setShowForm(true);
     scrollToForm();
@@ -1102,10 +1179,29 @@ export default function EmployeesDirectory({
       return;
     }
 
+    const originalContract = editingEmployee?.contract_project ?? null;
+    const clearsSite =
+      Boolean(editingEmployeeId) &&
+      contractChangeClearsSite({
+        originalContractProject: originalContract,
+        selectedGroupKey: form.contract_group_key,
+        projects: contractProjects,
+      });
+    const formToSave = {
+      ...form,
+      contract_project:
+        contractProjectToPersist({
+          originalContractProject: editingEmployeeId ? originalContract : null,
+          selectedGroupKey: form.contract_group_key,
+          projects: contractProjects,
+        }) ?? "",
+    };
+
     setLoading(true);
     setError(null);
 
     try {
+    let createdEmployeeId: string | null = null;
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setError(buContext.error);
@@ -1142,7 +1238,15 @@ export default function EmployeesDirectory({
         setError(formatBusinessUnitAccessError(accessError));
         return;
       }
-      let payload = buildPayload(form, resolvedCompensation);
+      let payload = {
+        ...buildPayload(formToSave, resolvedCompensation),
+        ...(canEditRemoteAttendance
+          ? { remote_attendance_allowed: remoteAttendanceAllowed }
+          : {}),
+        ...(canEditAttendanceMode
+          ? { attendance_mode: attendanceModeToStored(attendanceModeChoice) }
+          : {}),
+      };
       if (!canEditEmployeePayFields && prior) {
         payload = {
           ...payload,
@@ -1158,6 +1262,9 @@ export default function EmployeesDirectory({
           momo_name: prior.momo_name,
         };
       }
+      const employeeUpdate = clearsSite
+        ? { ...payload, assigned_site_id: null }
+        : payload;
       const afterSnapshot = snapshotFromPayload(payload);
       const shouldWriteHistory =
         canRecordEmploymentHistory &&
@@ -1166,7 +1273,7 @@ export default function EmployeesDirectory({
 
       const { error: saveError } = await supabase
         .from("employees")
-        .update(payload)
+        .update(employeeUpdate)
         .eq("employee_id", editingEmployeeId);
 
       if (saveError) {
@@ -1201,14 +1308,22 @@ export default function EmployeesDirectory({
         return;
       }
 
-      let payload = buildPayload(
-        {
-          ...form,
-          employee_id: allocated.employeeId,
-          staff_id: allocated.staffId,
-        },
-        resolvedCompensation,
-      );
+      let payload = {
+        ...buildPayload(
+          {
+            ...formToSave,
+            employee_id: allocated.employeeId,
+            staff_id: allocated.staffId,
+          },
+          resolvedCompensation,
+        ),
+        ...(canEditRemoteAttendance
+          ? { remote_attendance_allowed: remoteAttendanceAllowed }
+          : {}),
+        ...(canEditAttendanceMode
+          ? { attendance_mode: attendanceModeToStored(attendanceModeChoice) }
+          : {}),
+      };
 
       if (payFieldsReadOnly) {
         payload = {
@@ -1231,6 +1346,7 @@ export default function EmployeesDirectory({
         setError(saveError.message);
         return;
       }
+      createdEmployeeId = allocated.employeeId;
 
       requestTenantAdminDirectorNotification({
         title: "New employee added",
@@ -1280,6 +1396,31 @@ export default function EmployeesDirectory({
       }
     }
 
+    const pinEmployeeId = editingEmployeeId ?? createdEmployeeId;
+    const priorStaffId = editingEmployeeId
+      ? employees.find((employee) => employee.employee_id === editingEmployeeId)
+          ?.staff_id
+      : null;
+    const staffIdChanged =
+      !editingEmployeeId || (priorStaffId != null && priorStaffId !== formToSave.staff_id);
+    if (pinEmployeeId && staffIdChanged) {
+      const { data: savedEmployee } = await supabase
+        .from("employees")
+        .select("tenant_id, staff_id")
+        .eq("employee_id", pinEmployeeId)
+        .maybeSingle();
+      if (savedEmployee?.tenant_id && savedEmployee.staff_id) {
+        const pinResult = await ensureEmployeeDevicePin(
+          supabase,
+          savedEmployee.tenant_id,
+          savedEmployee.staff_id,
+        );
+        if (pinResult.status === "skipped" && pinResult.detail) {
+          void alertError(pinResult.detail, { title: "PIN not assigned" });
+        }
+      }
+    }
+    toast(editingEmployeeId ? "Employee saved" : "Employee created");
     closeForm();
     await refreshEmployees();
     } catch (unexpected) {
@@ -1429,6 +1570,23 @@ export default function EmployeesDirectory({
             {SHIFT_OPTIONS.map((shift) => (
               <option key={shift} value={shift}>
                 {shift}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="min-w-[180px]">
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            Contract
+          </label>
+          <select
+            value={filterContract}
+            onChange={(e) => setFilterContract(e.target.value)}
+            className={inputClassName}
+          >
+            <option value="">All contracts</option>
+            {contractChoices.map((choice) => (
+              <option key={choice.groupKey} value={choice.groupKey}>
+                {choice.label}
               </option>
             ))}
           </select>
@@ -1802,6 +1960,35 @@ export default function EmployeesDirectory({
                     className={inputClassName}
                   />
                 </Field>
+                {canEditRemoteAttendance ? (
+                  <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-2">
+                    <input
+                      type="checkbox"
+                      checked={remoteAttendanceAllowed}
+                      onChange={(event) =>
+                        setRemoteAttendanceAllowed(event.target.checked)
+                      }
+                    />
+                    Remote/hybrid attendance allowed
+                  </label>
+                ) : null}
+                <Field label="Attendance mode">
+                  <select
+                    value={attendanceModeChoice}
+                    disabled={!canEditAttendanceMode}
+                    onChange={(event) => setAttendanceModeChoice(event.target.value)}
+                    className={inputClassName}
+                  >
+                    <option value="">
+                      {roleDefaultAttendanceLabel}
+                    </option>
+                    {ATTENDANCE_MODES.map((mode) => (
+                      <option key={mode} value={mode}>
+                        {attendanceModeLabel(mode)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
                 <Field label="Employment Status">
                   <select
                     required
@@ -1818,32 +2005,32 @@ export default function EmployeesDirectory({
                     ))}
                   </select>
                 </Field>
-                <Field label="Contract/Project Assignment">
-                  <select
-                    value={form.contract_project}
-                    onChange={(e) =>
-                      updateField("contract_project", e.target.value)
-                    }
-                    className={inputClassName}
-                  >
-                    <option value="">Select project</option>
-                    {form.contract_project &&
-                    !lookups.projects.some(
-                      (project) => project.code === form.contract_project,
-                    ) ? (
-                      <option value={form.contract_project}>
-                        {getProjectName(
-                          projectNameMap,
-                          form.contract_project,
+                <Field label="Contract">
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={form.contract_group_key}
+                      onChange={(e) =>
+                        updateField("contract_group_key", e.target.value)
+                      }
+                      className={inputClassName}
+                    >
+                      <option value="">Select contract</option>
+                      {contractChoices.map((choice) => (
+                        <option key={choice.groupKey} value={choice.groupKey}>
+                          {choice.label}
+                        </option>
+                      ))}
+                    </select>
+                    {form.contract_group_key ? (
+                      <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                        {contractTypeLabel(
+                          contractChoices.find(
+                            (choice) => choice.groupKey === form.contract_group_key,
+                          )?.contractType ?? "contract",
                         )}
-                      </option>
+                      </span>
                     ) : null}
-                    {lookups.projects.map((project: ProjectLookup) => (
-                      <option key={project.code} value={project.code}>
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
+                  </div>
                 </Field>
                 <Field label="Shift">
                   <select
@@ -2161,6 +2348,19 @@ export default function EmployeesDirectory({
               </button>
             </div>
           </form>
+          {editingEmployeeId && tenantId && form.staff_id ? (
+            <div className="mt-8 space-y-4">
+              <SectionHeading title="Remote Work Arrangements" />
+              <RemoteWorkArrangementsManager
+                key={form.staff_id}
+                tenantId={tenantId}
+                staff={[{ staff_id: form.staff_id, full_name: form.full_name }]}
+                initialArrangements={[]}
+                canEdit={canEditAttendanceMode}
+                lockedStaffId={form.staff_id}
+              />
+            </div>
+          ) : null}
         </section>
       )}
 
@@ -2213,7 +2413,7 @@ export default function EmployeesDirectory({
                 onSort={handleSort}
               />
               <SortableHeader
-                label="Contract/Project"
+                label="Contract"
                 column="contract_project"
                 sortColumn={sortColumn}
                 sortDirection={sortDirection}
@@ -2333,13 +2533,7 @@ export default function EmployeesDirectory({
                     <td className="px-4 py-3">
                       {getPositionName(lookups.positions, employee.position)}
                     </td>
-                    <td className="px-4 py-3">
-                      {getProjectName(
-                        projectNameMap,
-                        employee.contract_project,
-                        employee.project_ref,
-                      )}
-                    </td>
+                    <td className="px-4 py-3">{contractLabel(employee)}</td>
                     <td className="px-4 py-3">
                       {employee.employment_type ?? "—"}
                     </td>

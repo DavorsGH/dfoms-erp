@@ -164,6 +164,8 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
           variant={alertState.variant}
           title={alertState.title}
           message={alertState.message}
+          href={alertState.href}
+          hrefLabel={alertState.hrefLabel}
           onClose={closeAlert}
         />
       ) : null}

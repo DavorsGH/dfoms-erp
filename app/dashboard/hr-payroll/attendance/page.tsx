@@ -1,10 +1,7 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import {
-  getActiveBusinessUnitId,
-  getCurrentUserTenantId,
-  getViewAllBusinessUnits,
-} from "@/utils/dashboard-auth";
+import { getCurrentUserRole, getCurrentUserTenantId, getActiveBusinessUnitId, getViewAllBusinessUnits } from "@/utils/dashboard-auth";
+import { canDecideAttendanceException } from "@/utils/rbac-access";
 import {
   applyBusinessUnitScope,
   resolveBusinessUnitReadScope,
@@ -13,6 +10,7 @@ import {
   applyStaffIdScope,
   fetchScopedStaffIds,
 } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
+import AttendanceExceptionsPanel from "../attendance-exceptions-panel";
 import AttendanceRegister from "../attendance-register";
 import {
   getAttendanceMonthBounds,
@@ -33,11 +31,12 @@ export default async function AttendancePage() {
   const { year: initialYear, month: initialMonth } = getDefaultReportPeriod();
   const { start, end } = getAttendanceMonthBounds(initialYear, initialMonth);
 
-  const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
+  const [tenantId, activeBusinessUnitId, viewAllBusinessUnits, role] =
     await Promise.all([
       getCurrentUserTenantId(),
       getActiveBusinessUnitId(),
       getViewAllBusinessUnits(),
+      getCurrentUserRole(),
     ]);
   const buScope = resolveBusinessUnitReadScope({
     viewAllBusinessUnits,
@@ -74,6 +73,7 @@ export default async function AttendancePage() {
 
   return (
     <HrPayrollShell sectionTitle="Attendance Register">
+      <AttendanceExceptionsPanel />
       <AttendanceRegister
         initialEntries={(data as AttendanceRegisterEntry[] | null) ?? []}
         initialEmployees={filterActiveEmployees(
@@ -83,6 +83,7 @@ export default async function AttendancePage() {
         initialMonth={initialMonth}
         fetchError={fetchError}
         tenantId={tenantId}
+        canDecide={canDecideAttendanceException(role)}
       />
     </HrPayrollShell>
   );

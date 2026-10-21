@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { TAX_SETTINGS_ON_CONFLICT } from "@/utils/phase5e-key-structure";
@@ -12,6 +12,7 @@ import {
 } from "@/app/dashboard/finance/tax-utils";
 import TaxSettingReviewBanner from "@/app/dashboard/finance/tax-setting-review-banner";
 import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
+import { useAlert, useToast } from "@/components/feedback";
 
 type SalesTaxBasisSettingsProps = {
   tenantId: string;
@@ -38,22 +39,26 @@ export default function SalesTaxBasisSettings({
   const router = useRouter();
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
   const [salesTaxBasis, setSalesTaxBasis] = useState<SalesTaxBasis>(
     initialSalesTaxBasis,
   );
-  const [error, setError] = useState<string | null>(fetchError);
-  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError);
+    }
+  }, [alertError, fetchError]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setSaving(true);
-    setError(null);
-    setInfoMessage(null);
 
     if (!stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
       setSaving(false);
+      await alertError(stampBusinessUnit.error);
       return;
     }
 
@@ -68,13 +73,13 @@ export default function SalesTaxBasisSettings({
     );
 
     if (saveError) {
-      setError(saveError.message);
       setSaving(false);
+      await alertError(saveError);
       return;
     }
 
-    setInfoMessage("VAT/WHT calculation basis saved.");
     setSaving(false);
+    toast("VAT/WHT calculation basis saved.");
     router.refresh();
   }
 
@@ -92,18 +97,6 @@ export default function SalesTaxBasisSettings({
 
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <form onSubmit={handleSubmit} className="space-y-4">
-        {error ? (
-          <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </p>
-        ) : null}
-
-        {infoMessage ? (
-          <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            {infoMessage}
-          </p>
-        ) : null}
-
         <div>
           <label
             htmlFor="sales_tax_basis"

@@ -24,6 +24,15 @@ export type DepartmentLookup = {
 export type ProjectLookup = {
   code: string;
   name: string;
+  service_contract_id: string | null;
+  is_archived: boolean;
+  contract_type: "contract" | "adhoc";
+};
+
+export type ContractSiteLookup = {
+  site_code: string;
+  site_name: string;
+  project_code: string | null;
 };
 
 export type PositionLookup = {
@@ -64,8 +73,9 @@ async function fetchProjects(
 ): Promise<ProjectLookup[]> {
   let query = supabase
     .from("projects")
-    .select("project_code, project_name")
-    .eq("is_archived", false);
+    .select(
+      "project_code, project_name, service_contract_id, is_archived, contract_type",
+    );
   if (buScope) {
     query = applyBusinessUnitScope(query, buScope);
   }
@@ -80,10 +90,50 @@ async function fetchProjects(
   }
 
   return data.map((row) => {
-    const record = row as Record<string, string>;
+    const record = row as Record<string, string | boolean | null>;
     return {
-      code: record.project_code,
-      name: record.project_name,
+      code: String(record.project_code ?? ""),
+      name: String(record.project_name ?? ""),
+      service_contract_id:
+        typeof record.service_contract_id === "string"
+          ? record.service_contract_id
+          : null,
+      is_archived: record.is_archived === true,
+      contract_type: record.contract_type === "adhoc" ? "adhoc" : "contract",
+    };
+  });
+}
+
+async function fetchContractSites(
+  supabase: SupabaseClient,
+  tenantId?: string | null,
+): Promise<ContractSiteLookup[]> {
+  let query = supabase
+    .from("sites")
+    .select(
+      "site_code, site_name, project:projects!sites_project_id_fkey(project_code)",
+    )
+    .order("site_name", { ascending: true });
+  if (tenantId) {
+    query = query.eq("tenant_id", tenantId);
+  }
+  const { data, error } = await query;
+  if (error || !data?.length) {
+    return [];
+  }
+  return data.map((row) => {
+    const record = row as {
+      site_code: string;
+      site_name: string;
+      project?: { project_code: string } | { project_code: string }[] | null;
+    };
+    const project = Array.isArray(record.project)
+      ? record.project[0]
+      : record.project;
+    return {
+      site_code: record.site_code,
+      site_name: record.site_name,
+      project_code: project?.project_code ?? null,
     };
   });
 }
@@ -166,6 +216,7 @@ export type EmployeeLookups = {
   departments: DepartmentLookup[];
   positions: PositionLookup[];
   projects: ProjectLookup[];
+  contractSites: ContractSiteLookup[];
   shifts: NamedLookup[];
   sites: SiteLookup[];
 };
@@ -184,10 +235,12 @@ export async function loadEmployeeLookups(
   tenantId?: string | null,
   buScope?: BusinessUnitReadScope,
 ): Promise<EmployeeLookups> {
-  const [departments, positions, projects, shifts, sites] = await Promise.all([
+  const [departments, positions, projects, contractSites, shifts, sites] =
+    await Promise.all([
     fetchDepartments(supabase, tenantId),
     fetchPositions(supabase, tenantId),
     fetchProjects(supabase, tenantId, buScope),
+    fetchContractSites(supabase, tenantId),
     fetchNamedLookup(supabase, "shifts"),
     fetchSites(supabase),
   ]);
@@ -196,6 +249,7 @@ export async function loadEmployeeLookups(
     departments,
     positions,
     projects,
+    contractSites,
     shifts,
     sites,
   };

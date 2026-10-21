@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
+import { useQueryTab } from "@/hooks/use-query-tab";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -84,7 +85,10 @@ export default function Supplier360({
   showFinanceDetails,
 }: Supplier360Props) {
   const visibleTabs = getSupplier360Tabs(showFinanceDetails);
-  const [activeTab, setActiveTab] = useState<Supplier360TabId>("purchases");
+  const { tab: activeTab, setTab: setActiveTab } = useQueryTab<Supplier360TabId>({
+    values: visibleTabs.map((item) => item.id),
+    defaultTab: "purchases",
+  });
   const activeSectionError =
     sectionErrors[supplier360TabSectionKey(activeTab)] ?? null;
 

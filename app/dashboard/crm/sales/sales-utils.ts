@@ -71,14 +71,36 @@ export function productSaleChannelFromInvoice(
   return "other";
 }
 
-function paymentMethodFromInvoice(invoiceNo: string | null | undefined): string {
-  const channel = productSaleChannelFromInvoice(invoiceNo);
-  if (channel === "pos") {
-    return "POS";
+const PAYMENT_METHOD_CHANNEL_LABELS = new Set([
+  "product sale",
+  "pos",
+  "webhook",
+]);
+
+/** Recorded tender from the sale column or the "Payment method:" notes line. Channel names are not methods. */
+export function recordedProductSalePaymentMethod(entry: {
+  payment_method?: string | null;
+  notes?: string | null;
+}): string {
+  const column = entry.payment_method?.trim() ?? "";
+  if (
+    column &&
+    column !== "—" &&
+    !PAYMENT_METHOD_CHANNEL_LABELS.has(column.toLowerCase())
+  ) {
+    return column;
   }
-  if (channel === "psi") {
-    return "Product Sale";
+
+  const fromNotes =
+    entry.notes?.match(/^Payment method:\s*(.+)$/m)?.[1]?.trim() ?? "";
+  if (
+    fromNotes &&
+    fromNotes !== "—" &&
+    !PAYMENT_METHOD_CHANNEL_LABELS.has(fromNotes.toLowerCase())
+  ) {
+    return fromNotes;
   }
+
   return "—";
 }
 
@@ -93,7 +115,7 @@ export function normalizeProductSaleForLog(
     invoice_no: entry.invoice_no,
     amount: Number(entry.amount) || 0,
     payment_status: entry.payment_status,
-    payment_method: paymentMethodFromInvoice(entry.invoice_no),
+    payment_method: recordedProductSalePaymentMethod(entry),
     sale_status: entry.sale_status ?? "active",
     customer_id: entry.client_id,
     product_id: entry.product_id,

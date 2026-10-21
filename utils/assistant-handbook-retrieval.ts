@@ -6,11 +6,18 @@ import {
   resolveMiddlewarePersona,
   type MiddlewareAccountRow,
 } from "@/lib/middleware-persona";
+import { augmentHandbookRetrievalQuery } from "@/utils/assistant-handbook-query";
 import {
   buildHandbookScreenshotMarkdown,
   createHandbookScreenshotSignedUrl,
 } from "@/utils/handbook-screenshots-storage";
 import { createAdminClient } from "@/utils/supabase/admin";
+
+export {
+  augmentHandbookRetrievalQuery,
+  isAcceptableHalfDayDeductionAnswer,
+  isPayOrDeductionHandbookQuestion,
+} from "@/utils/assistant-handbook-query";
 
 export type HandbookPersona =
   | "staff"
@@ -240,7 +247,8 @@ export async function retrieveHandbookChunks(options: {
   matchCount?: number;
 }): Promise<HandbookChunkMatch[]> {
   try {
-    const embedding = await embedQuery(options.query, options.voyageApiKey);
+    const retrievalQuery = augmentHandbookRetrievalQuery(options.query);
+    const embedding = await embedQuery(retrievalQuery, options.voyageApiKey);
     const { data, error } = await options.supabase.rpc("match_handbook_chunks", {
       query_embedding: embedding,
       match_persona: options.persona,

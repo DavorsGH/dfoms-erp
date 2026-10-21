@@ -22,6 +22,8 @@ export type AlertDialogUiProps = {
   variant: AlertVariant;
   title?: string;
   message: string;
+  href?: string;
+  hrefLabel?: string;
   onClose: () => void;
 };
 
@@ -29,6 +31,8 @@ export function AlertDialogUi({
   variant,
   title,
   message,
+  href,
+  hrefLabel,
   onClose,
 }: AlertDialogUiProps) {
   const titleId = useId();
@@ -74,6 +78,14 @@ export function AlertDialogUi({
         >
           {message}
         </p>
+        {href?.trim() ? (
+          <a
+            href={href}
+            className="mt-3 inline-block text-sm font-medium text-[#0f2744] underline"
+          >
+            {hrefLabel?.trim() || "Open"}
+          </a>
+        ) : null}
         <div className="mt-5 flex justify-end">
           <button
             ref={okRef}

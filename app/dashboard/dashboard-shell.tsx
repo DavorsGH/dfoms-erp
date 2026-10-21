@@ -26,6 +26,7 @@ type DashboardShellProps = {
   children: React.ReactNode;
   userRole: AppRole | null;
   showLeaveApprovals: boolean;
+  showAttendanceApprovals: boolean;
   showPlatformSettings: boolean;
   showRealEstate: boolean;
   tenantBranding: TenantBranding;
@@ -48,6 +49,7 @@ export default function DashboardShell({
   children,
   userRole,
   showLeaveApprovals,
+  showAttendanceApprovals,
   showPlatformSettings,
   showRealEstate,
   tenantBranding,
@@ -130,6 +132,7 @@ export default function DashboardShell({
               userRole={userRole}
               linkedEmployeeId={linkedEmployeeId}
               showLeaveApprovals={showLeaveApprovals}
+              showAttendanceApprovals={showAttendanceApprovals}
               showPlatformSettings={showPlatformSettings}
               showRealEstate={showRealEstate}
               tenantBranding={tenantBranding}
@@ -149,6 +152,7 @@ export default function DashboardShell({
                   userRole={userRole}
                   linkedEmployeeId={linkedEmployeeId}
                   showLeaveApprovals={showLeaveApprovals}
+                  showAttendanceApprovals={showAttendanceApprovals}
                   showPlatformSettings={showPlatformSettings}
                   showRealEstate={showRealEstate}
                   tenantBranding={tenantBranding}

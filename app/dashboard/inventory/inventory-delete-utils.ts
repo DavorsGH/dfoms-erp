@@ -1,4 +1,5 @@
 import { confirmDialog } from "@/components/feedback/app-dialogs";
+import { formatCountNoun } from "@/utils/pluralise";
 
 export type RawMaterialDeletePreview = {
   material_name: string;
@@ -19,22 +20,21 @@ export type FinishedProductDeletePreview = {
   purchase_count: number;
 };
 
-function pluralize(count: number, singular: string, plural = `${singular}s`) {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
 export function buildRawMaterialDeleteMessage(
   preview: RawMaterialDeletePreview,
 ): string {
   const parts: string[] = [];
 
   if (preview.purchase_count > 0) {
-    parts.push(pluralize(preview.purchase_count, "purchase record"));
+    parts.push(formatCountNoun(preview.purchase_count, "purchase record"));
   }
 
   if (preview.batch_material_count > 0) {
     parts.push(
-      pluralize(preview.batch_material_count, "production batch material line"),
+      formatCountNoun(
+        preview.batch_material_count,
+        "production batch material line",
+      ),
     );
   }
 

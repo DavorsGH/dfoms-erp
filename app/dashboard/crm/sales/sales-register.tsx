@@ -1,8 +1,8 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
-import { useAlert } from "@/components/feedback/feedback-context";
-import Link from "next/link";
+import { useAlert, useToast } from "@/components/feedback/feedback-context";
+import { confirmPaystackPayment } from "@/utils/paystack-confirm-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   SALES_CRM_ALERT_TITLE,
@@ -18,38 +18,14 @@ import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import RegisterRecordDetailDrawer, {
   type RegisterDetailSection,
 } from "@/app/dashboard/register-record-detail-drawer";
-import { RegisterRecordNameLink } from "@/app/dashboard/register-record-name-link";
-import TruncatedCell, {
-  registerTruncatedCellHostClassName,
-} from "@/app/dashboard/register-truncated-cell";
-import RegisterRowActions, {
-  getStripedRowClassName,
-} from "@/app/dashboard/finance/register-row-actions";
 import {
-  RegisterColumnFilterHeader,
-  collectDistinctColumnValues,
-  columnValuePassesFilter,
   createRegisterDateSortState,
-  registerColumnSortConfig,
   registerTieBreakByRowKeyDesc,
   sortRegisterRows,
-  type RegisterColumnFilterValue,
   type RegisterColumnSortState,
   type RegisterColumnSortValueType,
 } from "@/app/dashboard/finance/register-column-filter";
-import DashboardButton from "@/components/dashboard-button";
 import Tooltip from "@/components/ui/tooltip";
-import ScrollableTable, {
-  scrollableTableClassName,
-  scrollableTableHeadClassName,
-  scrollableTableRegisterDateCellClassName,
-  scrollableTableRegisterIdCellClassName,
-  scrollableTableThClassName,
-  scrollableTableWrapThClassName,
-} from "@/app/dashboard/scrollable-table";
-import FilteredListCount, {
-  anyRegisterColumnFiltersActive,
-} from "@/app/dashboard/filtered-list-count";
 import {
   formatDate,
   formatGHS,
@@ -61,7 +37,11 @@ import type { ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import type { FinishedProductRecord } from "@/app/dashboard/inventory/finished-products-utils";
 import type { HrEmployee } from "@/app/dashboard/hr-payroll/employee-utils";
 import ProductSales from "../product-sales";
-import { ProductSaleReturnBadge } from "../product-return-badge";
+import PaystackAttentionList from "./paystack-attention-list";
+import {
+  canResolvePaystackAttention,
+  PRODUCT_SALE_PAYSTACK_ROLES,
+} from "@/utils/rbac-access";
 import {
   buildVoidProductSaleConfirmMessage,
   getProductSaleProductLabel,
@@ -93,18 +73,32 @@ import {
   type CrmSaleEntry,
 } from "./sales-utils";
 import { loadSalesLogReceiptData } from "./sales-log-receipt-utils";
+import { useQueryTab } from "@/hooks/use-query-tab";
+import {
+  PaystackCheckContext,
+  SalesRegisterLayout,
+} from "./sales-register-layout";
 import {
   buildReturnedQtyByIncomeId,
   buildSalesRegisterRows,
-  computeSalesRegisterFooterTotals,
+  formatCompactPaymentMethod,
+  formatRegisterItemsCompact,
   formatSalesRegisterSourceLabel,
-  formatSalesRegisterStatusLabel,
-  SALES_REGISTER_SOURCE_FILTER_TOOLTIP_DIGITAL,
-  salesRegisterRowsForTotals,
+  mergePaystackPendingRows,
+  rowMatchesSalesRegisterView,
+  SALES_REGISTER_VIEWS,
+  salesRegisterDaysOverdue,
+  salesRegisterDefaultView,
+  salesRegisterManualStatus,
+  salesRegisterPosStatus,
+  salesRegisterRowIncludedInCounts,
+  salesRegisterRowPassesCancelledFilter,
+  salesRegisterRowStatusLabel,
   type SalesRegisterReceiptRow,
   type SalesRegisterRow,
-  type SalesRegisterTypeFilter,
+  type SalesRegisterView,
 } from "./sales-register-utils";
+import type { OpenPaystackPaymentRequest } from "@/utils/manual-sale-paystack";
 import {
   formatDrawerPaymentSummary,
   formatDrawerReturnSummary,
@@ -118,8 +112,6 @@ import {
 } from "./sales-register-drawer-data";
 import type { ReturnRefundSummary } from "./sales-register-return-display";
 
-const salesRegisterTextCellClassName = `min-w-0 max-w-[7.5rem] px-2 py-3 ${registerTruncatedCellHostClassName}`;
-
 type SalesRegisterProps = {
   initialIncomeEntries: ProductSaleEntry[];
   initialWebhookSales: CrmSaleEntry[];
@@ -131,12 +123,15 @@ type SalesRegisterProps = {
   fetchError: string | null;
   activeBusinessUnitId?: string | null;
   tenantId: string;
+  viewerRole?: string | null;
+  mobileMoneyCollectionReady?: boolean;
 };
 
 export default function SalesRegister(props: SalesRegisterProps) {
   const router = useRouter();
   const supabase = createClient();
   const { alertError } = useAlert();
+  const { toast } = useToast();
   const buReadScope = useBusinessUnitReadScope();
   const { viewAllBusinessUnits } = useBusinessUnitView();
 
@@ -168,18 +163,32 @@ export default function SalesRegister(props: SalesRegisterProps) {
   const [recordPaymentEntry, setRecordPaymentEntry] =
     useState<ProductSaleEntry | null>(null);
   const refreshIncomeRef = useRef<(() => Promise<void>) | null>(null);
+  const [paymentsByIncomeId, setPaymentsByIncomeId] = useState<
+    Map<string, string[]>
+  >(() => new Map());
+  const [pendingPaystack, setPendingPaystack] = useState<
+    OpenPaystackPaymentRequest[]
+  >([]);
 
-  const [typeFilter, setTypeFilter] = useState<SalesRegisterTypeFilter>("all");
-  const [sourceFilter, setSourceFilter] =
-    useState<RegisterColumnFilterValue>(null);
-  const [statusFilter, setStatusFilter] =
-    useState<RegisterColumnFilterValue>(null);
-  const [paymentStatusFilter, setPaymentStatusFilter] =
-    useState<RegisterColumnFilterValue>(null);
-  const [customerFilter, setCustomerFilter] =
-    useState<RegisterColumnFilterValue>(null);
-  const [salesRepFilter, setSalesRepFilter] =
-    useState<RegisterColumnFilterValue>(null);
+  const defaultView = salesRegisterDefaultView(props.viewerRole);
+  const { tab: view, setTab: setView } = useQueryTab<SalesRegisterView>({
+    values: SALES_REGISTER_VIEWS,
+    defaultTab: defaultView,
+    param: "view",
+  });
+  const [outstandingOnly, setOutstandingOnly] = useState(false);
+  const [overdueOnly, setOverdueOnly] = useState(false);
+  const [posTodayOnly, setPosTodayOnly] = useState(true);
+  const todayIso = new Date().toLocaleDateString("en-CA", {
+    timeZone: "Africa/Accra",
+  });
+  const [methodFilter, setMethodFilter] = useState("");
+  const [salesRepChip, setSalesRepChip] = useState("");
+  const [statusChip, setStatusChip] = useState("");
+  const [settlementChip, setSettlementChip] = useState("");
+  const [creditStatusChip, setCreditStatusChip] = useState("");
+  const [sourceChip, setSourceChip] = useState("");
+  const [dateRangeOpen, setDateRangeOpen] = useState(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [columnSort, setColumnSort] = useState<RegisterColumnSortState | null>(
@@ -208,16 +217,21 @@ export default function SalesRegister(props: SalesRegisterProps) {
 
   const allRows = useMemo(
     () =>
-      buildSalesRegisterRows({
-        incomeEntries,
-        webhookSales,
-        returnedQtyByIncomeId,
-        refundsByCreditNoteId,
-        employees: props.initialEmployees,
-        clients: props.initialClients,
-        includeDigitalRows: viewAllBusinessUnits,
-        getCustomerLabel,
-      }),
+      mergePaystackPendingRows(
+        buildSalesRegisterRows({
+          incomeEntries,
+          webhookSales,
+          returnedQtyByIncomeId,
+          refundsByCreditNoteId,
+          employees: props.initialEmployees,
+          clients: props.initialClients,
+          includeDigitalRows: viewAllBusinessUnits,
+          getCustomerLabel,
+          paymentsByIncomeId,
+        }),
+        pendingPaystack,
+        props.initialClients,
+      ),
     [
       incomeEntries,
       webhookSales,
@@ -227,6 +241,8 @@ export default function SalesRegister(props: SalesRegisterProps) {
       props.initialClients,
       viewAllBusinessUnits,
       getCustomerLabel,
+      paymentsByIncomeId,
+      pendingPaystack,
     ],
   );
 
@@ -289,13 +305,136 @@ export default function SalesRegister(props: SalesRegisterProps) {
     );
   }
 
+  async function refreshPendingPaystack() {
+    const { data, error: pendingError } = await supabase
+      .from("product_sale_payment_requests")
+      .select(
+        "id, invoice_no, amount_requested, status, payment_method, income_ids, cart_snapshot, created_at",
+      )
+      .in("status", ["pending", "sent"]);
+    if (pendingError) {
+      return;
+    }
+    const rows = (data ?? []) as Array<{
+      id: string;
+      invoice_no: string;
+      amount_requested: number;
+      status: string;
+      payment_method: string;
+      income_ids: string[] | null;
+      cart_snapshot: OpenPaystackPaymentRequest["cart_snapshot"];
+      created_at: string;
+    }>;
+    setPendingPaystack(
+      rows.map((row) => ({
+        id: row.id,
+        invoice_no: row.invoice_no,
+        amount_requested: Number(row.amount_requested) || 0,
+        status: row.status,
+        payment_method: row.payment_method,
+        income_ids: Array.isArray(row.income_ids) ? row.income_ids : [],
+        cart_snapshot: row.cart_snapshot,
+        created_at: row.created_at,
+      })),
+    );
+  }
+
+  const [checkingRequestId, setCheckingRequestId] = useState<string | null>(null);
+  const canCheckPaystackPayment = (
+    PRODUCT_SALE_PAYSTACK_ROLES as readonly string[]
+  ).includes(props.viewerRole ?? "");
+
+  /** Same verify-and-apply as the popup, the webhook and the nightly run. */
+  async function handleCheckPayment(row: SalesRegisterReceiptRow) {
+    const requestId = row.paystackRequestId;
+    if (!requestId || checkingRequestId) {
+      return;
+    }
+    setCheckingRequestId(requestId);
+    try {
+      const result = await confirmPaystackPayment({
+        paymentRequestId: requestId,
+        source: "check_payment",
+      });
+      if (result.kind === "applied" || result.kind === "already_applied") {
+        await refreshAll();
+        toast(
+          result.kind === "already_applied"
+            ? "Payment was already applied"
+            : `Payment confirmed${result.invoiceNo ? ` — ${result.invoiceNo}` : ""}`,
+        );
+        return;
+      }
+      if (result.kind === "not_paid") {
+        toast(result.message);
+        return;
+      }
+      await alertError(clientFacingSalesCrmError(result.message), {
+        title: "Payment not applied",
+      });
+    } finally {
+      setCheckingRequestId(null);
+    }
+  }
+
   async function refreshAll() {
-    await Promise.all([refreshIncomeEntries(), refreshWebhookSales()]);
+    await Promise.all([
+      refreshIncomeEntries(),
+      refreshWebhookSales(),
+      refreshPendingPaystack(),
+    ]);
     router.refresh();
   }
 
   useEffect(() => {
+    void refreshPendingPaystack();
+  }, [supabase]);
+
+  useEffect(() => {
     void reloadReturnedQuantities(incomeEntries);
+  }, [incomeEntries, supabase]);
+
+  useEffect(() => {
+    const incomeIds = incomeEntries
+      .filter((entry) => !isProductSaleReturn(entry))
+      .map((entry) => entry.id);
+    if (incomeIds.length === 0) {
+      setPaymentsByIncomeId(new Map());
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const next = new Map<string, string[]>();
+      const chunkSize = 80;
+      for (let index = 0; index < incomeIds.length; index += chunkSize) {
+        const slice = incomeIds.slice(index, index + chunkSize);
+        const { data } = await supabase
+          .from("product_sale_payments")
+          .select("income_id, payment_method")
+          .in("income_id", slice);
+        if (cancelled) {
+          return;
+        }
+        for (const row of (data ?? []) as {
+          income_id: string;
+          payment_method: string | null;
+        }[]) {
+          const method = row.payment_method?.trim();
+          if (!method) {
+            continue;
+          }
+          const list = next.get(row.income_id) ?? [];
+          list.push(method);
+          next.set(row.income_id, list);
+        }
+      }
+      if (!cancelled) {
+        setPaymentsByIncomeId(next);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [incomeEntries, supabase]);
 
   useEffect(() => {
@@ -337,97 +476,163 @@ export default function SalesRegister(props: SalesRegisterProps) {
     setRecordPaymentEntry(null);
   }, [registerViewOnly]);
 
-  const columnSortConfig = useCallback(
-    (columnId: string, valueType: RegisterColumnSortValueType) =>
-      registerColumnSortConfig(columnId, valueType, columnSort, setColumnSort),
-    [columnSort],
-  );
+  function toggleColumnSort(
+    columnId: string,
+    valueType: RegisterColumnSortValueType,
+  ) {
+    setColumnSort((current) => {
+      if (current?.columnId === columnId) {
+        return {
+          columnId,
+          valueType,
+          direction: current.direction === "asc" ? "desc" : "asc",
+        };
+      }
+      return {
+        columnId,
+        valueType,
+        direction: valueType === "text" ? "asc" : "desc",
+      };
+    });
+  }
 
   const salesRegisterRowSortValue = useCallback(
     (row: SalesRegisterRow, columnId: string) => {
       switch (columnId) {
         case "date":
-          return row.kind === "digital"
-            ? row.date
-            : row.date?.slice(0, 10) ?? "";
+        case "time":
+          return row.kind === "receipt"
+            ? (row.saleTimestamp ?? row.date)
+            : row.date;
+        case "invoice":
+          return row.kind === "receipt"
+            ? row.invoiceNo
+            : row.kind === "return"
+              ? (row.creditNoteNumber ?? row.linkedInvoiceNo ?? "")
+              : (row.invoiceNo ?? "");
         case "customer":
           return row.customerLabel;
+        case "items":
+          return row.kind === "digital"
+            ? row.itemsSummary
+            : formatRegisterItemsCompact(row.lines);
+        case "total":
+        case "amount":
+          return row.totalAmount;
+        case "outstanding":
+          return row.kind === "return" ? 0 : row.totalOutstanding;
+        case "due":
+          return row.kind === "receipt" ? (row.dueDate ?? "") : "";
+        case "method":
+          return row.kind === "digital"
+            ? (row.paymentMethod ?? "")
+            : row.paymentMethod;
         case "source":
           return row.kind === "digital"
             ? "Digital"
             : formatSalesRegisterSourceLabel(row.source);
         case "status":
-          return row.kind === "return"
-            ? "Return"
-            : row.kind === "receipt"
-              ? formatSalesRegisterStatusLabel(row)
-              : row.status;
-        case "payment_status":
-          return row.paymentStatus;
-        case "sales_rep":
-          return row.salesRepLabel;
+          return salesRegisterRowStatusLabel(row, todayIso, view);
         default:
           return "";
       }
     },
-    [],
+    [todayIso, view],
   );
 
   const visibleRows = useMemo(() => {
     const filtered = allRows.filter((row) => {
-      if (typeFilter === "sales" && row.kind === "return") {
+      if (!rowMatchesSalesRegisterView(row, view)) {
         return false;
       }
-      if (typeFilter === "returns" && row.kind !== "return") {
+      if (!salesRegisterRowPassesCancelledFilter(row, statusChip)) {
         return false;
       }
-      const date =
-        row.kind === "digital" ? row.date : row.date?.slice(0, 10) ?? "";
-      if (dateFrom && date < dateFrom) {
-        return false;
+      const date = row.date?.slice(0, 10) ?? "";
+      if (view === "pos") {
+        if (posTodayOnly && date !== todayIso) {
+          return false;
+        }
+        if (methodFilter && row.kind === "receipt") {
+          const compact = formatCompactPaymentMethod(row.paymentMethod);
+          if (compact !== methodFilter && row.paymentMethod !== methodFilter) {
+            return false;
+          }
+        }
+        if (salesRepChip && row.salesRepLabel !== salesRepChip) {
+          return false;
+        }
+        if (
+          statusChip &&
+          row.kind === "receipt" &&
+          salesRegisterPosStatus(row).label !== statusChip
+        ) {
+          return false;
+        }
+        return true;
       }
-      if (dateTo && date > dateTo) {
-        return false;
+
+      if (dateFrom || dateTo) {
+        if (dateFrom && date < dateFrom) {
+          return false;
+        }
+        if (dateTo && date > dateTo) {
+          return false;
+        }
       }
-      const customer =
-        row.kind === "receipt"
-          ? row.customerLabel
-          : row.kind === "return"
-            ? row.customerLabel
-            : row.customerLabel;
-      if (!columnValuePassesFilter(customer, customerFilter)) {
-        return false;
+
+      if (view === "manual" && row.kind === "receipt") {
+        if (
+          statusChip &&
+          salesRegisterRowStatusLabel(row, todayIso, view) !== statusChip
+        ) {
+          return false;
+        }
+        if (outstandingOnly && row.totalOutstanding <= 0.001) {
+          return false;
+        }
+        if (
+          overdueOnly &&
+          salesRegisterDaysOverdue(row.dueDate, row.totalOutstanding, todayIso) <= 0
+        ) {
+          return false;
+        }
       }
-      const sourceLabel =
-        row.kind === "digital"
-          ? "Digital"
-          : formatSalesRegisterSourceLabel(row.source);
-      if (!columnValuePassesFilter(sourceLabel, sourceFilter)) {
-        return false;
+
+      if (view === "returns" && row.kind === "return") {
+        if (settlementChip && row.paymentMethod !== settlementChip) {
+          return false;
+        }
+        if (creditStatusChip && row.paymentStatus !== creditStatusChip) {
+          return false;
+        }
       }
-      const statusLabel =
-        row.kind === "return"
-          ? "Return"
-          : row.kind === "receipt"
-            ? formatSalesRegisterStatusLabel(row)
-            : row.status;
-      if (!columnValuePassesFilter(statusLabel, statusFilter)) {
-        return false;
+
+      if (view === "digital" && row.kind === "digital") {
+        if (
+          statusChip &&
+          salesRegisterRowStatusLabel(row, todayIso, view) !== statusChip
+        ) {
+          return false;
+        }
       }
-      const paymentStatus =
-        row.kind === "digital"
-          ? row.paymentStatus
-          : row.kind === "return"
-            ? row.paymentStatus
-            : row.paymentStatus;
-      if (!columnValuePassesFilter(paymentStatus, paymentStatusFilter)) {
-        return false;
+
+      if (view === "all") {
+        const sourceLabel =
+          row.kind === "digital"
+            ? "Digital"
+            : formatSalesRegisterSourceLabel(row.source);
+        if (sourceChip && sourceLabel !== sourceChip) {
+          return false;
+        }
+        if (
+          statusChip &&
+          salesRegisterRowStatusLabel(row, todayIso, view) !== statusChip
+        ) {
+          return false;
+        }
       }
-      const rep =
-        row.kind === "digital" ? row.salesRepLabel : row.salesRepLabel;
-      if (!columnValuePassesFilter(rep, salesRepFilter)) {
-        return false;
-      }
+
       return true;
     });
     const activeSort = columnSort ?? createRegisterDateSortState("date");
@@ -439,25 +644,48 @@ export default function SalesRegister(props: SalesRegisterProps) {
     );
   }, [
     allRows,
-    typeFilter,
+    view,
+    outstandingOnly,
+    overdueOnly,
+    posTodayOnly,
+    todayIso,
     dateFrom,
     dateTo,
-    customerFilter,
-    sourceFilter,
-    statusFilter,
-    paymentStatusFilter,
-    salesRepFilter,
+    methodFilter,
+    salesRepChip,
+    statusChip,
+    settlementChip,
+    creditStatusChip,
+    sourceChip,
     columnSort,
     salesRegisterRowSortValue,
   ]);
 
-  const footerTotals = useMemo(
-    () =>
-      computeSalesRegisterFooterTotals(
-        salesRegisterRowsForTotals(visibleRows),
-      ),
-    [visibleRows],
-  );
+  const viewCounts = useMemo(() => {
+    const counts: Record<SalesRegisterView, number> = {
+      pos: 0,
+      manual: 0,
+      returns: 0,
+      digital: 0,
+      all: 0,
+    };
+    for (const row of allRows) {
+      if (!salesRegisterRowIncludedInCounts(row)) {
+        continue;
+      }
+      counts.all += 1;
+      if (row.kind === "return") {
+        counts.returns += 1;
+      } else if (row.kind === "digital") {
+        counts.digital += 1;
+      } else if (row.source === "pos") {
+        counts.pos += 1;
+      } else if (row.source === "manual") {
+        counts.manual += 1;
+      }
+    }
+    return counts;
+  }, [allRows]);
 
   const drawerRow = useMemo(
     () => visibleRows.find((row) => row.rowKey === drawerRowKey) ?? null,
@@ -548,303 +776,134 @@ export default function SalesRegister(props: SalesRegisterProps) {
     }
   }
 
-  const customerOptions = useMemo(
-    () => collectDistinctColumnValues(allRows.map((row) => row.kind === "digital" ? row.customerLabel : row.customerLabel)),
-    [allRows],
-  );
-  const sourceOptions = useMemo(
-    () =>
-      collectDistinctColumnValues(
-        allRows.map((row) =>
-          row.kind === "digital"
-            ? "Digital"
-            : formatSalesRegisterSourceLabel(row.source),
-        ),
-      ),
-    [allRows],
-  );
-  const statusOptions = useMemo(
-    () =>
-      collectDistinctColumnValues(
-        allRows.map((row) =>
-          row.kind === "return"
-            ? "Return"
-            : row.kind === "receipt"
-              ? formatSalesRegisterStatusLabel(row)
-              : row.status,
-        ),
-      ),
-    [allRows],
-  );
-  const salesRepOptions = useMemo(
-    () => collectDistinctColumnValues(allRows.map((row) => row.salesRepLabel)),
-    [allRows],
+  const tabRows = useMemo(
+    () => allRows.filter((row) => rowMatchesSalesRegisterView(row, view)),
+    [allRows, view],
   );
 
   return (
-    <div className="min-w-0 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-slate-600">
-          All product sales, POS receipts, returns, and digital webhook sales in
-          one register. Remaining balances on manual sales use due dates for
-          reminders.
-        </p>
-        <div className="flex gap-2">
-          <DashboardButton
-            type="button"
-            variant="secondary"
-            disabled={registerViewOnly}
-            tooltip={registerViewOnly ? SALES_REGISTER_VIEW_ONLY_TOOLTIP : undefined}
-            onClick={() =>
-              showBulkImport ? setShowBulkImport(false) : setShowBulkImport(true)
-            }
-          >
-            {showBulkImport ? "Cancel Import" : "Bulk Import"}
-          </DashboardButton>
-          <DashboardButton
-            type="button"
-            variant="primary"
-            disabled={registerViewOnly}
-            tooltip={registerViewOnly ? SALES_REGISTER_VIEW_ONLY_TOOLTIP : undefined}
-            onClick={() => (showForm ? setShowForm(false) : setShowForm(true))}
-          >
-            {showForm ? "Cancel" : "Add Sale"}
-          </DashboardButton>
-        </div>
-      </div>
-
-      {!viewAllBusinessUnits ? (
-        <p className="text-xs text-slate-500">
-          Digital (webhook) sales are hidden while a specific business unit is
-          selected. Switch to All Businesses to include them.
-        </p>
-      ) : null}
-
-      <ProductSales
-        embeddedInSalesRegister
-        initialEntries={incomeEntries}
-        initialClients={props.initialClients}
-        initialFinishedProducts={props.initialFinishedProducts}
-        initialPaymentMethods={props.initialPaymentMethods}
-        initialEmployees={props.initialEmployees}
-        defaultSalesRepId={props.defaultSalesRepId}
-        fetchError={null}
-        activeBusinessUnitId={props.activeBusinessUnitId}
-        tenantId={props.tenantId}
-        controlledEntries={incomeEntries}
-        onControlledEntriesChange={setIncomeEntries}
-        controlledShowForm={showForm}
-        onControlledShowFormChange={setShowForm}
-        controlledShowBulkImport={showBulkImport}
-        onControlledShowBulkImportChange={setShowBulkImport}
-        controlledReturnInvoiceNo={returnInvoiceNo}
-        onControlledReturnInvoiceNoChange={setReturnInvoiceNo}
-        controlledRecordPaymentEntry={recordPaymentEntry}
-        onControlledRecordPaymentEntryChange={setRecordPaymentEntry}
-        onRefreshEntriesReady={(fn) => {
-          refreshIncomeRef.current = fn;
+    <div className="min-w-0 space-y-4">
+      <PaystackAttentionList canResolve={canResolvePaystackAttention(props.viewerRole)} />
+      <PaystackCheckContext.Provider
+        value={
+          canCheckPaystackPayment && !registerViewOnly
+            ? {
+                onCheck: (row) => void handleCheckPayment(row),
+                checkingRequestId,
+              }
+            : null
+        }
+      >
+      <SalesRegisterLayout
+        view={view}
+        onView={(next) => {
+          setView(next);
+          setMethodFilter("");
+          setSalesRepChip("");
+          setStatusChip("");
+          setSettlementChip("");
+          setCreditStatusChip("");
+          setSourceChip("");
         }}
-        onRegisterMutationComplete={() => {
-          void refreshAll();
+        viewCounts={viewCounts}
+        viewAllBusinessUnits={viewAllBusinessUnits}
+        showForm={showForm}
+        onToggleForm={() => setShowForm((current) => !current)}
+        showBulkImport={showBulkImport}
+        onToggleBulkImport={() => setShowBulkImport((current) => !current)}
+        registerViewOnly={registerViewOnly}
+        rows={visibleRows}
+        tabRows={tabRows}
+        todayIso={todayIso}
+        posTodayOnly={posTodayOnly}
+        onTogglePosToday={() => setPosTodayOnly((current) => !current)}
+        outstandingOnly={outstandingOnly}
+        onToggleOutstanding={() => setOutstandingOnly((current) => !current)}
+        overdueOnly={overdueOnly}
+        onToggleOverdue={() => setOverdueOnly((current) => !current)}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateFrom={setDateFrom}
+        onDateTo={setDateTo}
+        dateRangeOpen={dateRangeOpen}
+        onToggleDateRange={() => setDateRangeOpen((current) => !current)}
+        methodFilter={methodFilter}
+        onMethodFilter={setMethodFilter}
+        salesRepChip={salesRepChip}
+        onSalesRepChip={setSalesRepChip}
+        statusChip={statusChip}
+        onStatusChip={setStatusChip}
+        settlementChip={settlementChip}
+        onSettlementChip={setSettlementChip}
+        creditStatusChip={creditStatusChip}
+        onCreditStatusChip={setCreditStatusChip}
+        sourceChip={sourceChip}
+        onSourceChip={setSourceChip}
+        columnSort={columnSort}
+        onSort={toggleColumnSort}
+        printingKey={printingKey}
+        voidingId={voidingId}
+        onOpenDrawer={(row) => setDrawerRowKey(row.rowKey)}
+        onReturn={(invoice) => setReturnInvoiceNo(invoice)}
+        onRecordPayment={(entry) => setRecordPaymentEntry(entry)}
+        onPrintReceipt={(row) => void handlePrintReceipt(row)}
+        onVoidLine={(line) => void handleVoidLine(line)}
+        onOpenCreditNote={(note) => {
+          const match = allRows.find(
+            (candidate) =>
+              candidate.kind === "return" && candidate.creditNoteNumber === note,
+          );
+          if (match) {
+            setView("returns");
+            setDrawerRowKey(match.rowKey);
+          }
         }}
-      />
+      >
+        <ProductSales
+          embeddedInSalesRegister
+          initialEntries={incomeEntries}
+          initialClients={props.initialClients}
+          initialFinishedProducts={props.initialFinishedProducts}
+          initialPaymentMethods={props.initialPaymentMethods}
+          initialEmployees={props.initialEmployees}
+          defaultSalesRepId={props.defaultSalesRepId}
+          fetchError={null}
+          activeBusinessUnitId={props.activeBusinessUnitId}
+          tenantId={props.tenantId}
+          viewerRole={props.viewerRole}
+          mobileMoneyCollectionReady={props.mobileMoneyCollectionReady ?? true}
+          controlledEntries={incomeEntries}
+          onControlledEntriesChange={setIncomeEntries}
+          controlledShowForm={showForm}
+          onControlledShowFormChange={setShowForm}
+          controlledShowBulkImport={showBulkImport}
+          onControlledShowBulkImportChange={setShowBulkImport}
+          controlledReturnInvoiceNo={returnInvoiceNo}
+          onControlledReturnInvoiceNoChange={setReturnInvoiceNo}
+          controlledRecordPaymentEntry={recordPaymentEntry}
+          onControlledRecordPaymentEntryChange={setRecordPaymentEntry}
+          onRefreshEntriesReady={(fn) => {
+            refreshIncomeRef.current = fn;
+          }}
+          onRegisterMutationComplete={() => {
+            void refreshAll();
+          }}
+        />
+      </SalesRegisterLayout>
+      </PaystackCheckContext.Provider>
 
       {activeReceipt?.kind === "pos" ? (
         <PosReceiptPanel
           receipt={activeReceipt.receipt}
-          onPrint={() => window.print()}
           onClose={() => setActiveReceipt(null)}
         />
       ) : null}
       {activeReceipt?.kind === "product_sale" ? (
         <ProductSaleReceiptPanel
           receipt={activeReceipt.receipt}
-          onPrint={() => window.print()}
           onClose={() => setActiveReceipt(null)}
         />
       ) : null}
-
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">
-            Type
-          </label>
-          <select
-            value={typeFilter}
-            onChange={(e) =>
-              setTypeFilter(e.target.value as SalesRegisterTypeFilter)
-            }
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          >
-            <option value="all">All</option>
-            <option value="sales">Sales</option>
-            <option value="returns">Returns</option>
-          </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">
-            From
-          </label>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">
-            To
-          </label>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
-        </div>
-      </div>
-
-      <FilteredListCount
-        filteredCount={visibleRows.length}
-        totalCount={allRows.length}
-        itemSingular="row"
-        hasActiveFilters={
-          typeFilter !== "all" ||
-          Boolean(dateFrom || dateTo) ||
-          anyRegisterColumnFiltersActive(
-            customerFilter,
-            sourceFilter,
-            statusFilter,
-            paymentStatusFilter,
-            salesRepFilter,
-          )
-        }
-      />
-
-      <ScrollableTable stickyEdgeColumns stickyEdgeLayout="default">
-        <table className={scrollableTableClassName}>
-          <thead className={scrollableTableHeadClassName}>
-            <tr>
-              <th className={scrollableTableThClassName}>Date</th>
-              <th className={scrollableTableRegisterIdCellClassName}>
-                Invoice No.
-              </th>
-              <th className={scrollableTableWrapThClassName}>
-                <RegisterColumnFilterHeader
-                  label="Customer"
-                  options={customerOptions}
-                  applied={customerFilter}
-                  onApply={setCustomerFilter}
-                  sort={columnSortConfig("customer", "text")}
-                />
-              </th>
-              <th className={scrollableTableWrapThClassName}>Items</th>
-              <th className={scrollableTableThClassName}>Total</th>
-              <th className={scrollableTableThClassName}>Paid</th>
-              <th className={scrollableTableThClassName}>Outstanding</th>
-              <th className={scrollableTableWrapThClassName}>
-                <RegisterColumnFilterHeader
-                  label="Payment Status"
-                  options={collectDistinctColumnValues(
-                    allRows.map((row) =>
-                      row.kind === "digital"
-                        ? row.paymentStatus
-                        : row.paymentStatus,
-                    ),
-                  )}
-                  applied={paymentStatusFilter}
-                  onApply={setPaymentStatusFilter}
-                  sort={columnSortConfig("payment_status", "text")}
-                />
-              </th>
-              <th className={scrollableTableThClassName}>Payment Method</th>
-              <th className={scrollableTableWrapThClassName}>
-                <Tooltip content={SALES_REGISTER_SOURCE_FILTER_TOOLTIP_DIGITAL}>
-                  <span className="inline-flex">
-                    <RegisterColumnFilterHeader
-                      label="Source"
-                      options={sourceOptions}
-                      applied={sourceFilter}
-                      onApply={setSourceFilter}
-                      sort={columnSortConfig("source", "text")}
-                    />
-                  </span>
-                </Tooltip>
-              </th>
-              <th className={scrollableTableWrapThClassName}>
-                <RegisterColumnFilterHeader
-                  label="Sales Rep"
-                  options={salesRepOptions}
-                  applied={salesRepFilter}
-                  onApply={setSalesRepFilter}
-                  sort={columnSortConfig("sales_rep", "text")}
-                />
-              </th>
-              <th className={scrollableTableWrapThClassName}>
-                <RegisterColumnFilterHeader
-                  label="Status"
-                  options={statusOptions}
-                  applied={statusFilter}
-                  onApply={setStatusFilter}
-                  sort={columnSortConfig("status", "text")}
-                />
-              </th>
-              <th className={scrollableTableThClassName}>Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-200">
-            {visibleRows.length === 0 ? (
-              <tr>
-                <td colSpan={13} className="px-4 py-8 text-center text-slate-500">
-                  No sales match the current filters.
-                </td>
-              </tr>
-            ) : (
-              visibleRows.map((row, index) => (
-                <SalesRegisterTableRow
-                  key={row.rowKey}
-                  row={row}
-                  index={index}
-                  printingKey={printingKey}
-                  voidingId={voidingId}
-                  viewOnly={registerViewOnly}
-                  onOpenDrawer={() => setDrawerRowKey(row.rowKey)}
-                  onReturn={(invoice) => setReturnInvoiceNo(invoice)}
-                  onRecordPayment={(entry) => setRecordPaymentEntry(entry)}
-                  onPrintReceipt={
-                    row.kind === "receipt"
-                      ? () => void handlePrintReceipt(row)
-                      : undefined
-                  }
-                  onVoidLine={(line) => void handleVoidLine(line)}
-                />
-              ))
-            )}
-          </tbody>
-        </table>
-      </ScrollableTable>
-
-      <div className="grid gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm sm:grid-cols-3">
-        <p>
-          <span className="text-slate-600">Gross sales:</span>{" "}
-          <span className="font-medium text-[#0f2744]">
-            {formatGHS(footerTotals.grossSales)}
-          </span>
-        </p>
-        <p>
-          <span className="text-slate-600">Returns:</span>{" "}
-          <span className="font-medium text-amber-900">
-            {formatGHS(footerTotals.returns)}
-          </span>
-        </p>
-        <p>
-          <span className="text-slate-600">Net sales:</span>{" "}
-          <span className="font-semibold text-[#0f2744]">
-            {formatGHS(footerTotals.netSales)}
-          </span>
-        </p>
-      </div>
 
       <SalesRegisterDetailDrawer
         row={drawerRow}
@@ -876,211 +935,6 @@ export default function SalesRegister(props: SalesRegisterProps) {
   );
 }
 
-function SalesRegisterTableRow({
-  row,
-  index,
-  printingKey,
-  voidingId,
-  viewOnly,
-  onOpenDrawer,
-  onReturn,
-  onRecordPayment,
-  onPrintReceipt,
-  onVoidLine,
-}: {
-  row: SalesRegisterRow;
-  index: number;
-  printingKey: string | null;
-  voidingId: string | null;
-  viewOnly: boolean;
-  onOpenDrawer: () => void;
-  onReturn: (invoiceNo: string) => void;
-  onRecordPayment: (entry: ProductSaleEntry) => void;
-  onPrintReceipt?: () => void;
-  onVoidLine: (line: ProductSaleEntry) => void;
-}) {
-  if (row.kind === "digital") {
-    return (
-      <tr className={getStripedRowClassName(index)}>
-        <td className={scrollableTableRegisterDateCellClassName}>
-          {formatDate(row.date)}
-        </td>
-        <td className={scrollableTableRegisterIdCellClassName}>—</td>
-        <td className={salesRegisterTextCellClassName}>
-          <TruncatedCell>{row.customerLabel}</TruncatedCell>
-        </td>
-        <td className={salesRegisterTextCellClassName}>
-          <TruncatedCell>{row.itemsSummary}</TruncatedCell>
-        </td>
-        <td className="px-2 py-3">{formatGHS(row.totalAmount)}</td>
-        <td className="px-2 py-3">{formatGHS(row.totalReceived)}</td>
-        <td className="px-2 py-3">{formatGHS(row.totalOutstanding)}</td>
-        <td className="px-2 py-3">{row.paymentStatus ?? "—"}</td>
-        <td className="px-2 py-3">{row.paymentMethod ?? "—"}</td>
-        <td className="px-2 py-3">Digital</td>
-        <td className={salesRegisterTextCellClassName}>
-          <TruncatedCell>—</TruncatedCell>
-        </td>
-        <td className="px-4 py-3">{row.status}</td>
-        <td className="px-4 py-3 text-sm text-slate-400">—</td>
-      </tr>
-    );
-  }
-
-  if (row.kind === "return") {
-    return (
-      <tr className={`${getStripedRowClassName(index)} opacity-60`}>
-        <td className={scrollableTableRegisterDateCellClassName}>
-          {formatDate(row.date)}
-        </td>
-        <td className={scrollableTableRegisterIdCellClassName}>
-          <RegisterRecordNameLink onOpen={onOpenDrawer}>
-            {row.linkedInvoiceNo ?? "—"}
-          </RegisterRecordNameLink>
-          {row.creditNoteNumber ? (
-            <span className="mt-0.5 block text-xs text-slate-500">
-              {row.creditNoteNumber}
-            </span>
-          ) : null}
-        </td>
-        <td className={salesRegisterTextCellClassName}>
-          <TruncatedCell>{row.customerLabel}</TruncatedCell>
-        </td>
-        <td className={salesRegisterTextCellClassName}>
-          <TruncatedCell>{row.itemsSummary}</TruncatedCell>
-        </td>
-        <td className="px-2 py-3 text-amber-900">{formatGHS(row.totalAmount)}</td>
-        <td className="px-2 py-3">—</td>
-        <td className="px-2 py-3">—</td>
-        <td className="px-2 py-3">{row.paymentStatus}</td>
-        <td className="px-2 py-3">{row.paymentMethod}</td>
-        <td className="px-2 py-3">
-          {formatSalesRegisterSourceLabel(row.source)}
-        </td>
-        <td className={salesRegisterTextCellClassName}>
-          <TruncatedCell>{row.salesRepLabel}</TruncatedCell>
-        </td>
-        <td className="px-4 py-3">
-          <ProductSaleReturnBadge />
-        </td>
-        <td className="px-4 py-3 text-sm text-slate-400">—</td>
-      </tr>
-    );
-  }
-
-  const outstandingLines = row.lines.filter((line) => {
-    if (isProductSaleVoided(line)) {
-      return false;
-    }
-    return (
-      resolveIncomeOutstandingBalance({
-        amount: Number(line.amount) || 0,
-        amount_received: Number(line.amount_received) || 0,
-        outstanding_balance: line.outstanding_balance,
-      }) > 0
-    );
-  });
-  const singlePaymentLine =
-    outstandingLines.length === 1 ? outstandingLines[0] : null;
-  const canReturn =
-    !row.voided &&
-    row.status !== "returned" &&
-    row.lines.some((line) => !isProductSaleVoided(line));
-  const singleLine = row.lines.length === 1 ? row.lines[0] : null;
-  const singleLineCancelBlock = singleLine
-    ? resolveProductSaleCancelBlockReason({
-        saleQuantity: Number(singleLine.sale_quantity) || 0,
-        returnedQuantity: singleLine.returnedQuantity ?? 0,
-      })
-    : null;
-  const singleLineFullyReturned =
-    singleLine != null &&
-    isSaleLineFullyReturned(
-      Number(singleLine.sale_quantity) || 0,
-      singleLine.returnedQuantity ?? 0,
-    );
-
-  return (
-    <tr
-      className={`${getStripedRowClassName(index)}${row.voided ? " opacity-60" : ""}`}
-    >
-      <td className={scrollableTableRegisterDateCellClassName}>
-        {formatDate(row.date)}
-      </td>
-      <td className={scrollableTableRegisterIdCellClassName}>
-        <RegisterRecordNameLink onOpen={onOpenDrawer}>
-          {row.invoiceNo}
-        </RegisterRecordNameLink>
-      </td>
-      <td className={salesRegisterTextCellClassName}>
-        <TruncatedCell>
-          {row.clientId ? (
-            <Link
-              href={`/dashboard/crm/customers/${encodeURIComponent(row.clientId)}`}
-              className="text-[#0f2744] hover:underline"
-            >
-              {row.customerLabel}
-            </Link>
-          ) : (
-            row.customerLabel
-          )}
-        </TruncatedCell>
-      </td>
-      <td className={salesRegisterTextCellClassName}>
-        <TruncatedCell>{row.itemsSummary}</TruncatedCell>
-      </td>
-      <td className="px-2 py-3">{formatGHS(row.totalAmount)}</td>
-      <td className="px-2 py-3">{formatGHS(row.totalReceived)}</td>
-      <td className="px-2 py-3">{formatGHS(row.totalOutstanding)}</td>
-      <td className="px-2 py-3">{row.paymentStatus}</td>
-      <td className="px-2 py-3">{row.paymentMethod}</td>
-      <td className="px-2 py-3">
-        {formatSalesRegisterSourceLabel(row.source)}
-      </td>
-      <td className={salesRegisterTextCellClassName}>
-        <TruncatedCell>{row.salesRepLabel}</TruncatedCell>
-      </td>
-      <td className="px-2 py-3">{formatSalesRegisterStatusLabel(row)}</td>
-      <RegisterRowActions
-        compact
-        onPrint={onPrintReceipt}
-        printing={printingKey === row.rowKey}
-        onReturn={
-          canReturn && !viewOnly ? () => onReturn(row.invoiceNo) : undefined
-        }
-        disableReturn={viewOnly}
-        returnDisabledTitle={SALES_REGISTER_VIEW_ONLY_TOOLTIP}
-        onRecordPayment={
-          singlePaymentLine && !viewOnly
-            ? () => onRecordPayment(singlePaymentLine)
-            : undefined
-        }
-        disableRecordPayment={viewOnly}
-        recordPaymentDisabledTitle={SALES_REGISTER_VIEW_ONLY_TOOLTIP}
-        onVoid={
-          singleLine &&
-          !row.voided &&
-          !viewOnly &&
-          !singleLineFullyReturned
-            ? () => onVoidLine(singleLine)
-            : undefined
-        }
-        disableVoid={
-          row.voided || !singleLine || viewOnly || singleLineCancelBlock != null
-        }
-        voidDisabledTitle={
-          viewOnly
-            ? SALES_REGISTER_VIEW_ONLY_TOOLTIP
-            : singleLineCancelBlock ??
-              (!singleLine
-                ? "Cancel each sale line from the receipt detail drawer."
-                : undefined)
-        }
-        voiding={singleLine ? voidingId === singleLine.id : false}
-      />
-    </tr>
-  );
-}
 
 function SalesRegisterDetailDrawer({
   row,
@@ -1251,7 +1105,18 @@ function SalesRegisterDetailDrawer({
           { label: "Invoice", value: row.invoiceNo },
           { label: "Date", value: formatDate(row.date) },
           { label: "Customer", value: row.customerLabel },
-          { label: "Status", value: formatSalesRegisterStatusLabel(row) },
+          {
+            label: "Status",
+            value:
+              row.source === "pos"
+                ? salesRegisterPosStatus(row).label
+                : salesRegisterManualStatus(
+                    row,
+                    new Date().toLocaleDateString("en-CA", {
+                      timeZone: "Africa/Accra",
+                    }),
+                  ).label,
+          },
           { label: "Payment method", value: row.paymentMethod },
           { label: "Total", value: formatGHS(row.totalAmount) },
           { label: "Paid", value: formatGHS(row.totalReceived) },

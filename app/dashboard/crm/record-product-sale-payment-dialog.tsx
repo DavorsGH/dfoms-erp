@@ -2,22 +2,36 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { useAlert } from "@/components/feedback/feedback-context";
+import { useAlert, useToast } from "@/components/feedback/feedback-context";
 import { formatGHS } from "@/app/dashboard/finance/income-register-utils";
 import {
   SALES_CRM_ALERT_TITLE,
   clientFacingSalesCrmError,
 } from "@/lib/crm/sales-crm-notifications";
 import {
+  isManualSalePaymentMethod,
+  MANUAL_SALE_PAYMENT_METHODS,
   todayIsoDate,
   type RecordProductSalePaymentBody,
 } from "@/utils/product-sale-payments-types";
+import {
+  isPaystackCollectMethod,
+  type ManualSaleCollectionMode,
+} from "@/utils/manual-sale-paystack";
+import ManualSaleCollectionFields from "./manual-sale-collection-fields";
+import { openManualSalePaystackInline } from "./manual-sale-paystack-client";
+import RequestPaymentModal from "@/app/dashboard/pos/request-payment-modal";
+import MobileMoneyNotSetupModal from "@/components/mobile-money-not-setup-modal";
 
 type RecordProductSalePaymentDialogProps = {
   incomeId: string;
   invoiceNo: string;
   outstanding: number;
   paymentMethods: string[];
+  defaultEmail?: string;
+  defaultPhone?: string;
+  mobileMoneyCollectionReady?: boolean;
+  viewerRole?: string | null;
   onClose: () => void;
   onSuccess?: () => void;
 };
@@ -29,22 +43,125 @@ export default function RecordProductSalePaymentDialog({
   incomeId,
   invoiceNo,
   outstanding,
-  paymentMethods,
+  defaultEmail = "",
+  defaultPhone = "",
+  mobileMoneyCollectionReady = true,
+  viewerRole = null,
   onClose,
   onSuccess,
 }: RecordProductSalePaymentDialogProps) {
   const router = useRouter();
   const { alertError } = useAlert();
+  const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
 
   const [paymentDate, setPaymentDate] = useState(todayIsoDate());
   const [amount, setAmount] = useState(outstanding > 0 ? outstanding : 0);
-  const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0] ?? "");
+  const [paymentMethod, setPaymentMethod] = useState("");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [collectionMode, setCollectionMode] =
+    useState<ManualSaleCollectionMode>("received");
+  const [transactionReference, setTransactionReference] = useState("");
+  const [payerEmail, setPayerEmail] = useState(defaultEmail);
+  const [payerPhone, setPayerPhone] = useState(defaultPhone);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [momoNotSetupOpen, setMomoNotSetupOpen] = useState(false);
+
+  function payerEmailReady(): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payerEmail.trim());
+  }
+
+  async function payNow() {
+    if (
+      paymentMethod === "Mobile Money" &&
+      !mobileMoneyCollectionReady
+    ) {
+      setMomoNotSetupOpen(true);
+      return;
+    }
+    if (!payerEmailReady()) {
+      setSubmitting(false);
+      await alertError(
+        clientFacingSalesCrmError("Enter the payer's email address."),
+        { title: SALES_CRM_ALERT_TITLE },
+      );
+      return;
+    }
+    if (!(amount > 0) || amount > outstanding + 0.001) {
+      setSubmitting(false);
+      await alertError(
+        clientFacingSalesCrmError("Enter an amount within the outstanding balance."),
+        { title: SALES_CRM_ALERT_TITLE },
+      );
+      return;
+    }
+    setSubmitting(true);
+    const result = await openManualSalePaystackInline({
+      invoice_no: invoiceNo,
+      amount_ghs: amount,
+      payment_method: paymentMethod,
+      delivery_email: payerEmail.trim(),
+    });
+    setSubmitting(false);
+    if (!result.ok) {
+      await alertError(clientFacingSalesCrmError(result.error), {
+        title: SALES_CRM_ALERT_TITLE,
+      });
+      return;
+    }
+    onSuccess?.();
+    router.refresh();
+    toast("Payment recorded");
+    onClose();
+  }
+
+  async function sendLink() {
+    if (
+      paymentMethod === "Mobile Money" &&
+      !mobileMoneyCollectionReady
+    ) {
+      setMomoNotSetupOpen(true);
+      return;
+    }
+    if (!payerEmailReady() && !payerPhone.trim()) {
+      setSubmitting(false);
+      await alertError(
+        clientFacingSalesCrmError("Enter the payer's email or phone number."),
+        { title: SALES_CRM_ALERT_TITLE },
+      );
+      return;
+    }
+    setLinkOpen(true);
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    const methodField = formRef.current?.elements.namedItem(
+      "product_sale_payment_method",
+    );
+    if (
+      isPaystackCollectMethod(paymentMethod) &&
+      collectionMode === "paystack"
+    ) {
+      setSubmitting(false);
+      await alertError(
+        clientFacingSalesCrmError(
+          "Use Pay now or Send payment link. The payment is recorded after Paystack confirms.",
+        ),
+        { title: SALES_CRM_ALERT_TITLE },
+      );
+      return;
+    }
+    if (
+      methodField instanceof HTMLSelectElement &&
+      !isManualSalePaymentMethod(paymentMethod)
+    ) {
+      methodField.setCustomValidity("Choose a payment method.");
+      methodField.reportValidity();
+      return;
+    }
+
     if (!formRef.current?.reportValidity()) {
       return;
     }
@@ -56,6 +173,8 @@ export default function RecordProductSalePaymentDialog({
       amount,
       payment_method: paymentMethod.trim() || null,
       notes: notes.trim() || null,
+      transaction_reference:
+        collectionMode === "received" ? transactionReference.trim() || null : null,
     };
 
     try {
@@ -70,27 +189,28 @@ export default function RecordProductSalePaymentDialog({
         | null;
 
       if (!response.ok) {
-        void alertError(
+        setSubmitting(false);
+        await alertError(
           clientFacingSalesCrmError(
             payload?.error ?? "Unable to record payment.",
           ),
           { title: SALES_CRM_ALERT_TITLE },
         );
-        setSubmitting(false);
         return;
       }
 
       onSuccess?.();
       router.refresh();
+      toast("Payment recorded");
       onClose();
     } catch {
-      void alertError(
+      setSubmitting(false);
+      await alertError(
         clientFacingSalesCrmError(
-          "Unable to record payment. Check your connection and try again.",
+          "Couldn't reach the server. Check your connection and try again.",
         ),
         { title: SALES_CRM_ALERT_TITLE },
       );
-      setSubmitting(false);
     }
   }
 
@@ -150,43 +270,48 @@ export default function RecordProductSalePaymentDialog({
               step={0.01}
               max={outstanding}
               value={amount}
-              onChange={(event) => setAmount(Number(event.target.value))}
+              onChange={(event) => {
+                const next = Number(event.target.value);
+                setAmount(next);
+                if (!(next > 0)) {
+                  setPaymentMethod("");
+                  setCollectionMode("received");
+                }
+              }}
               className={inputClassName}
             />
           </div>
 
+          {amount > 0 ? (
           <div>
             <label
               htmlFor="product_sale_payment_method"
               className="mb-1 block text-sm font-medium text-slate-700"
             >
-              Payment method (optional)
+              Payment method
             </label>
-            {paymentMethods.length > 0 ? (
-              <select
-                id="product_sale_payment_method"
-                value={paymentMethod}
-                onChange={(event) => setPaymentMethod(event.target.value)}
-                className={inputClassName}
-              >
-                <option value="">— Select —</option>
-                {paymentMethods.map((method) => (
-                  <option key={method} value={method}>
-                    {method}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                id="product_sale_payment_method"
-                type="text"
-                value={paymentMethod}
-                onChange={(event) => setPaymentMethod(event.target.value)}
-                placeholder="e.g. Bank transfer, MoMo, Cash"
-                className={inputClassName}
-              />
-            )}
+            <select
+              id="product_sale_payment_method"
+              name="product_sale_payment_method"
+              value={paymentMethod}
+              onChange={(event) => {
+                event.target.setCustomValidity("");
+                setPaymentMethod(event.target.value);
+                if (!isPaystackCollectMethod(event.target.value)) {
+                  setCollectionMode("received");
+                }
+              }}
+              className={inputClassName}
+            >
+              <option value="">Choose how the customer paid</option>
+              {MANUAL_SALE_PAYMENT_METHODS.map((method) => (
+                <option key={method} value={method}>
+                  {method}
+                </option>
+              ))}
+            </select>
           </div>
+          ) : null}
 
           <div>
             <label
@@ -204,6 +329,21 @@ export default function RecordProductSalePaymentDialog({
             />
           </div>
 
+          <ManualSaleCollectionFields
+            method={paymentMethod}
+            amount={amount}
+            mode={collectionMode}
+            onMode={setCollectionMode}
+            reference={transactionReference}
+            onReference={setTransactionReference}
+            email={payerEmail}
+            onEmail={setPayerEmail}
+            phone={payerPhone}
+            onPhone={setPayerPhone}
+            paystackCollectAllowed={mobileMoneyCollectionReady}
+            onPaystackBlocked={() => setMomoNotSetupOpen(true)}
+          />
+
           <div className="flex flex-wrap justify-end gap-2 pt-2">
             <button
               type="button"
@@ -213,6 +353,26 @@ export default function RecordProductSalePaymentDialog({
             >
               Cancel
             </button>
+            {isPaystackCollectMethod(paymentMethod) && collectionMode === "paystack" ? (
+              <>
+                <button
+                  type="button"
+                  disabled={submitting || outstanding <= 0}
+                  onClick={() => void payNow()}
+                  className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {submitting ? "Opening Paystack…" : "Pay now"}
+                </button>
+                <button
+                  type="button"
+                  disabled={submitting || outstanding <= 0}
+                  onClick={() => void sendLink()}
+                  className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Send payment link
+                </button>
+              </>
+            ) : (
             <button
               type="submit"
               disabled={submitting || outstanding <= 0}
@@ -220,9 +380,34 @@ export default function RecordProductSalePaymentDialog({
             >
               {submitting ? "Recording…" : "Record payment"}
             </button>
+            )}
           </div>
         </form>
+        {linkOpen ? (
+          <RequestPaymentModal
+            mode="invoice"
+            invoiceNo={invoiceNo}
+            paymentMethod={paymentMethod}
+            defaultAmountGhs={amount}
+            defaultEmail={payerEmail}
+            defaultPhone={payerPhone}
+            onClose={() => setLinkOpen(false)}
+            onLinkSent={() => {
+              setLinkOpen(false);
+              onSuccess?.();
+              router.refresh();
+              toast("Payment link sent — this sale shows as Awaiting payment until Paystack confirms.");
+              onClose();
+            }}
+          />
+        ) : null}
       </div>
+      {momoNotSetupOpen ? (
+        <MobileMoneyNotSetupModal
+          viewerRole={viewerRole}
+          onClose={() => setMomoNotSetupOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

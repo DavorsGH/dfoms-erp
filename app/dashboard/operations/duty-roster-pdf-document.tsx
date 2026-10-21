@@ -8,6 +8,7 @@ import {
 } from "@react-pdf/renderer";
 import { CLIENT_INVOICE_COLORS } from "@/app/dashboard/finance/client-invoices/client-invoice-display-utils";
 import type { DutyRosterPdfPayload } from "./duty-roster-document-utils";
+import type { DutyRosterShiftHeader } from "./duty-roster-utils";
 
 const C = CLIENT_INVOICE_COLORS;
 
@@ -95,9 +96,27 @@ const styles = StyleSheet.create({
     color: C.navy,
   },
   subHeaderText: {
-    fontSize: 7,
-    color: C.textMuted,
+    fontSize: 10,
+    fontWeight: 500,
+    color: "#0f172a",
     marginTop: 2,
+  },
+  weekendText: {
+    fontSize: 9,
+    color: "#334155",
+    marginTop: 1,
+  },
+  legacyPill: {
+    marginTop: 2,
+    alignSelf: "flex-start",
+    backgroundColor: "#fde68a",
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+  },
+  legacyPillText: {
+    fontSize: 7,
+    color: "#78350f",
   },
   footerRow: {
     flexDirection: "row",
@@ -143,6 +162,22 @@ const styles = StyleSheet.create({
   },
 });
 
+function ShiftTimeLines({ header }: { header: DutyRosterShiftHeader }) {
+  return (
+    <>
+      <Text style={styles.subHeaderText}>{header.primary}</Text>
+      {header.weekend ? (
+        <Text style={styles.weekendText}>{header.weekend}</Text>
+      ) : null}
+      {header.legacy ? (
+        <View style={styles.legacyPill}>
+          <Text style={styles.legacyPillText}>(old setting)</Text>
+        </View>
+      ) : null}
+    </>
+  );
+}
+
 export default function DutyRosterPdfDocument({
   companyLegalName,
   companyLogoUrl = "",
@@ -183,15 +218,15 @@ export default function DutyRosterPdfDocument({
             </View>
             <View style={styles.cellShift}>
               <Text style={styles.headerText}>Morning Shift</Text>
-              <Text style={styles.subHeaderText}>{morningTime}</Text>
+              <ShiftTimeLines header={morningTime} />
             </View>
             <View style={styles.cellShift}>
               <Text style={styles.headerText}>Afternoon Shift</Text>
-              <Text style={styles.subHeaderText}>{afternoonTime}</Text>
+              <ShiftTimeLines header={afternoonTime} />
             </View>
             <View style={styles.cellSupervisor}>
               <Text style={styles.headerText}>Supervisor(s)</Text>
-              <Text style={styles.subHeaderText}>{supervisorTime}</Text>
+              <ShiftTimeLines header={supervisorTime} />
             </View>
             <View style={styles.cellNumber}>
               <Text style={styles.headerText}>Required</Text>

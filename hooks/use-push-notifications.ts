@@ -7,6 +7,9 @@ import {
   isPushSupportedInBrowser,
   isStandalonePwa,
   needsIosInstallForPush,
+  PUSH_BLOCKED_MESSAGE,
+  PUSH_IOS_MESSAGE,
+  PUSH_UNAVAILABLE_MESSAGE,
   urlBase64ToUint8Array,
 } from "@/utils/push-client";
 
@@ -28,9 +31,35 @@ type UsePushNotificationsResult = {
   isIosInstallRequired: boolean;
   isStandalone: boolean;
   refresh: () => Promise<void>;
-  enable: () => Promise<void>;
-  disable: () => Promise<void>;
+  /** Resolves to a message when push could not be enabled. */
+  enable: () => Promise<string | null>;
+  disable: () => Promise<string | null>;
 };
+
+const PUSH_READY_TIMEOUT_MS = 8000;
+
+function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), PUSH_READY_TIMEOUT_MS);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (cause) => {
+        clearTimeout(timer);
+        reject(cause instanceof Error ? cause : new Error(message));
+      },
+    );
+  });
+}
+
+async function readyServiceWorker(): Promise<ServiceWorkerRegistration> {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    throw new Error(PUSH_UNAVAILABLE_MESSAGE);
+  }
+  return withTimeout(navigator.serviceWorker.ready, PUSH_UNAVAILABLE_MESSAGE);
+}
 
 async function fetchVapidPublicKey(): Promise<string | null> {
   const response = await fetch("/api/push/vapid-public-key");
@@ -140,43 +169,55 @@ export function usePushNotifications(
 
   const enable = useCallback(async () => {
     if (busy) {
-      return;
+      return null;
     }
+
+    const fail = (nextStatus: PushStatus, message: string) => {
+      setStatus(nextStatus);
+      setError(message);
+      return message;
+    };
 
     setBusy(true);
     setError(null);
 
     try {
       if (!isPushSupportedInBrowser()) {
-        setStatus("unsupported");
-        return;
+        return fail("unsupported", PUSH_UNAVAILABLE_MESSAGE);
       }
 
       if (needsIosInstallForPush()) {
-        setStatus("ios_install_required");
-        return;
+        return fail("ios_install_required", PUSH_IOS_MESSAGE);
       }
 
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
-        setStatus(permission === "denied" ? "denied" : "default");
-        return;
+        return fail(
+          permission === "denied" ? "denied" : "default",
+          permission === "denied"
+            ? PUSH_BLOCKED_MESSAGE
+            : "Allow notifications for this site, then try again.",
+        );
       }
 
       const publicKey = await fetchVapidPublicKey();
       if (!publicKey) {
-        setStatus("error");
-        setError("Push notifications are not configured on this environment.");
-        return;
+        return fail("error", PUSH_UNAVAILABLE_MESSAGE);
       }
 
-      const registration = await navigator.serviceWorker.ready;
-      let subscription = await registration.pushManager.getSubscription();
+      const registration = await readyServiceWorker();
+      let subscription = await withTimeout(
+        registration.pushManager.getSubscription(),
+        PUSH_UNAVAILABLE_MESSAGE,
+      );
       if (!subscription) {
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
-        });
+        subscription = await withTimeout(
+          registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
+          }),
+          PUSH_UNAVAILABLE_MESSAGE,
+        );
       }
 
       const json = subscription.toJSON();
@@ -192,20 +233,18 @@ export function usePushNotifications(
 
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) {
-        setStatus("error");
-        setError(payload.error ?? "Failed to enable push notifications.");
-        return;
+        return fail("error", payload.error ?? "Failed to enable push notifications.");
       }
 
       setStatus("subscribed");
       invalidatePushSubscriptionCache(persona);
+      return null;
     } catch (cause) {
-      setStatus("error");
-      setError(
-        cause instanceof Error
+      const message =
+        cause instanceof Error && cause.message.trim()
           ? cause.message
-          : "Failed to enable push notifications.",
-      );
+          : PUSH_UNAVAILABLE_MESSAGE;
+      return fail("error", message);
     } finally {
       setBusy(false);
     }
@@ -213,15 +252,18 @@ export function usePushNotifications(
 
   const disable = useCallback(async () => {
     if (busy) {
-      return;
+      return null;
     }
 
     setBusy(true);
     setError(null);
 
     try {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.getSubscription();
+      const registration = await readyServiceWorker();
+      const subscription = await withTimeout(
+        registration.pushManager.getSubscription(),
+        PUSH_UNAVAILABLE_MESSAGE,
+      );
 
       if (subscription) {
         const endpoint = subscription.endpoint;
@@ -243,13 +285,15 @@ export function usePushNotifications(
         getNotificationPermission() === "granted" ? "unsubscribed" : "default",
       );
       invalidatePushSubscriptionCache(persona);
+      return null;
     } catch (cause) {
-      setStatus("error");
-      setError(
+      const message =
         cause instanceof Error
           ? cause.message
-          : "Failed to disable push notifications.",
-      );
+          : "Failed to disable push notifications.";
+      setStatus("error");
+      setError(message);
+      return message;
     } finally {
       setBusy(false);
     }

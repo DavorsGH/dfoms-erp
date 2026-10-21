@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireDavorsPlatformRealEstateStaff } from "@/utils/admin-auth";
+import { resolveApiDeleteErrorMessage } from "@/utils/postgres-fk-violation";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { assertDavorsManagedLandlord } from "@/utils/maintenance-management";
 
@@ -47,7 +48,14 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: resolveApiDeleteErrorMessage(error, {
+          itemName: "This expense",
+        }),
+      },
+      { status: 400 },
+    );
   }
   if (!data) {
     return NextResponse.json({ error: "Expense not found." }, { status: 404 });

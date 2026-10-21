@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from "react";
 import type { PaystackSubaccountStatus } from "@/utils/billing-settings-types";
+import {
+  resolveOnlinePaymentsConnectionStatus,
+  type OnlinePaymentsConnectionStatus,
+} from "@/utils/product-sale-paystack";
 
 type Bank = {
   name: string;
@@ -17,6 +21,8 @@ type SettlementAccountType = "bank" | "mobile_money";
 
 type PaymentSettingsProps = {
   initialStatus: PaystackSubaccountStatus;
+  initialVerifiedOk?: boolean | null;
+  initialLastVerifyError?: string | null;
   hidden: boolean;
 };
 
@@ -60,25 +66,31 @@ function loadBanks(accountType: SettlementAccountType) {
   return request;
 }
 
-function statusDisplay(status: PaystackSubaccountStatus) {
-  if (status === "active") {
+function connectionStatusDisplay(status: OnlinePaymentsConnectionStatus) {
+  if (status === "connected") {
     return {
-      label: "Active",
-      className:
-        "border-emerald-200 bg-emerald-50 text-emerald-800",
+      label: "Connected",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-800",
     };
   }
 
-  if (status === "pending") {
+  if (status === "needs_attention") {
     return {
-      label: "Pending verification",
-      className: "border-amber-200 bg-amber-50 text-amber-800",
+      label: "Needs attention",
+      className: "border-amber-200 bg-amber-50 text-amber-900",
+    };
+  }
+
+  if (status === "checking") {
+    return {
+      label: "Checking connection…",
+      className: "border-sky-200 bg-sky-50 text-sky-900",
     };
   }
 
   return {
-    label: "Not set up",
-    className: "border-amber-200 bg-amber-50 text-amber-800",
+    label: "Not connected",
+    className: "border-slate-200 bg-slate-50 text-slate-700",
   };
 }
 
@@ -116,10 +128,15 @@ function resolveFailureMessage(
 
 export default function PaymentSettings({
   initialStatus,
+  initialVerifiedOk = null,
+  initialLastVerifyError = null,
   hidden,
 }: PaymentSettingsProps) {
   const [status, setStatus] =
     useState<PaystackSubaccountStatus>(initialStatus);
+  const [verifiedOk, setVerifiedOk] = useState<boolean | null>(
+    initialVerifiedOk,
+  );
   const [accountType, setAccountType] =
     useState<SettlementAccountType>("bank");
   const [banks, setBanks] = useState<Bank[]>([]);
@@ -129,14 +146,32 @@ export default function PaymentSettings({
   const [accountDetails, setAccountDetails] = useState<AccountDetails | null>(
     null,
   );
-  const [editing, setEditing] = useState(initialStatus !== "active");
+  // Edit form only when not connected, or Needs attention. Never-checked
+  // (null) stays on the checking view until Paystack responds.
+  const [editing, setEditing] = useState(
+    initialStatus !== "active" || initialVerifiedOk === false,
+  );
+  const connectionStatus = resolveOnlinePaymentsConnectionStatus({
+    paystack_subaccount_status: status,
+    paystack_subaccount_code: status === "active" ? "set" : null,
+    paystack_subaccount_verified_ok: verifiedOk,
+  });
+  const showConnectedView =
+    status === "active" && verifiedOk === true && !editing;
+  const showCheckingView =
+    status === "active" && verifiedOk === null && !editing;
   const [banksLoading, setBanksLoading] = useState(true);
   const [detailsLoading, setDetailsLoading] = useState(
     initialStatus === "active",
   );
   const [resolving, setResolving] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    initialStatus === "active" && initialVerifiedOk === false
+      ? initialLastVerifyError?.trim() ||
+          "Paystack can't find this account. Update the settlement account."
+      : null,
+  );
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -185,23 +220,62 @@ export default function PaymentSettings({
                 bank_name?: string;
                 account_last4?: string;
               } | null;
+              verification?: {
+                verified_ok?: boolean;
+                last_verify_error?: string | null;
+              };
               error?: string;
             }
           | null;
 
-        if (!response.ok) {
+        if (cancelled) {
+          return;
+        }
+
+        // Directors can open Online Payments; GET verifies. POST (save) stays
+        // super_admin-only — keep server-rendered status on 403.
+        if (response.status === 403) {
+          return;
+        }
+
+        if (!response.ok && response.status >= 500) {
           throw new Error(payload?.error ?? "Unable to load payment account.");
         }
 
-        if (!cancelled && payload?.account) {
+        const verified = payload?.verification?.verified_ok;
+        const ok = verified === true;
+        setVerifiedOk(ok ? true : verified === false ? false : null);
+
+        if (ok && payload?.account) {
           setAccountDetails({
             bankName: payload.account.bank_name ?? "Settlement account",
             accountLast4: payload.account.account_last4 ?? "",
           });
+          setEditing(false);
+          setError(null);
+          return;
         }
+
+        if (verified === false) {
+          const attentionMessage =
+            payload?.verification?.last_verify_error?.trim() ||
+            payload?.error?.trim() ||
+            "Paystack can't find this account. Update the settlement account.";
+          setAccountDetails(null);
+          setEditing(true);
+          setError(attentionMessage);
+          return;
+        }
+
+        // Still checking / no account payload yet — leave null + checking UI.
+        setAccountDetails(null);
+        setEditing(false);
+        setError(null);
       })
       .catch((loadError: unknown) => {
         if (!cancelled) {
+          setVerifiedOk(false);
+          setEditing(true);
           setError(
             loadError instanceof Error
               ? loadError.message
@@ -311,7 +385,17 @@ export default function PaymentSettings({
       },
     );
     const payload = (await response.json().catch(() => null)) as
-      | { error?: string }
+      | {
+          error?: string;
+          account?: {
+            bank_name?: string | null;
+            account_last4?: string | null;
+          } | null;
+          verification?: {
+            verified_ok?: boolean;
+            last_verify_error?: string | null;
+          };
+        }
       | null;
 
     if (!response.ok) {
@@ -320,14 +404,32 @@ export default function PaymentSettings({
       return;
     }
 
+    const ok = payload?.verification?.verified_ok !== false;
+    setStatus("active");
+    setVerifiedOk(ok);
+
+    if (!ok) {
+      setAccountDetails(null);
+      setEditing(true);
+      setError(
+        payload?.verification?.last_verify_error?.trim() ||
+          payload?.error?.trim() ||
+          "Paystack can't find this account. Update the settlement account.",
+      );
+      setSaving(false);
+      return;
+    }
+
     const selectedBank = banks.find((bank) => bank.code === bankCode);
     setAccountDetails({
       bankName:
-        selectedBank?.name ??
+        payload?.account?.bank_name?.trim() ||
+        selectedBank?.name ||
         (accountType === "mobile_money" ? "Mobile Money" : "Bank"),
-      accountLast4: accountNumber.trim().slice(-4),
+      accountLast4:
+        payload?.account?.account_last4?.trim() ||
+        accountNumber.trim().slice(-4),
     });
-    setStatus("active");
     setEditing(false);
     setSaving(false);
     setSuccess("Payment account verified and activated.");
@@ -345,24 +447,33 @@ export default function PaymentSettings({
     setSuccess(null);
   }
 
-  const statusInfo = statusDisplay(status);
+  const statusInfo = connectionStatusDisplay(connectionStatus);
   const isMobileMoney = accountType === "mobile_money";
   const providerLabel = isMobileMoney ? "Mobile Money Provider" : "Bank";
   const numberLabel = isMobileMoney ? "Mobile Money Number" : "Account Number";
 
   return (
     <div hidden={hidden} className="max-w-4xl space-y-6">
-      <p className="text-sm text-slate-600">
-        Route POS and product-sale payments to your verified bank account.
-      </p>
-
       <div
         className={`inline-flex items-center rounded-full border px-3 py-1 text-sm font-medium ${statusInfo.className}`}
       >
         {statusInfo.label}
       </div>
 
-      {error ? (
+      {connectionStatus === "needs_attention" ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          Needs attention — Paystack can&apos;t find this account. Update the
+          settlement account.
+        </p>
+      ) : null}
+
+      {connectionStatus === "checking" ? (
+        <p className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+          Checking connection… confirming this settlement account with Paystack.
+        </p>
+      ) : null}
+
+      {error && connectionStatus !== "needs_attention" && connectionStatus !== "checking" ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </p>
@@ -374,7 +485,23 @@ export default function PaymentSettings({
         </p>
       ) : null}
 
-      {status === "active" && !editing ? (
+      {showCheckingView ? (
+        <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <div>
+            <h3 className="text-sm font-medium text-slate-700">
+              Settlement Account
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Confirming the Paystack settlement account for Mobile Money.
+            </p>
+          </div>
+          <p className="text-sm text-slate-500">
+            {detailsLoading
+              ? "Checking connection…"
+              : "Checking connection… this usually finishes in a few seconds."}
+          </p>
+        </section>
+      ) : showConnectedView ? (
         <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <div>
             <h3 className="text-sm font-medium text-slate-700">
@@ -400,7 +527,7 @@ export default function PaymentSettings({
             </div>
           ) : (
             <p className="text-sm text-slate-500">
-              Account details are temporarily unavailable.
+              Loading settlement details…
             </p>
           )}
 
