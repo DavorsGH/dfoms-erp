@@ -3,6 +3,7 @@
 import { confirmDialog } from "@/components/feedback/app-dialogs";
 import Tooltip from "@/components/ui/tooltip";
 import Link from "next/link";
+import { useAlert, useToast } from "@/components/feedback";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
@@ -419,6 +420,15 @@ export default function TaxLedger({
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError, { title: "Could not load statutory ledger" });
+    }
+  }, [alertError, fetchError]);
+
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const { viewAllBusinessUnits } = useBusinessUnitView();
@@ -453,7 +463,6 @@ export default function TaxLedger({
   const [paidRemits, setPaidRemits] = useState<
     Partial<Record<RemitTaxKind, PaidRemitUi>>
   >({});
-  const [error, setError] = useState<string | null>(fetchError);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [undoRemitPenaltyNotice, setUndoRemitPenaltyNotice] =
     useState<LinkedGraPenaltyExpense | null>(null);
@@ -621,14 +630,13 @@ export default function TaxLedger({
       .order("created_at", { ascending: false });
 
     if (refreshError) {
-      setError(refreshError.message);
+      void alertError(refreshError.message, { title: "Could not complete action" });
       return;
     }
 
     setEntries(
       ((data as TaxLedgerEntry[] | null) ?? []).map(normalizeTaxLedgerEntry),
     );
-    setError(null);
   }
 
   async function refreshPaidRemits(periodMonth: string | null) {
@@ -648,7 +656,7 @@ export default function TaxLedger({
       .in("receipt_no", receiptNos);
 
     if (remittanceError) {
-      setError(remittanceError.message);
+      void alertError(remittanceError.message, { title: "Could not complete action" });
       return;
     }
 
@@ -684,11 +692,10 @@ export default function TaxLedger({
   async function handleSaveSettings(event: React.FormEvent) {
     event.preventDefault();
     setSavingSettings(true);
-    setError(null);
     setInfoMessage(null);
 
     if (!stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+      void alertError(stampBusinessUnit.error, { title: "Could not complete action" });
       setSavingSettings(false);
       return;
     }
@@ -710,7 +717,7 @@ export default function TaxLedger({
         rule.dayRule === "day" &&
         (rule.dayNumber == null || rule.dayNumber < 1 || rule.dayNumber > 31)
       ) {
-        setError(`${label} due day must be between 1 and 31.`);
+        void alertError(`${label} due day must be between 1 and 31.`, { title: "Could not complete action" });
         setSavingSettings(false);
         return;
       }
@@ -753,7 +760,7 @@ export default function TaxLedger({
       .single();
 
     if (saveError) {
-      setError(saveError.message);
+      void alertError(saveError.message, { title: "Could not complete action" });
       setSavingSettings(false);
       return;
     }
@@ -770,12 +777,12 @@ export default function TaxLedger({
 
   async function handleRemitForPeriod(kind: RemitTaxKind) {
     if (!filters.periodMonth) {
-      setError("Select a period month before remitting.");
+      void alertError("Select a period month before remitting.", { title: "Could not complete action" });
       return;
     }
 
     if (viewAllBusinessUnits || buReadScope.mode === "all") {
-      setError(REMIT_REQUIRES_SCOPED_BU_MESSAGE);
+      void alertError(REMIT_REQUIRES_SCOPED_BU_MESSAGE, { title: "Could not complete action" });
       return;
     }
 
@@ -811,11 +818,10 @@ export default function TaxLedger({
     }
 
     setRemittingKind(kind);
-    setError(null);
     setInfoMessage(null);
 
     if (!stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+      void alertError(stampBusinessUnit.error, { title: "Could not complete action" });
       setRemittingKind(null);
       return;
     }
@@ -836,7 +842,7 @@ export default function TaxLedger({
     };
 
     if (!response.ok || result.error) {
-      setError(result.error ?? "Failed to remit tax for period.");
+      void alertError(result.error ?? "Failed to remit tax for period.", { title: "Could not complete action" });
     } else if (result.message) {
       setInfoMessage(result.message);
     }
@@ -865,12 +871,12 @@ export default function TaxLedger({
 
   async function handleUndoRemitForPeriod(kind: RemitTaxKind) {
     if (!filters.periodMonth) {
-      setError("Select a period month before undoing a remittance.");
+      void alertError("Select a period month before undoing a remittance.", { title: "Could not complete action" });
       return;
     }
 
     if (viewAllBusinessUnits || buReadScope.mode === "all") {
-      setError(REMIT_REQUIRES_SCOPED_BU_MESSAGE);
+      void alertError(REMIT_REQUIRES_SCOPED_BU_MESSAGE, { title: "Could not complete action" });
       return;
     }
 
@@ -918,7 +924,6 @@ export default function TaxLedger({
     }
 
     setUndoingKind(kind);
-    setError(null);
     setInfoMessage(null);
 
     const response = await fetch("/api/finance/tax-ledger/undo-remit", {
@@ -935,7 +940,7 @@ export default function TaxLedger({
     };
 
     if (!response.ok || result.error) {
-      setError(result.error ?? "Failed to undo remittance.");
+      void alertError(result.error ?? "Failed to undo remittance.", { title: "Could not complete action" });
     } else {
       if (result.message) {
         setInfoMessage(result.message);
@@ -1099,12 +1104,6 @@ export default function TaxLedger({
         liability clear), and Undo Remit (reverse cash + reopen legs when
         payment has not been sent).
       </p>
-
-      {error && (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       {infoMessage && (
         <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">

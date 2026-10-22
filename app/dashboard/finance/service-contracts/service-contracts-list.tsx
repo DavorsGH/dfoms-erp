@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useAlert, useToast } from "@/components/feedback";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -43,10 +44,11 @@ export default function ServiceContractsList({
   fetchError,
 }: ServiceContractsListProps) {
   const router = useRouter();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
   const [contracts, setContracts] = useState(
     initialContracts.map(normalizeServiceContractListRow),
   );
-  const [error, setError] = useState<string | null>(fetchError);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
@@ -55,13 +57,14 @@ export default function ServiceContractsList({
   }, [initialContracts]);
 
   useEffect(() => {
-    setError(fetchError);
-  }, [fetchError]);
+    if (fetchError) {
+      void alertError(fetchError, { title: "Could not load service contracts" });
+    }
+  }, [alertError, fetchError]);
 
   async function handleDelete(contract: ServiceContractListRow) {
     setConfirmingId(null);
     setDeletingId(contract.id);
-    setError(null);
 
     try {
       const response = await fetch(`/api/service-contracts/${contract.id}`, {
@@ -73,14 +76,20 @@ export default function ServiceContractsList({
         | null;
 
       if (!response.ok) {
-        setError(payload?.error ?? "Unable to delete service contract.");
+        void alertError(payload?.error ?? "Unable to delete service contract.", {
+          title: "Could not delete service contract",
+        });
         return;
       }
 
       setContracts((current) => current.filter((entry) => entry.id !== contract.id));
+      toast("Service contract deleted.");
       router.refresh();
     } catch {
-      setError("Unable to delete service contract. Check your connection and try again.");
+      void alertError(
+        "Unable to delete service contract. Check your connection and try again.",
+        { title: "Could not delete service contract" },
+      );
     } finally {
       setDeletingId(null);
     }
@@ -88,12 +97,6 @@ export default function ServiceContractsList({
 
   return (
     <div className="space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       <div className="flex justify-end">
         <Link
           href="/dashboard/finance/service-contracts/new"

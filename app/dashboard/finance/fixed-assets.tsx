@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useAlert, useToast } from "@/components/feedback";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
@@ -194,6 +195,15 @@ export default function FixedAssets({
   activeBusinessUnitId = null,
 }: FixedAssetsProps) {
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError, { title: "Could not load fixed assets" });
+    }
+  }, [alertError, fetchError]);
+
   const router = useRouter();
   const searchParams = useSearchParams();
   const assetIdFromQueryHandled = useRef<string | null>(null);
@@ -214,7 +224,6 @@ export default function FixedAssets({
   const [form, setForm] = useState(emptyForm);
   const [whtAmountEdited, setWhtAmountEdited] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(fetchError);
   const [detailAssetId, setDetailAssetId] = useState<string | null>(null);
   const [detailAsset, setDetailAsset] = useState<FixedAssetEntry | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -345,7 +354,7 @@ export default function FixedAssets({
         null;
 
       if (lookupError) {
-        setError(lookupError);
+        void alertError(lookupError, { title: "Could not complete action" });
         return;
       }
 
@@ -551,12 +560,11 @@ export default function FixedAssets({
     ).order("asset_id", { ascending: true });
 
     if (refreshError) {
-      setError(refreshError.message);
+      void alertError(refreshError.message, { title: "Could not complete action" });
       return;
     }
 
     setAssets(data ?? []);
-    setError(null);
   }
 
   function openAddForm() {
@@ -616,11 +624,10 @@ export default function FixedAssets({
     }
 
     setDeletingId(assetId);
-    setError(null);
 
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      void alertError(buContext.error, { title: "Could not complete action" });
       setDeletingId(null);
       return;
     }
@@ -632,7 +639,7 @@ export default function FixedAssets({
         existing?.business_unit_id,
       );
     } catch (accessError) {
-      setError(formatBusinessUnitAccessError(accessError));
+      void alertError(formatBusinessUnitAccessError(accessError), { title: "Could not complete action" });
       setDeletingId(null);
       return;
     }
@@ -640,7 +647,7 @@ export default function FixedAssets({
     const { tenantId, error: tenantError } =
       await resolveSessionTenantId(supabase);
     if (tenantError || !tenantId) {
-      setError(tenantError ?? "Unable to resolve workspace.");
+      void alertError(tenantError ?? "Unable to resolve workspace.", { title: "Could not complete action" });
       setDeletingId(null);
       return;
     }
@@ -651,7 +658,7 @@ export default function FixedAssets({
     });
 
     if (deleteError) {
-      setError(deleteError.message);
+      void alertError(deleteError.message, { title: "Could not complete action" });
       setDeletingId(null);
       return;
     }
@@ -660,6 +667,7 @@ export default function FixedAssets({
       closeForm();
     }
 
+    toast("Fixed asset deleted.");
     await refreshAssets();
     setDeletingId(null);
   }
@@ -708,12 +716,11 @@ export default function FixedAssets({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setError(null);
 
     try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      void alertError(buContext.error, { title: "Could not complete action" });
       return;
     }
 
@@ -729,7 +736,7 @@ export default function FixedAssets({
           existingAsset?.business_unit_id,
         );
       } catch (accessError) {
-        setError(formatBusinessUnitAccessError(accessError));
+        void alertError(formatBusinessUnitAccessError(accessError), { title: "Could not complete action" });
         return;
       }
       stampedBusinessUnitId = existingAsset?.business_unit_id ?? null;
@@ -739,7 +746,7 @@ export default function FixedAssets({
         stamp: stampBusinessUnit,
       });
       if (!stampResult.ok) {
-        setError(stampResult.error);
+        void alertError(stampResult.error, { title: "Could not complete action" });
         return;
       }
       stampedBusinessUnitId = stampResult.businessUnitId;
@@ -763,15 +770,15 @@ export default function FixedAssets({
       suppliers,
     );
     if (!vendorName) {
-      setError("Supplier is required.");
+      void alertError("Supplier is required.", { title: "Could not complete action" });
       return;
     }
     if (form.vendor_select === VENDOR_OTHER_VALUE && !form.vendor_other.trim()) {
-      setError("Enter the one-time supplier name.");
+      void alertError("Enter the one-time supplier name.", { title: "Could not complete action" });
       return;
     }
     if (isCreditPaymentMethod(paymentMethod) && !vendorName) {
-      setError("Supplier name is required for credit / on-account purchases.");
+      void alertError("Supplier name is required for credit / on-account purchases.", { title: "Could not complete action" });
       return;
     }
 
@@ -827,7 +834,7 @@ export default function FixedAssets({
     const { tenantId, error: tenantError } =
       await resolveSessionTenantId(supabase);
     if (tenantError || !tenantId) {
-      setError(tenantError ?? "Unable to resolve workspace.");
+      void alertError(tenantError ?? "Unable to resolve workspace.", { title: "Could not complete action" });
       return;
     }
 
@@ -836,7 +843,7 @@ export default function FixedAssets({
     if (!editingId) {
       const allocated = await allocateAssetId(supabase);
       if (allocated.error || !allocated.assetId) {
-        setError(allocated.error ?? "Unable to allocate asset ID.");
+        void alertError(allocated.error ?? "Unable to allocate asset ID.", { title: "Could not complete action" });
         return;
       }
       savedAssetId = allocated.assetId;
@@ -888,7 +895,7 @@ export default function FixedAssets({
     });
 
     if (saveError) {
-      setError(saveError.message);
+      void alertError(saveError.message, { title: "Could not complete action" });
       return;
     }
 
@@ -900,14 +907,13 @@ export default function FixedAssets({
       });
     }
 
+    toast(editingId ? "Fixed asset updated." : "Fixed asset saved.");
     closeForm();
     await refreshAssets();
     } catch (unexpected) {
-      setError(
-        unexpected instanceof Error
+      void alertError(unexpected instanceof Error
           ? unexpected.message
-          : "Unable to save the fixed asset.",
-      );
+          : "Unable to save the fixed asset.", { title: "Could not complete action" });
     } finally {
       setLoading(false);
     }
@@ -1016,12 +1022,6 @@ export default function FixedAssets({
           </button>
         </div>
       </div>
-
-      {error && (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       {showForm && (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

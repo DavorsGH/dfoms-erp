@@ -34,7 +34,7 @@ export type DirectorScorecardSessionScope = {
   buScope: BusinessUnitReadScope;
 };
 
-async function resolveBusinessUnitLabel(
+export async function resolveDirectorScorecardBusinessUnitLabel(
   tenantId: string,
   resolvedActiveBusinessUnitId: string | null,
   viewAllBusinessUnits: boolean,
@@ -86,7 +86,7 @@ export async function resolveDirectorScorecardSessionScope(): Promise<
     activeBusinessUnitId: resolvedActiveBusinessUnitId,
   });
 
-  const businessUnitLabel = await resolveBusinessUnitLabel(
+  const businessUnitLabel = await resolveDirectorScorecardBusinessUnitLabel(
     tenantId,
     resolvedActiveBusinessUnitId,
     viewAllBusinessUnits,
@@ -184,16 +184,23 @@ export async function attachDirectorScorecardToViewModel(
   viewModel: DashboardViewModel,
   dashboardPageData: DashboardPageData,
 ): Promise<DashboardViewModel> {
-  const [clientInvoices, { data: taxSettingsRow }] = await Promise.all([
-    fetchDirectorScorecardClientInvoices(supabase, tenantId, buScope),
-    scopeTaxSettingsRead(
-      supabase
-        .from("tax_settings")
-        .select(TAX_SETTINGS_FULL_SELECT)
-        .eq("tenant_id", tenantId),
-      activeBusinessUnitId,
-    ).maybeSingle(),
-  ]);
+  const viewAllBusinessUnits = buScope.mode === "all";
+  const [clientInvoices, { data: taxSettingsRow }, businessUnitLabel] =
+    await Promise.all([
+      fetchDirectorScorecardClientInvoices(supabase, tenantId, buScope),
+      scopeTaxSettingsRead(
+        supabase
+          .from("tax_settings")
+          .select(TAX_SETTINGS_FULL_SELECT)
+          .eq("tenant_id", tenantId),
+        activeBusinessUnitId,
+      ).maybeSingle(),
+      resolveDirectorScorecardBusinessUnitLabel(
+        tenantId,
+        activeBusinessUnitId,
+        viewAllBusinessUnits,
+      ),
+    ]);
 
   const directorScorecardByMonthKey = buildDirectorScorecardByMonthKey({
     viewModel,
@@ -203,6 +210,7 @@ export async function attachDirectorScorecardToViewModel(
     taxSettings: mergeTaxSettingsDueRules(
       (taxSettingsRow as Record<string, unknown> | null) ?? null,
     ),
+    businessUnitLabel,
   });
 
   return {

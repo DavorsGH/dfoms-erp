@@ -26,7 +26,7 @@ export default async function PortalLayout({
     <StickyBottomBarProvider>
       <FeedbackShell>
         {children}
-        {session ? <AssistantChatWidget /> : null}
+        {session ? <AssistantChatWidget persona="tenant" /> : null}
       </FeedbackShell>
     </StickyBottomBarProvider>
   );

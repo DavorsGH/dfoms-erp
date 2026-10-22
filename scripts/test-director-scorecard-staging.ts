@@ -121,6 +121,7 @@ async function buildScorecardForScope(
     taxSettings: modules.mergeTaxSettingsDueRules(
       (taxSettingsRow as Record<string, unknown> | null) ?? null,
     ),
+    businessUnitLabel: options.label,
   });
 
   return { viewModel, scorecards, dashboardPageData, label: options.label };

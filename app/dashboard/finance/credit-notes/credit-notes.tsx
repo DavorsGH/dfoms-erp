@@ -4,7 +4,8 @@ import Tooltip from "@/components/ui/tooltip";
 
 import Link from "next/link";
 import DashboardButton from "@/components/dashboard-button";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useAlert, useToast } from "@/components/feedback";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import {
@@ -55,6 +56,8 @@ export default function CreditNotes({
   const { viewAllBusinessUnits, activeBusinessUnitId, units } =
     useBusinessUnitView();
   const buReadScope = useBusinessUnitReadScope();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
   const [rows, setRows] = useState(initialRows);
   const [usageFilter, setUsageFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
@@ -65,7 +68,12 @@ export default function CreditNotes({
   const [refundMethod, setRefundMethod] = useState(paymentMethods[0] ?? "Cash");
   const [refundNotes, setRefundNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(fetchError);
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError, { title: "Could not load credit notes" });
+    }
+  }, [alertError, fetchError]);
 
   const visibleRows = useMemo(() => {
     return rows.filter((row) => {
@@ -96,7 +104,7 @@ export default function CreditNotes({
       buReadScope,
     ).order("credit_note_date", { ascending: false });
     if (loadError) {
-      setError(loadError.message);
+      void alertError(loadError.message, { title: "Could not refresh credit notes" });
       return;
     }
     setRows((data as CreditNoteListRow[] | null) ?? []);
@@ -114,11 +122,10 @@ export default function CreditNotes({
       units,
     });
     if (!refundBuGate.ok) {
-      setError(refundBuGate.message);
+      void alertError(refundBuGate.message, { title: "Could not record refund" });
       return;
     }
     setSubmitting(true);
-    setError(null);
     try {
       const amount = Number(refundAmount);
       const { error: rpcError } = await supabase.rpc("record_refund", {
@@ -128,18 +135,20 @@ export default function CreditNotes({
         p_notes: refundNotes.trim() || null,
       });
       if (rpcError) {
-        setError(rpcError.message);
+        void alertError(rpcError.message, { title: "Could not record refund" });
         return;
       }
       setRefundNoteId(null);
       setRefundAmount("");
       setRefundNotes("");
+      toast("Refund recorded.");
       await refreshRows();
     } catch (unexpected) {
-      setError(
+      void alertError(
         unexpected instanceof Error
           ? unexpected.message
           : "Unable to record the refund.",
+        { title: "Could not record refund" },
       );
     } finally {
       setSubmitting(false);
@@ -151,12 +160,6 @@ export default function CreditNotes({
       <p className="text-sm text-slate-600">
         Product return credit notes, refunds, and store credit balances.
       </p>
-
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
         <div>
@@ -324,10 +327,11 @@ export default function CreditNotes({
                                   units,
                                 });
                                 if (!gate.ok) {
-                                  setError(gate.message);
+                                  void alertError(gate.message, {
+                                    title: "Could not record refund",
+                                  });
                                   return;
                                 }
-                                setError(null);
                                 setSubmitting(false);
                                 setRefundNoteId(row.id);
                                 setRefundAmount(String(available));

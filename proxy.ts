@@ -409,10 +409,13 @@ export async function proxy(request: NextRequest) {
       pathname.startsWith("/dashboard") ||
       pathname.startsWith("/pos-customer-display"));
 
+  const needsAssistantStaffAccount =
+    user && pathname.startsWith("/api/assistant/");
+
   let accountRow: MiddlewareAccountRow | null = null;
   let accountGate = false;
 
-  if (user && (needsAccountGate || needsPersonaCheck)) {
+  if (user && (needsAccountGate || needsPersonaCheck || needsAssistantStaffAccount)) {
     accountGate = true;
     const accountDbStartedAt = Date.now();
     const { data: account } = await supabase
@@ -728,6 +731,7 @@ export async function proxy(request: NextRequest) {
     accountRow &&
     accountRow.is_active !== false &&
     (pathname.startsWith("/dashboard") ||
+      pathname.startsWith("/api/assistant/") ||
       pathname.startsWith("/pos-customer-display") ||
       (isPerfProbeEnabled() &&
         pathname === "/api/perf-probe/trusted-context"))

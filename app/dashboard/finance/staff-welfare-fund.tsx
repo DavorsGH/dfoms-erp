@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useAlert, useToast } from "@/components/feedback";
 import { createClient } from "@/utils/supabase/client";
 import {
   useStampBusinessUnitId,
@@ -85,6 +86,15 @@ export default function StaffWelfareFund({
   activeBusinessUnitId = null,
 }: StaffWelfareFundProps) {
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError, { title: "Could not load staff welfare fund" });
+    }
+  }, [alertError, fetchError]);
+
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(
@@ -94,7 +104,6 @@ export default function StaffWelfareFund({
   const [showContributionForm, setShowContributionForm] = useState(false);
   const [loadingDisbursement, setLoadingDisbursement] = useState(false);
   const [loadingContribution, setLoadingContribution] = useState(false);
-  const [error, setError] = useState<string | null>(fetchError);
   const [disbursementForm, setDisbursementForm] = useState({
     entry_date: new Date().toISOString().slice(0, 10),
     amount: "",
@@ -135,7 +144,7 @@ export default function StaffWelfareFund({
     );
 
     if (refreshError) {
-      setError(refreshError.message);
+      void alertError(refreshError.message, { title: "Could not complete action" });
       return;
     }
 
@@ -144,25 +153,21 @@ export default function StaffWelfareFund({
         normalizeStaffWelfareFundEntry,
       ),
     );
-    setError(null);
   }
 
   async function handleDisbursementSubmit(event: React.FormEvent) {
     event.preventDefault();
     setLoadingDisbursement(true);
-    setError(null);
 
     try {
     const amount = Number(disbursementForm.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      setError("Enter a valid disbursement amount greater than zero.");
+      void alertError("Enter a valid disbursement amount greater than zero.", { title: "Could not complete action" });
       return;
     }
 
     if (amount > fundBalance) {
-      setError(
-        `Disbursement (${formatGHS(amount)}) exceeds the current fund balance (${formatGHS(fundBalance)}).`,
-      );
+      void alertError(`Disbursement (${formatGHS(amount)}) exceeds the current fund balance (${formatGHS(fundBalance)}).`, { title: "Could not complete action" });
       return;
     }
 
@@ -264,8 +269,9 @@ export default function StaffWelfareFund({
       });
       setShowDisbursementForm(false);
       await refreshEntries();
+      toast("Disbursement recorded.");
     } catch (submitError) {
-      setError(formatBusinessUnitAccessError(submitError));
+      void alertError(formatBusinessUnitAccessError(submitError), { title: "Could not complete action" });
     } finally {
       setLoadingDisbursement(false);
     }
@@ -274,12 +280,11 @@ export default function StaffWelfareFund({
   async function handleContributionSubmit(event: React.FormEvent) {
     event.preventDefault();
     setLoadingContribution(true);
-    setError(null);
 
     try {
     const amount = Number(contributionForm.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      setError("Enter a valid contribution amount greater than zero.");
+      void alertError("Enter a valid contribution amount greater than zero.", { title: "Could not complete action" });
       return;
     }
 
@@ -372,8 +377,9 @@ export default function StaffWelfareFund({
       });
       setShowContributionForm(false);
       await refreshEntries();
+      toast("Contribution recorded.");
     } catch (submitError) {
-      setError(formatBusinessUnitAccessError(submitError));
+      void alertError(formatBusinessUnitAccessError(submitError), { title: "Could not complete action" });
     } finally {
       setLoadingContribution(false);
     }
@@ -402,12 +408,6 @@ export default function StaffWelfareFund({
           </p>
         </div>
       </div>
-
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

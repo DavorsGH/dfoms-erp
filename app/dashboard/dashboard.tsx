@@ -179,14 +179,18 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
           href="/dashboard/inventory/product-purchases"
         />
         <SummaryCard
-          title={`Total Revenue (${selectedPeriodLabel})`}
+          title={`Income register total (${selectedPeriodLabel})`}
+          subtitle={selectedPeriodSubtitle}
           value={formatGHS(displayedRevenue)}
-          href="/dashboard/finance"
+          valueNote="Sum of Income Register amounts as recorded (often VAT-inclusive). P&L revenue is tax-exclusive and excludes voided sales."
+          href="/dashboard/finance/income-register"
         />
         <SummaryCard
-          title={`Total Expenses (${selectedPeriodLabel})`}
+          title={`Expense register total (${selectedPeriodLabel})`}
+          subtitle={selectedPeriodSubtitle}
           value={formatGHS(displayedExpenses)}
-          href="/dashboard/finance/expenses"
+          valueNote="Sum of Expense Register operating amounts as recorded (often VAT-inclusive), excluding depreciation. P&L total expenses adds depreciation and uses tax-exclusive amounts."
+          href="/dashboard/finance/expense-register"
         />
         <SummaryCard
           title="Depreciation"

@@ -2,6 +2,7 @@
 
 import Tooltip from "@/components/ui/tooltip";
 
+import { useAlert, useToast } from "@/components/feedback";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
@@ -134,6 +135,15 @@ export default function ManualFinancialEntries({
 }: ManualFinancialEntriesProps) {
   const router = useRouter();
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError, { title: "Could not load manual financial entries" });
+    }
+  }, [alertError, fetchError]);
+
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const defaultPeriod = getDefaultPeriodSelection();
@@ -154,7 +164,6 @@ export default function ManualFinancialEntries({
   >("increase");
   const [nonCashReason, setNonCashReason] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(fetchError);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const availableYears = useMemo(() => {
     const years = new Set<number>([
@@ -196,7 +205,6 @@ export default function ManualFinancialEntries({
   }
 
   function openAction(action: ActiveAction) {
-    setError(null);
     setInfoMessage(null);
     setAmount("");
     setNotes("");
@@ -212,12 +220,11 @@ export default function ManualFinancialEntries({
     ).order("period_month", { ascending: false });
 
     if (refreshError) {
-      setError(refreshError.message);
+      void alertError(refreshError.message, { title: "Could not complete action" });
       return;
     }
 
     setEntries((data as ManualFinancialEntryRecord[] | null) ?? []);
-    setError(null);
   }
 
   async function saveRow(
@@ -225,13 +232,12 @@ export default function ManualFinancialEntries({
     successMessage: string,
   ) {
     setLoading(true);
-    setError(null);
     setInfoMessage(null);
 
     try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      void alertError(buContext.error, { title: "Could not complete action" });
       setLoading(false);
       return;
     }
@@ -241,7 +247,7 @@ export default function ManualFinancialEntries({
       stamp: stampBusinessUnit,
     });
     if (!stampResult.ok) {
-      setError(stampResult.error);
+      void alertError(stampResult.error, { title: "Could not complete action" });
       setLoading(false);
       return;
     }
@@ -258,7 +264,7 @@ export default function ManualFinancialEntries({
           existingForPeriod.business_unit_id,
         );
       } catch (accessError) {
-        setError(formatBusinessUnitAccessError(accessError));
+        void alertError(formatBusinessUnitAccessError(accessError), { title: "Could not complete action" });
         setLoading(false);
         return;
       }
@@ -277,7 +283,7 @@ export default function ManualFinancialEntries({
       );
 
     if (saveError) {
-      setError(saveError.message);
+      void alertError(saveError.message, { title: "Could not complete action" });
       setLoading(false);
       return;
     }
@@ -287,11 +293,9 @@ export default function ManualFinancialEntries({
     setInfoMessage(successMessage);
     router.refresh();
     } catch (unexpected) {
-      setError(
-        unexpected instanceof Error
+      void alertError(unexpected instanceof Error
           ? unexpected.message
-          : "Unable to save manual financial entry.",
-      );
+          : "Unable to save manual financial entry.", { title: "Could not complete action" });
     } finally {
       setLoading(false);
     }
@@ -304,19 +308,16 @@ export default function ManualFinancialEntries({
 
     // Refuse period-wide delete under All Businesses — ambiguous which BU row.
     if (buReadScope.mode === "all") {
-      setError(
-        "Select your workspace default or a specific business before deleting a manual financial entry. All Businesses is view-only for this action.",
-      );
+      void alertError("Select your workspace default or a specific business before deleting a manual financial entry. All Businesses is view-only for this action.", { title: "Could not complete action" });
       return;
     }
 
     const normalized = normalizePeriodMonth(entry.period_month);
     setDeletingPeriodMonth(normalized);
-    setError(null);
 
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      void alertError(buContext.error, { title: "Could not complete action" });
       setDeletingPeriodMonth(null);
       return;
     }
@@ -327,7 +328,7 @@ export default function ManualFinancialEntries({
         entry.business_unit_id,
       );
     } catch (accessError) {
-      setError(formatBusinessUnitAccessError(accessError));
+      void alertError(formatBusinessUnitAccessError(accessError), { title: "Could not complete action" });
       setDeletingPeriodMonth(null);
       return;
     }
@@ -350,7 +351,7 @@ export default function ManualFinancialEntries({
     const { error: deleteError } = await query;
 
     if (deleteError) {
-      setError(deleteError.message);
+      void alertError(deleteError.message, { title: "Could not complete action" });
       setDeletingPeriodMonth(null);
       return;
     }
@@ -368,13 +369,13 @@ export default function ManualFinancialEntries({
     }
 
     if (!stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+      void alertError(stampBusinessUnit.error, { title: "Could not complete action" });
       return;
     }
 
     const parsedAmount = Number(amount);
     if (!Number.isFinite(parsedAmount)) {
-      setError("Enter a valid amount.");
+      void alertError("Enter a valid amount.", { title: "Could not complete action" });
       return;
     }
 
@@ -386,7 +387,7 @@ export default function ManualFinancialEntries({
 
     if (activeAction.kind === "set_opening_cash") {
       if (parsedAmount < 0) {
-        setError("Opening cash balance cannot be negative.");
+        void alertError("Opening cash balance cannot be negative.", { title: "Could not complete action" });
         return;
       }
       const row = applySetOpeningCashBalance({
@@ -405,7 +406,7 @@ export default function ManualFinancialEntries({
     }
 
     if (parsedAmount <= 0) {
-      setError("Enter an amount greater than zero.");
+      void alertError("Enter an amount greater than zero.", { title: "Could not complete action" });
       return;
     }
 
@@ -456,9 +457,7 @@ export default function ManualFinancialEntries({
 
     if (activeAction.kind === "repay") {
       if (parsedAmount > priorStock + 0.005) {
-        setError(
-          `Repayment exceeds outstanding ${label} (${formatGHS(priorStock)}).`,
-        );
+        void alertError(`Repayment exceeds outstanding ${label} (${formatGHS(priorStock)}).`, { title: "Could not complete action" });
         return;
       }
       const nextStock = Math.max(0, priorStock - parsedAmount);
@@ -481,7 +480,7 @@ export default function ManualFinancialEntries({
 
     // non-cash
     if (nonCashReason.trim().length < 5) {
-      setError("Non-cash adjustment requires a reason (at least 5 characters).");
+      void alertError("Non-cash adjustment requires a reason (at least 5 characters).", { title: "Could not complete action" });
       return;
     }
     const nextStock =
@@ -777,12 +776,6 @@ export default function ManualFinancialEntries({
           </div>
         </div>
       </section>
-
-      {error && (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       {infoMessage && (
         <p className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">

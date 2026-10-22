@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { useAlert, useToast } from "@/components/feedback";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -103,11 +104,12 @@ export default function ClientInvoicesList({
 }: ClientInvoicesListProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
   const [invoices, setInvoices] = useState(
     initialInvoices.map(normalizeClientInvoiceListRow),
   );
   const [statusFilter, setStatusFilter] = useState<Set<string> | null>(null);
-  const [error, setError] = useState<string | null>(fetchError);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [voidingId, setVoidingId] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -123,8 +125,10 @@ export default function ClientInvoicesList({
   }, [initialInvoices]);
 
   useEffect(() => {
-    setError(fetchError);
-  }, [fetchError]);
+    if (fetchError) {
+      void alertError(fetchError, { title: "Could not load invoices" });
+    }
+  }, [alertError, fetchError]);
 
   useEffect(() => {
     const statusParam = searchParams.get("status")?.trim().toLowerCase();
@@ -157,7 +161,6 @@ export default function ClientInvoicesList({
 
     const { invoiceId, action } = pendingAction;
     setActingId(invoiceId);
-    setError(null);
 
     try {
       const response = await fetch(`/api/client-invoices/${invoiceId}/status`, {
@@ -173,15 +176,20 @@ export default function ClientInvoicesList({
         | null;
 
       if (!response.ok || !payload?.client_invoice) {
-        setError(payload?.error ?? "Unable to update invoice status.");
+        void alertError(payload?.error ?? "Unable to update invoice status.", {
+          title: "Could not complete action",
+        });
         return;
       }
 
       updateInvoiceInList(payload.client_invoice);
       setPendingAction(null);
+      toast(action === "send" ? "Invoice marked as sent." : "Invoice marked as paid.");
       router.refresh();
     } catch {
-      setError("Unable to complete action. Check your connection and try again.");
+      void alertError("Unable to complete action. Check your connection and try again.", {
+        title: "Could not complete action",
+      });
     } finally {
       setActingId(null);
     }
@@ -190,7 +198,6 @@ export default function ClientInvoicesList({
   async function handleDelete(invoice: ClientInvoiceListRow) {
     setConfirmingId(null);
     setDeletingId(invoice.id);
-    setError(null);
 
     try {
       const response = await fetch(`/api/client-invoices/${invoice.id}`, {
@@ -202,16 +209,21 @@ export default function ClientInvoicesList({
         | null;
 
       if (!response.ok) {
-        setError(payload?.error ?? "Unable to delete invoice.");
+        void alertError(payload?.error ?? "Unable to delete invoice.", {
+          title: "Could not delete invoice",
+        });
         return;
       }
 
       setInvoices((current) =>
         current.filter((entry) => entry.id !== invoice.id),
       );
+      toast("Invoice deleted.");
       router.refresh();
     } catch {
-      setError("Unable to delete invoice. Check your connection and try again.");
+      void alertError("Unable to delete invoice. Check your connection and try again.", {
+        title: "Could not delete invoice",
+      });
     } finally {
       setDeletingId(null);
     }
@@ -220,7 +232,6 @@ export default function ClientInvoicesList({
   async function handleVoid(invoice: ClientInvoiceListRow) {
     setConfirmingVoidId(null);
     setVoidingId(invoice.id);
-    setError(null);
 
     try {
       const response = await fetch(`/api/client-invoices/${invoice.id}/void`, {
@@ -232,14 +243,19 @@ export default function ClientInvoicesList({
         | null;
 
       if (!response.ok || !payload?.client_invoice) {
-        setError(payload?.error ?? "Unable to cancel invoice.");
+        void alertError(payload?.error ?? "Unable to cancel invoice.", {
+          title: "Could not cancel invoice",
+        });
         return;
       }
 
       updateInvoiceInList(payload.client_invoice);
+      toast("Invoice cancelled.");
       router.refresh();
     } catch {
-      setError("Unable to cancel invoice. Check your connection and try again.");
+      void alertError("Unable to cancel invoice. Check your connection and try again.", {
+        title: "Could not cancel invoice",
+      });
     } finally {
       setVoidingId(null);
     }
@@ -247,12 +263,6 @@ export default function ClientInvoicesList({
 
   return (
     <div className="space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       <div className="flex justify-end">
         <Link href="/dashboard/finance/client-invoices/new" className={primaryButtonClassName}>
           New Customer Invoice
@@ -391,7 +401,6 @@ export default function ClientInvoicesList({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setError(null);
                                   setPendingAction(null);
                                   setConfirmingVoidId(null);
                                   setConfirmingId(invoice.id);
@@ -434,7 +443,6 @@ export default function ClientInvoicesList({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setError(null);
                                   setPendingAction(null);
                                   setConfirmingId(null);
                                   setConfirmingVoidId(invoice.id);
@@ -474,7 +482,6 @@ export default function ClientInvoicesList({
                               disabled={actingId === invoice.id}
                               buttonClassName={statusMenuButtonClassName}
                               onSelect={(item) => {
-                                setError(null);
                                 setConfirmingId(null);
                                 setConfirmingVoidId(null);
                                 setPendingAction({

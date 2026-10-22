@@ -90,7 +90,10 @@ async function DashboardLayoutInner({
       >
         {children}
       </DashboardShell>
-      <AssistantChatWidget />
+      <AssistantChatWidget
+        persona="staff"
+        staffRole={shell.userRole as AppRole | null}
+      />
       </FeedbackShell>
     </StickyBottomBarProvider>
   );

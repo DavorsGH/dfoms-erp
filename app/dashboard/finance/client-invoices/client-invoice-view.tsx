@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAlert } from "@/components/feedback";
 import { pdf } from "@react-pdf/renderer";
 import { LoadingState } from "@/components/loading-indicator";
 import { useTenantBranding } from "@/app/dashboard/tenant-branding-context";
@@ -58,16 +59,17 @@ export default function ClientInvoiceView({
   showStaffActions = true,
 }: ClientInvoiceViewProps) {
   const branding = useTenantBranding();
+  const { alertError } = useAlert();
   const [payload, setPayload] = useState<ClientInvoiceDetailPayload | null>(null);
   const [receipts, setReceipts] = useState<ClientReceiptHeaderRow[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [showRecordPayment, setShowRecordPayment] = useState(false);
 
   const loadInvoice = useCallback(async () => {
     setLoading(true);
-    setError(null);
+    setLoadFailed(false);
 
     const response = await fetch(`/api/client-invoices/${invoiceId}`);
     const body = (await response.json().catch(() => null)) as
@@ -75,7 +77,10 @@ export default function ClientInvoiceView({
       | null;
 
     if (!response.ok || !body?.client_invoice) {
-      setError(body?.error ?? "Unable to load invoice.");
+      void alertError(body?.error ?? "Unable to load invoice.", {
+        title: "Could not load invoice",
+      });
+      setLoadFailed(true);
       setPayload(null);
       setReceipts([]);
       setLoading(false);
@@ -93,7 +98,7 @@ export default function ClientInvoiceView({
     });
     setReceipts(body.receipts ?? []);
     setLoading(false);
-  }, [invoiceId]);
+  }, [alertError, invoiceId]);
 
   useEffect(() => {
     void loadInvoice();
@@ -146,21 +151,28 @@ export default function ClientInvoiceView({
       link.remove();
       URL.revokeObjectURL(url);
     } catch {
-      setError("Unable to generate PDF. Try again or use Print.");
+      void alertError("Unable to generate PDF. Try again or use Print.", {
+        title: "Could not generate PDF",
+      });
     } finally {
       setDownloading(false);
     }
-  }, [display]);
+  }, [alertError, display]);
 
   if (loading) {
     return <LoadingState label="Loading invoice…" />;
   }
 
-  if (error || !display) {
+  if (loadFailed || !display) {
     return (
-      <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-        {error ?? "Invoice not found."}
-      </p>
+      <div className="space-y-4">
+        <p className="text-sm text-slate-600">
+          {loadFailed ? "This invoice could not be loaded." : "Invoice not found."}
+        </p>
+        <Link href={backHref} className={secondaryButtonClassName}>
+          {backLabel}
+        </Link>
+      </div>
     );
   }
 

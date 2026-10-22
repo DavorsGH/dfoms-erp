@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { pdf } from "@react-pdf/renderer";
+import { useAlert } from "@/components/feedback";
 import { LoadingState } from "@/components/loading-indicator";
 import { useTenantBranding } from "@/app/dashboard/tenant-branding-context";
 import ReceiptDocumentActions from "@/app/dashboard/real-estate/receipt-document-actions";
@@ -75,8 +76,9 @@ export default function ClientReceiptView({
   backLabel = "Back to receipts",
 }: ClientReceiptViewProps) {
   const branding = useTenantBranding();
+  const { alertError } = useAlert();
   const [payload, setPayload] = useState<ClientReceiptDetailPayload | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -84,7 +86,7 @@ export default function ClientReceiptView({
 
     async function loadReceipt() {
       setLoading(true);
-      setError(null);
+      setLoadFailed(false);
 
       const response = await fetch(`/api/client-receipts/${receiptId}`);
       const body = (await response.json().catch(() => null)) as
@@ -96,7 +98,10 @@ export default function ClientReceiptView({
       }
 
       if (!response.ok || !body?.receipt) {
-        setError(body?.error ?? "Unable to load receipt.");
+        void alertError(body?.error ?? "Unable to load receipt.", {
+          title: "Could not load receipt",
+        });
+        setLoadFailed(true);
         setPayload(null);
         setLoading(false);
         return;
@@ -116,7 +121,7 @@ export default function ClientReceiptView({
     return () => {
       cancelled = true;
     };
-  }, [receiptId]);
+  }, [alertError, receiptId]);
 
   const display = useMemo(() => {
     if (!payload) {
@@ -160,11 +165,16 @@ export default function ClientReceiptView({
     return <LoadingState label="Loading receipt…" />;
   }
 
-  if (error || !display) {
+  if (loadFailed || !display) {
     return (
-      <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-        {error ?? "Receipt not found."}
-      </p>
+      <div className="space-y-4">
+        <p className="text-sm text-slate-600">
+          {loadFailed ? "This receipt could not be loaded." : "Receipt not found."}
+        </p>
+        <Link href={backHref} className={secondaryButtonClassName}>
+          {backLabel}
+        </Link>
+      </div>
     );
   }
 

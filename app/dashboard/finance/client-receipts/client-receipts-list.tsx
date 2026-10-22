@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
+import { useAlert } from "@/components/feedback";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -29,15 +31,14 @@ export default function ClientReceiptsList({
   initialReceipts,
   fetchError,
 }: ClientReceiptsListProps) {
+  const { alertError } = useAlert();
   const receipts = initialReceipts.map(normalizeClientReceiptListRow);
 
-  if (fetchError) {
-    return (
-      <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-        {fetchError}
-      </p>
-    );
-  }
+  useEffect(() => {
+    if (fetchError) {
+      void alertError(fetchError, { title: "Could not load receipts" });
+    }
+  }, [alertError, fetchError]);
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAlert } from "@/components/feedback";
 import type { ContractProjectOption } from "@/app/dashboard/administration/projects-utils";
 
 import ImageFileUploadButton from "@/components/image-file-upload-button";
@@ -83,7 +84,7 @@ export default function SupplierContractCreateForm({
 
   const stampBusinessUnit = useStampBusinessUnitId();
 
-  const [error, setError] = useState<string | null>(null);
+  const { alertError } = useAlert();
 
   const [saving, setSaving] = useState(false);
 
@@ -236,7 +237,9 @@ export default function SupplierContractCreateForm({
 
     if (!response.ok || !payload.supplier) {
 
-      setError(payload.error ?? "Unable to add supplier.");
+      void alertError(payload.error ?? "Unable to add supplier.", {
+        title: "Could not add supplier",
+      });
 
       return;
 
@@ -271,8 +274,6 @@ export default function SupplierContractCreateForm({
     }
 
     setSaving(true);
-
-    setError(null);
 
     try {
 
@@ -348,7 +349,9 @@ export default function SupplierContractCreateForm({
 
     } catch (err) {
 
-      setError(err instanceof Error ? err.message : "Create failed.");
+      void alertError(err instanceof Error ? err.message : "Create failed.", {
+        title: "Could not create supplier contract",
+      });
 
     } finally {
 
@@ -363,16 +366,6 @@ export default function SupplierContractCreateForm({
   return (
 
     <div className="space-y-4">
-
-      {error ? (
-
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-
-          {error}
-
-        </p>
-
-      ) : null}
 
       <form
         ref={createFormRef}

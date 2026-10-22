@@ -317,6 +317,7 @@ export default function LineItemsEditor<T extends LineItemsEditorBaseLine>({
                           type="text"
                           required
                           disabled={disabled}
+                          data-line-item-description
                           value={line.description}
                           onChange={(event) =>
                             updateLineItem(line.key, {
@@ -482,6 +483,7 @@ export default function LineItemsEditor<T extends LineItemsEditorBaseLine>({
                       type="text"
                       required
                       disabled={disabled}
+                      data-line-item-description
                       value={line.description}
                       onChange={(event) =>
                         updateLineItem(line.key, {
