@@ -1,4 +1,4 @@
-const CACHE_NAME = "davors-erp-shell-v10";
+const CACHE_NAME = "davors-erp-shell-v11";
 const CLIENT_CACHE_DB_NAME = "dfoms-client-cache";
 const CLIENT_CACHE_PURGE_MESSAGE = "PURGE_CLIENT_CACHE";
 const WARM_OFFLINE_NAV_MESSAGE = "WARM_OFFLINE_NAV_ROUTES";
@@ -284,7 +284,7 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(payload.title, {
       body: payload.body,
       icon: "/icons/icon-192x192.png",
-      badge: "/icons/icon-192x192.png",
+      badge: "/icons/badge-96.png",
       tag: payload.tag || payload.notificationId || "dfoms-notification",
       data: {
         url: payload.url || "/",
