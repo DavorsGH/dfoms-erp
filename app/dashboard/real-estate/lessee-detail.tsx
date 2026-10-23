@@ -49,10 +49,12 @@ import {
   type LesseePortalAccessState,
 } from "@/utils/lessee-portal-access";
 import { fetchLesseeEmailDuplicateWarning } from "@/utils/lessee-email-duplicate";
+import LoginAccessCard from "@/components/portal-login-access/login-access-card";
 
 type LesseeDetailViewProps = {
   initialDetail: LesseeDetail;
   fetchError: string | null;
+  canManageLoginAccess?: boolean;
 };
 
 const primaryButtonClassName =
@@ -80,6 +82,7 @@ function revokePortalConfirmMessage(displayName: string) {
 export default function LesseeDetailView({
   initialDetail,
   fetchError,
+  canManageLoginAccess = false,
 }: LesseeDetailViewProps) {
   const router = useRouter();
   const [detail, setDetail] = useState(initialDetail);
@@ -577,6 +580,15 @@ export default function LesseeDetailView({
           </div>
         </div>
       </section>
+
+      {canManageLoginAccess && detail.landlordType === "davors_managed" ? (
+        <LoginAccessCard
+          apiBase="admin"
+          persona="lessee"
+          tenantId={detail.tenantId}
+          lesseeId={detail.lesseeId}
+        />
+      ) : null}
 
       <section className={sectionClassName}>
         <h3 className={sectionTitleClassName}>Portal Access</h3>

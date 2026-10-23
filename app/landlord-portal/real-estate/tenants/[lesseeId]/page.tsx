@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { NotificationTargetUnavailablePanel } from "@/components/notification-target-unavailable";
+import LoginAccessCard from "@/components/portal-login-access/login-access-card";
 import {
   fetchLandlordPortalLesseeDetail,
   getLandlordPortalSession,
@@ -73,6 +74,15 @@ export default async function LandlordPortalTenantDetailPage({
 
       {detail ? (
         <LandlordPortalTenantEditForm detail={detail} canEdit={canEdit} />
+      ) : null}
+
+      {detail && canEdit ? (
+        <LoginAccessCard
+          apiBase="landlord-portal"
+          persona="lessee"
+          tenantId={session.tenantId}
+          lesseeId={detail.lesseeId}
+        />
       ) : null}
     </div>
   );

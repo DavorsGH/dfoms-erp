@@ -11,6 +11,19 @@ import PasswordInput from "@/components/password-input";
 import { getSafeNext } from "@/utils/safe-redirect";
 import { loginWithPassword } from "./actions";
 import { formatAuthErrorMessage } from "@/utils/auth-error-message";
+import { ACCOUNT_NO_LONGER_ACTIVE_MESSAGE } from "@/lib/auth/account-inactive-message";
+
+function LoginNoticeBanner() {
+  const searchParams = useSearchParams();
+  if (searchParams.get("notice") !== "account_inactive") {
+    return null;
+  }
+  return (
+    <p className="mb-4 text-sm text-amber-800">
+      {ACCOUNT_NO_LONGER_ACTIVE_MESSAGE}
+    </p>
+  );
+}
 
 function LoginForm() {
   const [email, setEmail] = useState("");
@@ -140,6 +153,7 @@ export default function LoginPage() {
             <p className="text-center text-sm text-zinc-600">Loading sign-in…</p>
           }
         >
+          <LoginNoticeBanner />
           <LoginForm />
         </Suspense>
 

@@ -317,11 +317,23 @@ export async function fetchLesseeDetail(
     pendingInviteExpiresAt,
   });
 
+  const { data: landlordTypeRow } = await admin
+    .from("landlords")
+    .select("landlord_type")
+    .eq("tenant_id", landlord.tenantId)
+    .maybeSingle();
+  const landlordType =
+    landlordTypeRow?.landlord_type === "platform_only" ||
+    landlordTypeRow?.landlord_type === "davors_managed"
+      ? landlordTypeRow.landlord_type
+      : null;
+
   return {
     detail: {
       lesseeId: lesseeRow.lessee_id,
       tenantId: lesseeRow.tenant_id,
       landlordName: landlord.name,
+      landlordType,
       fullName: lesseeRow.full_name,
       phone: lesseeRow.phone,
       email: lesseeRow.email,

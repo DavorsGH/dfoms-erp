@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { getFacilityManagerSession } from "@/utils/facility-portal-auth";
@@ -15,11 +14,12 @@ import {
   portalPrimaryButtonClassName,
   portalSectionTitleClassName,
 } from "../portal-ui";
+import { redirectInactiveOrSignedOut } from "@/utils/account-inactive-redirect";
 
 export default async function FacilityPortalDashboardPage() {
   const session = await getFacilityManagerSession();
   if (!session) {
-    redirect("/facility-portal/login");
+    return await redirectInactiveOrSignedOut("/facility-portal/login");
   }
 
   const admin = createAdminClient();

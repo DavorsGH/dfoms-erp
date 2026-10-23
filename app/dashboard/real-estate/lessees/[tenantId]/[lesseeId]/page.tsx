@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { isDavorsPlatformSuperAdmin } from "@/utils/dashboard-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { fetchLesseeDetail } from "@/utils/lessee-management";
 import RealEstateShell from "../../../real-estate-shell";
@@ -14,11 +15,10 @@ export default async function LesseeDetailPage({
 }: LesseeDetailPageProps) {
   const { tenantId, lesseeId } = await params;
   const admin = createAdminClient();
-  const { detail, fetchError } = await fetchLesseeDetail(
-    admin,
-    tenantId,
-    lesseeId,
-  );
+  const [{ detail, fetchError }, canManageLoginAccess] = await Promise.all([
+    fetchLesseeDetail(admin, tenantId, lesseeId),
+    isDavorsPlatformSuperAdmin(),
+  ]);
 
   if (!detail) {
     if (fetchError) {
@@ -41,7 +41,11 @@ export default async function LesseeDetailPage({
 
   return (
     <RealEstateShell sectionTitle={detail.fullName}>
-      <LesseeDetailView initialDetail={detail} fetchError={fetchError} />
+      <LesseeDetailView
+        initialDetail={detail}
+        fetchError={fetchError}
+        canManageLoginAccess={canManageLoginAccess}
+      />
     </RealEstateShell>
   );
 }

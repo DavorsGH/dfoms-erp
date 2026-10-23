@@ -20,7 +20,7 @@ export async function POST(request: Request) {
       return auth.response;
     }
 
-    const { tenantId } = auth;
+    const { tenantId, userId } = auth;
 
     let body: DeleteUserBody;
     try {
@@ -32,6 +32,13 @@ export async function POST(request: Request) {
     const { auth_uid } = body;
     if (!auth_uid) {
       return NextResponse.json({ error: "auth_uid is required" }, { status: 400 });
+    }
+
+    if (auth_uid === userId) {
+      return NextResponse.json(
+        { error: "You cannot delete your own account." },
+        { status: 400 },
+      );
     }
 
     const admin = createAdminClient();

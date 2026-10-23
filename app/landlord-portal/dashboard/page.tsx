@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import {
   fetchLandlordPortalOverviewMetrics,
   getLandlordPortalSession,
   landlordPortalHasDataAccess,
 } from "@/utils/landlord-portal-auth";
+import { redirectInactiveOrSignedOut } from "@/utils/account-inactive-redirect";
 import { formatPayoutMoney } from "@/app/dashboard/real-estate/payouts-utils";
 import { formatLeaseDate } from "@/app/dashboard/real-estate/leases-utils";
 import {
@@ -62,7 +62,7 @@ function formatActivityDate(value: string): string {
 export default async function LandlordPortalDashboardPage() {
   const session = await getLandlordPortalSession();
   if (!session) {
-    redirect("/landlord-portal/login");
+    return await redirectInactiveOrSignedOut("/landlord-portal/login");
   }
 
   if (!landlordPortalHasDataAccess(session)) {

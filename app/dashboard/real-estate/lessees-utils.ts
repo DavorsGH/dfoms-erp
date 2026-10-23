@@ -46,6 +46,8 @@ export type LesseeDetail = {
   lesseeId: string;
   tenantId: string;
   landlordName: string;
+  /** Landlord type for this tenant workspace (gates staff login-access UI). */
+  landlordType: "platform_only" | "davors_managed" | null;
   fullName: string;
   phone: string;
   email: string | null;

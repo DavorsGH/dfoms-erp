@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { NotificationTargetUnavailablePanel } from "@/components/notification-target-unavailable";
+import { isDavorsPlatformSuperAdmin } from "@/utils/dashboard-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { fetchLandlordDetail } from "@/utils/landlord-management";
 import RealEstateShell from "../../real-estate-shell";
@@ -14,7 +15,10 @@ export default async function LandlordDetailPage({
 }: LandlordDetailPageProps) {
   const { tenantId } = await params;
   const admin = createAdminClient();
-  const { detail, fetchError } = await fetchLandlordDetail(admin, tenantId);
+  const [{ detail, fetchError }, canManageLoginAccess] = await Promise.all([
+    fetchLandlordDetail(admin, tenantId),
+    isDavorsPlatformSuperAdmin(),
+  ]);
 
   if (!detail) {
     if (fetchError) {
@@ -44,7 +48,11 @@ export default async function LandlordDetailPage({
 
   return (
     <RealEstateShell sectionTitle={detail.name}>
-      <LandlordDetailView initialDetail={detail} fetchError={fetchError} />
+      <LandlordDetailView
+        initialDetail={detail}
+        fetchError={fetchError}
+        canManageLoginAccess={canManageLoginAccess}
+      />
     </RealEstateShell>
   );
 }

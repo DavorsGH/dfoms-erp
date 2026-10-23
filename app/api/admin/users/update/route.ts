@@ -3,17 +3,14 @@ import { requireTenantSuperAdmin } from "@/utils/admin-auth";
 import {
   buildUserAccountPayload,
   ensureClientAvailable,
-  ensureEmailAvailable,
   ensureEmployeeAvailable,
   syncSupervisorSites,
   validationErrorMessage,
 } from "@/utils/admin-user-role";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { syncAuthUserPortalMetadata } from "@/lib/auth/portal-metadata";
-import {
-  ADMIN_USER_UPDATE_FAILED,
-  mapSupabaseAuthEmailError,
-} from "@/lib/administration/admin-user-auth-email-errors";
+import { ADMIN_USER_UPDATE_FAILED } from "@/lib/administration/admin-user-auth-email-errors";
+import { SELF_ROLE_ACCESS_CHANGE_MESSAGE } from "@/lib/auth/account-inactive-message";
 
 type UpdateUserBody = {
   auth_uid?: string;
@@ -31,7 +28,7 @@ export async function POST(request: Request) {
     return auth.response;
   }
 
-  const { tenantId } = auth;
+  const { tenantId, userId } = auth;
 
   let body: UpdateUserBody;
   try {
@@ -57,6 +54,13 @@ export async function POST(request: Request) {
     );
   }
 
+  if (auth_uid === userId && is_active === false) {
+    return NextResponse.json(
+      { error: "You cannot deactivate your own account." },
+      { status: 400 },
+    );
+  }
+
   const built = buildUserAccountPayload({
     tenant_id: tenantId,
     role,
@@ -77,7 +81,7 @@ export async function POST(request: Request) {
 
   const { data: existingAccount, error: fetchError } = await admin
     .from("user_accounts")
-    .select("auth_uid, email, is_active")
+    .select("auth_uid, email, is_active, role, employee_id, client_id")
     .eq("auth_uid", auth_uid)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -90,14 +94,42 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "User account not found" }, { status: 404 });
   }
 
-  const emailError = await ensureEmailAvailable(
-    admin,
-    normalizedEmail,
-    tenantId,
-    auth_uid,
-  );
-  if (emailError) {
-    return NextResponse.json({ error: emailError }, { status: 409 });
+  if (existingAccount.email?.toLowerCase() !== normalizedEmail) {
+    return NextResponse.json(
+      {
+        error:
+          "Use Change login email in Login access to change a user's email.",
+      },
+      { status: 400 },
+    );
+  }
+
+  if (auth_uid === userId) {
+    const { data: existingSites } = await admin
+      .from("user_account_supervisor_sites")
+      .select("site_code")
+      .eq("auth_uid", auth_uid)
+      .eq("tenant_id", tenantId);
+    const existingSiteCodes = new Set(
+      (existingSites ?? []).map((row) => row.site_code as string),
+    );
+    const nextSiteCodes = new Set(built.supervisor_site_codes);
+    const sitesChanged =
+      existingSiteCodes.size !== nextSiteCodes.size ||
+      [...existingSiteCodes].some((code) => !nextSiteCodes.has(code));
+    const roleChanged = built.payload.role !== existingAccount.role;
+    const employeeChanged =
+      (built.payload.employee_id ?? null) !==
+      (existingAccount.employee_id ?? null);
+    const clientChanged =
+      (built.payload.client_id ?? null) !== (existingAccount.client_id ?? null);
+
+    if (roleChanged || employeeChanged || clientChanged || sitesChanged) {
+      return NextResponse.json(
+        { error: SELF_ROLE_ACCESS_CHANGE_MESSAGE },
+        { status: 400 },
+      );
+    }
   }
 
   if (built.payload.employee_id) {
@@ -124,24 +156,9 @@ export async function POST(request: Request) {
     }
   }
 
-  if (existingAccount.email?.toLowerCase() !== normalizedEmail) {
-    const { error: authUpdateError } = await admin.auth.admin.updateUserById(
-      auth_uid,
-      { email: normalizedEmail },
-    );
-
-    if (authUpdateError) {
-      return NextResponse.json(
-        { error: mapSupabaseAuthEmailError(authUpdateError, "update") },
-        { status: 400 },
-      );
-    }
-  }
-
   const { error: updateError } = await admin
     .from("user_accounts")
     .update({
-      email: normalizedEmail,
       role: built.payload.role,
       employee_id: built.payload.employee_id,
       client_id: built.payload.client_id,
@@ -157,8 +174,6 @@ export async function POST(request: Request) {
       auth_uid,
       tenantId,
       message: updateError.message,
-      authEmailChanged:
-        existingAccount.email?.toLowerCase() !== normalizedEmail,
     });
     return NextResponse.json({ error: ADMIN_USER_UPDATE_FAILED }, { status: 400 });
   }

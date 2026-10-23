@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import FacilityManagersLoginSection from "@/components/portal-login-access/facility-managers-login-section";
+import LoginAccessCard from "@/components/portal-login-access/login-access-card";
 import { inputClassName } from "../hr-payroll/hr-register-utils";
 import {
   LANDLORD_TYPE_OPTIONS,
@@ -17,6 +19,7 @@ import {
 type LandlordDetailViewProps = {
   initialDetail: LandlordDetail;
   fetchError: string | null;
+  canManageLoginAccess?: boolean;
 };
 
 const primaryButtonClassName =
@@ -41,6 +44,7 @@ function formatMoney(value: number | null | undefined): string {
 export default function LandlordDetailView({
   initialDetail,
   fetchError,
+  canManageLoginAccess = false,
 }: LandlordDetailViewProps) {
   const router = useRouter();
   const [detail, setDetail] = useState(initialDetail);
@@ -552,6 +556,18 @@ export default function LandlordDetailView({
           </button>
         </div>
       </section>
+
+      {canManageLoginAccess ? (
+        <LoginAccessCard
+          apiBase="admin"
+          persona="landlord"
+          tenantId={detail.tenantId}
+        />
+      ) : null}
+
+      {canManageLoginAccess && detail.landlordType === "davors_managed" ? (
+        <FacilityManagersLoginSection tenantId={detail.tenantId} />
+      ) : null}
 
       {detail.landlordType === "platform_only" ? (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

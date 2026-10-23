@@ -1,9 +1,9 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
   fetchPortalDashboardData,
   getPortalLesseeSession,
 } from "@/utils/lessee-portal-auth";
+import { redirectInactiveOrSignedOut } from "@/utils/account-inactive-redirect";
 import {
   portalErrorBannerClassName,
   portalSectionClassName,
@@ -42,7 +42,7 @@ function formatDate(value: string): string {
 export default async function PortalDashboardPage() {
   const session = await getPortalLesseeSession();
   if (!session) {
-    redirect("/portal/login");
+    return await redirectInactiveOrSignedOut("/portal/login");
   }
 
   const { data, error } = await fetchPortalDashboardData(session);

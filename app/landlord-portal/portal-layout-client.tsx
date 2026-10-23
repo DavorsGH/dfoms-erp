@@ -9,6 +9,9 @@ const PUBLIC_AUTH_PREFIXES = [
   "/landlord-portal/signup",
   "/landlord-portal/accept-invite",
   "/landlord-portal/verify-email",
+  "/landlord-portal/forgot-password",
+  "/landlord-portal/reset-password",
+  "/landlord-portal/set-password",
 ] as const;
 
 type PortalLayoutClientProps = {
@@ -19,6 +22,8 @@ type PortalLayoutClientProps = {
   hasDataAccess: boolean;
   isAuthenticatedLandlord: boolean;
   billingPastDueBanner?: React.ReactNode;
+  /** Only rendered inside the authenticated shell (not on login / set-password). */
+  chromeExtra?: React.ReactNode;
 };
 
 function isPublicAuthPath(pathname: string): boolean {
@@ -29,7 +34,7 @@ function isPublicAuthPath(pathname: string): boolean {
 
 /**
  * Applies the staff-style sidebar shell to authenticated landlord routes only.
- * Login / signup / accept-invite render without chrome.
+ * Login / signup / accept-invite / set-password render without chrome.
  */
 export default function PortalLayoutClient({
   children,
@@ -39,6 +44,7 @@ export default function PortalLayoutClient({
   hasDataAccess,
   isAuthenticatedLandlord,
   billingPastDueBanner = null,
+  chromeExtra = null,
 }: PortalLayoutClientProps) {
   const pathname = usePathname();
 
@@ -47,14 +53,17 @@ export default function PortalLayoutClient({
   }
 
   return (
-    <LandlordPortalDashboardShell
-      userLabel={userLabel}
-      userPhotoUrl={userPhotoUrl}
-      landlordType={landlordType}
-      showNav={hasDataAccess}
-      billingPastDueBanner={billingPastDueBanner}
-    >
-      {children}
-    </LandlordPortalDashboardShell>
+    <>
+      <LandlordPortalDashboardShell
+        userLabel={userLabel}
+        userPhotoUrl={userPhotoUrl}
+        landlordType={landlordType}
+        showNav={hasDataAccess}
+        billingPastDueBanner={billingPastDueBanner}
+      >
+        {children}
+      </LandlordPortalDashboardShell>
+      {chromeExtra}
+    </>
   );
 }

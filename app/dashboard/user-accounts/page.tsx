@@ -1,7 +1,11 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserTenantId, isSuperAdmin } from "@/utils/dashboard-auth";
+import {
+  getCurrentAuthUser,
+  getCurrentUserTenantId,
+  isSuperAdmin,
+} from "@/utils/dashboard-auth";
 import {
   mapUserAccountRows,
   USER_ACCOUNT_SELECT,
@@ -22,6 +26,7 @@ export default async function UserAccountsPage() {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const currentUser = await getCurrentAuthUser();
 
   const [
     { data: accounts, error: accountsError },
@@ -61,6 +66,7 @@ export default async function UserAccountsPage() {
         User Accounts
       </h2>
       <UserAccounts
+        currentUserAuthUid={currentUser?.id ?? null}
         initialAccounts={mapUserAccountRows(accounts ?? [])}
         initialEmployees={(employees as Employee[] | null) ?? []}
         initialClients={clients ?? []}

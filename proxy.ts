@@ -6,6 +6,9 @@ import {
   shouldBlockLoginAutoRedirect,
 } from "@/lib/mfa/middleware-gate";
 import { MFA_CHALLENGE_ROUTES } from "@/lib/mfa/types";
+import { getMustChangePasswordRedirect } from "@/lib/auth/must-change-password-gate";
+import { ACCOUNT_INACTIVE_NOTICE } from "@/utils/auth-session-revoke";
+import { clearSupabaseAuthCookiesOnResponse } from "@/lib/auth/clear-supabase-auth-cookies";
 import {
   AUTH_CONTEXT_HEADER,
   isMiddlewareContextSigningConfigured,
@@ -78,6 +81,61 @@ function redirectHomeClean(request: NextRequest, homePath: string) {
   url.search = "";
   url.hash = "";
   return NextResponse.redirect(url);
+}
+
+function redirectWithNotice(
+  request: NextRequest,
+  homePath: string,
+  notice: string,
+  options?: { clearAuthCookies?: boolean },
+) {
+  const url = request.nextUrl.clone();
+  url.pathname = homePath;
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("notice", notice);
+  const response = NextResponse.redirect(url);
+  // Inactive/deleted/suspended: never rely on signOut alone — Auth may reject
+  // logout for banned/deleted users, and signOut writes cookies onto the
+  // middleware response object, not this redirect.
+  if (options?.clearAuthCookies !== false) {
+    clearSupabaseAuthCookiesOnResponse(request, response);
+  }
+  return response;
+}
+
+/** Best-effort Auth logout; cookie expiry is handled on the redirect response. */
+async function signOutBestEffort(
+  supabase: ReturnType<typeof createClient>["supabase"],
+): Promise<void> {
+  try {
+    await supabase.auth.signOut({ scope: "local" });
+  } catch {
+    // Deleted/banned Auth users often fail network signOut — ignore.
+  }
+}
+
+/** Login surfaces only (not forgot/reset/callback) — may bounce active sessions home. */
+function isStaffLoginPath(pathname: string): boolean {
+  return pathname === "/login" || pathname === "/login/mfa";
+}
+
+function isLesseeLoginPath(pathname: string): boolean {
+  return pathname === "/portal/login" || pathname === "/portal/login/mfa";
+}
+
+function isLandlordLoginPath(pathname: string): boolean {
+  return (
+    pathname === "/landlord-portal/login" ||
+    pathname === "/landlord-portal/login/mfa"
+  );
+}
+
+function isFacilityLoginPath(pathname: string): boolean {
+  return (
+    pathname === "/facility-portal/login" ||
+    pathname === "/facility-portal/login/mfa"
+  );
 }
 
 /** Invite acceptance must stay reachable regardless of active persona session. */
@@ -389,28 +447,72 @@ export async function proxy(request: NextRequest) {
     }
     // Preserve destination for staff login only (portals keep their own default).
     url.search = "";
-    if (!isPortalPath && !isLandlordPortalPath && !isFacilityPortalPath) {
+    // Stale cookies after delete/deactivate/ban: land on login with a clear
+    // notice instead of a raw dashboard error.
+    const hadAuthCookie = request.cookies
+      .getAll()
+      .some(
+        (cookie) =>
+          cookie.name.includes("auth-token") ||
+          cookie.name.startsWith("sb-"),
+      );
+    const fromProtectedApp =
+      pathname.startsWith("/dashboard") ||
+      pathname.startsWith("/pos-customer-display") ||
+      (isPortalPath && !isPortalPublicPath) ||
+      (isLandlordPortalPath && !isLandlordPortalPublicPath) ||
+      (isFacilityPortalPath && !isFacilityPortalPublicPath);
+    if (hadAuthCookie && fromProtectedApp) {
+      url.searchParams.set("notice", ACCOUNT_INACTIVE_NOTICE);
+      const staleSessionRedirect = NextResponse.redirect(url);
+      clearSupabaseAuthCookiesOnResponse(request, staleSessionRedirect);
+      return staleSessionRedirect;
+    } else if (
+      !isPortalPath &&
+      !isLandlordPortalPath &&
+      !isFacilityPortalPath
+    ) {
       const returnPath = `${pathname}${request.nextUrl.search}`;
       url.searchParams.set("next", returnPath);
     }
     return NextResponse.redirect(url);
   }
 
+  // Public auth routes must always render — never inactive-gate them.
+  const isPublicAuthRoute =
+    pathname === "/" ||
+    isStaffLoginPath(pathname) ||
+    pathname === "/signup" ||
+    pathname === "/accept-invite" ||
+    pathname === "/forgot-password" ||
+    pathname === "/reset-password" ||
+    pathname === "/verify-email" ||
+    pathname === "/auth/callback" ||
+    pathname === "/auth/start" ||
+    pathname === "/auth/error" ||
+    pathname === "/set-password" ||
+    isPortalPublicPath ||
+    isLandlordPortalPublicPath ||
+    isFacilityPortalPublicPath;
+
   const needsAccountGate =
     user &&
-    pathname !== "/login" &&
+    !isPublicAuthRoute &&
     !isPortalPublicPath &&
     !isLandlordPortalPublicPath &&
     !isFacilityPortalPublicPath;
 
+  // Persona resolution for login→home (active only) and protected routing.
+  // Do not use this to inactive-redirect away from public auth routes.
   const needsPersonaCheck =
     user &&
-    (pathname === "/login" ||
+    (isStaffLoginPath(pathname) ||
       pathname === "/signup" ||
       pathname === "/accept-invite" ||
-      isPortalPublicPath ||
-      isLandlordPortalPublicPath ||
-      isFacilityPortalPublicPath ||
+      pathname === "/set-password" ||
+      isLesseeLoginPath(pathname) ||
+      isLandlordLoginPath(pathname) ||
+      isFacilityLoginPath(pathname) ||
       (isPortalPath && !isPortalPublicPath) ||
       (isLandlordPortalPath && !isLandlordPortalPublicPath) ||
       (isFacilityPortalPath && !isFacilityPortalPublicPath) ||
@@ -438,9 +540,31 @@ export async function proxy(request: NextRequest) {
 
     accountRow = account ?? null;
 
+    // Staff: missing or inactive user_accounts → sign out (never crash with a
+    // raw workspace error on the next dashboard navigation). Skip when Auth
+    // metadata says this is a portal persona (they have no staff row).
+    const metaPortal = user.user_metadata?.portal;
+    const looksLikePortalPersona =
+      metaPortal === "lessee" ||
+      metaPortal === "landlord" ||
+      metaPortal === "facility_manager";
+    const isStaffProtectedPath =
+      pathname.startsWith("/dashboard") ||
+      pathname.startsWith("/pos-customer-display") ||
+      pathname.startsWith("/api/assistant/");
+    if (
+      needsAccountGate &&
+      isStaffProtectedPath &&
+      !looksLikePortalPersona &&
+      (!accountRow || accountRow.is_active === false)
+    ) {
+      await signOutBestEffort(supabase);
+      return redirectWithNotice(request, "/login", ACCOUNT_INACTIVE_NOTICE);
+    }
+
     if (needsAccountGate && accountRow?.is_active === false) {
-      await supabase.auth.signOut();
-      return redirectHomeClean(request, "/login");
+      await signOutBestEffort(supabase);
+      return redirectWithNotice(request, "/login", ACCOUNT_INACTIVE_NOTICE);
     }
   }
 
@@ -474,6 +598,76 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  // Deleted / deactivated / suspended portal personas on protected routes only.
+  // Public auth routes always render (cookie clear happens on the redirect here).
+  let lesseePersonaActive = false;
+  let landlordPersonaActive = false;
+  let facilityPersonaActive = false;
+
+  if (user && !trustedLocalSession) {
+    if (isPortalPath && !isPortalPublicPath && isLesseePortalUser) {
+      const { data: lessee } = await supabase
+        .from("lessees")
+        .select("lessee_id")
+        .eq("auth_user_id", user.id)
+        .neq("status", "former")
+        .maybeSingle();
+      perf.countDb();
+      if (!lessee) {
+        await signOutBestEffort(supabase);
+        return redirectWithNotice(
+          request,
+          "/portal/login",
+          ACCOUNT_INACTIVE_NOTICE,
+        );
+      }
+      lesseePersonaActive = true;
+    }
+    if (
+      isLandlordPortalPath &&
+      !isLandlordPortalPublicPath &&
+      isLandlordPortalUser
+    ) {
+      const { data: landlord } = await supabase
+        .from("landlords")
+        .select("tenant_id, approval_status")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+      perf.countDb();
+      if (!landlord || landlord.approval_status === "suspended") {
+        await signOutBestEffort(supabase);
+        return redirectWithNotice(
+          request,
+          "/landlord-portal/login",
+          ACCOUNT_INACTIVE_NOTICE,
+        );
+      }
+      landlordPersonaActive = true;
+    }
+    if (
+      isFacilityPortalPath &&
+      !isFacilityPortalPublicPath &&
+      isFacilityManagerPortalUser
+    ) {
+      const { data: fm } = await supabase
+        .from("facility_managers")
+        .select("facility_manager_id, status")
+        .eq("auth_user_id", user.id)
+        .eq("status", "active")
+        .maybeSingle();
+      perf.countDb();
+      if (!fm) {
+        await signOutBestEffort(supabase);
+        return redirectWithNotice(
+          request,
+          "/facility-portal/login",
+          ACCOUNT_INACTIVE_NOTICE,
+        );
+      }
+      facilityPersonaActive = true;
+    }
+  }
+
   // MFA gate — must run before persona routing and login → dashboard redirects.
   // Skip when Auth could not be network-verified (offline); do not bounce mid-session.
   if (user && needsPersonaCheck && !trustedLocalSession) {
@@ -491,19 +685,108 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  // Forced password change after temp password — after MFA, before portal routing.
+  if (user && needsPersonaCheck && !trustedLocalSession) {
+    let mustChangePersona:
+      | "lessee"
+      | "landlord"
+      | "facility_manager"
+      | "staff"
+      | null = null;
+    if (isLesseePortalUser) mustChangePersona = "lessee";
+    else if (isLandlordPortalUser) mustChangePersona = "landlord";
+    else if (isFacilityManagerPortalUser) mustChangePersona = "facility_manager";
+    else if (
+      accountRow &&
+      (pathname.startsWith("/dashboard") ||
+        pathname === "/set-password" ||
+        pathname === "/login" ||
+        pathname.startsWith("/login/") ||
+        pathname.startsWith("/pos-customer-display"))
+    ) {
+      mustChangePersona = "staff";
+    }
+
+    if (mustChangePersona) {
+      const mustChangeRedirect = getMustChangePasswordRedirect({
+        user,
+        pathname,
+        persona: mustChangePersona,
+      });
+      if (mustChangeRedirect) {
+        return redirectToRelativePath(request, mustChangeRedirect);
+      }
+    }
+  }
+
+  // Resolve whether a portal persona is still active before any login→home bounce.
+  // Metadata alone is not enough (deleted/suspended users keep JWT + portal claim).
+  async function ensureLesseeActive(): Promise<boolean> {
+    if (lesseePersonaActive) return true;
+    const { data: lessee } = await supabase
+      .from("lessees")
+      .select("lessee_id")
+      .eq("auth_user_id", user!.id)
+      .neq("status", "former")
+      .maybeSingle();
+    perf.countDb();
+    lesseePersonaActive = Boolean(lessee);
+    return lesseePersonaActive;
+  }
+
+  async function ensureLandlordActive(): Promise<boolean> {
+    if (landlordPersonaActive) return true;
+    const { data: landlord } = await supabase
+      .from("landlords")
+      .select("tenant_id, approval_status")
+      .eq("auth_user_id", user!.id)
+      .maybeSingle();
+    perf.countDb();
+    landlordPersonaActive = Boolean(
+      landlord && landlord.approval_status !== "suspended",
+    );
+    return landlordPersonaActive;
+  }
+
+  async function ensureFacilityActive(): Promise<boolean> {
+    if (facilityPersonaActive) return true;
+    const { data: fm } = await supabase
+      .from("facility_managers")
+      .select("facility_manager_id")
+      .eq("auth_user_id", user!.id)
+      .eq("status", "active")
+      .maybeSingle();
+    perf.countDb();
+    facilityPersonaActive = Boolean(fm);
+    return facilityPersonaActive;
+  }
+
+  const staffAccountActive = accountRow?.is_active === true;
+
   // Authenticated lessees use /portal/*, not staff /dashboard or other portals.
-  // Accept-invite pages stay reachable so a different persona's invite can be completed.
+  // Forgot/reset/callback/chooser always render; login bounce only if persona active.
   if (
     user &&
     isLesseePortalUser &&
     !isAcceptInvitePath(pathname) &&
-    (pathname === "/login" ||
-      pathname === "/signup" ||
-      pathname.startsWith("/dashboard") ||
-      isLandlordPortalPath ||
-      isFacilityPortalPath)
+    (pathname.startsWith("/dashboard") ||
+      (isLandlordPortalPath && !isLandlordPortalPublicPath) ||
+      (isFacilityPortalPath && !isFacilityPortalPublicPath) ||
+      isStaffLoginPath(pathname) ||
+      pathname === "/signup")
   ) {
-    return redirectHomeClean(request, "/portal/dashboard");
+    if (await ensureLesseeActive()) {
+      return redirectHomeClean(request, "/portal/dashboard");
+    }
+    // Stale JWT after delete/deactivate — clear cookies; do not fall into staff UI.
+    if (!isStaffLoginPath(pathname) && pathname !== "/signup") {
+      await signOutBestEffort(supabase);
+      return redirectWithNotice(
+        request,
+        "/portal/login",
+        ACCOUNT_INACTIVE_NOTICE,
+      );
+    }
   }
 
   // Authenticated landlords use /landlord-portal/*, not staff /dashboard or other portals.
@@ -511,13 +794,23 @@ export async function proxy(request: NextRequest) {
     user &&
     isLandlordPortalUser &&
     !isAcceptInvitePath(pathname) &&
-    (pathname === "/login" ||
-      pathname === "/signup" ||
-      pathname.startsWith("/dashboard") ||
-      isPortalPath ||
-      isFacilityPortalPath)
+    (pathname.startsWith("/dashboard") ||
+      (isPortalPath && !isPortalPublicPath) ||
+      (isFacilityPortalPath && !isFacilityPortalPublicPath) ||
+      isStaffLoginPath(pathname) ||
+      pathname === "/signup")
   ) {
-    return redirectHomeClean(request, "/landlord-portal/dashboard");
+    if (await ensureLandlordActive()) {
+      return redirectHomeClean(request, "/landlord-portal/dashboard");
+    }
+    if (!isStaffLoginPath(pathname) && pathname !== "/signup") {
+      await signOutBestEffort(supabase);
+      return redirectWithNotice(
+        request,
+        "/landlord-portal/login",
+        ACCOUNT_INACTIVE_NOTICE,
+      );
+    }
   }
 
   // Authenticated facility managers use /facility-portal/*.
@@ -525,21 +818,33 @@ export async function proxy(request: NextRequest) {
     user &&
     isFacilityManagerPortalUser &&
     !isAcceptInvitePath(pathname) &&
-    (pathname === "/login" ||
-      pathname === "/signup" ||
-      pathname.startsWith("/dashboard") ||
-      isPortalPath ||
-      isLandlordPortalPath)
+    (pathname.startsWith("/dashboard") ||
+      (isPortalPath && !isPortalPublicPath) ||
+      (isLandlordPortalPath && !isLandlordPortalPublicPath) ||
+      isStaffLoginPath(pathname) ||
+      pathname === "/signup")
   ) {
-    return redirectHomeClean(request, "/facility-portal/dashboard");
+    if (await ensureFacilityActive()) {
+      return redirectHomeClean(request, "/facility-portal/dashboard");
+    }
+    if (!isStaffLoginPath(pathname) && pathname !== "/signup") {
+      await signOutBestEffort(supabase);
+      return redirectWithNotice(
+        request,
+        "/facility-portal/login",
+        ACCOUNT_INACTIVE_NOTICE,
+      );
+    }
   }
 
+  // Staff login/signup → dashboard only when user_accounts is active (not cookie alone).
   if (
     user &&
+    staffAccountActive &&
     !isLesseePortalUser &&
     !isLandlordPortalUser &&
     !isFacilityManagerPortalUser &&
-    (pathname === "/login" || pathname === "/signup")
+    (isStaffLoginPath(pathname) || pathname === "/signup")
   ) {
     const blockDashboardRedirect = await shouldBlockLoginAutoRedirect({
       supabase,
@@ -550,10 +855,9 @@ export async function proxy(request: NextRequest) {
       isFacilityManagerPortalUser,
     });
     if (!blockDashboardRedirect) {
-      const nextParam =
-        pathname === "/login"
-          ? request.nextUrl.searchParams.get("next")
-          : null;
+      const nextParam = isStaffLoginPath(pathname)
+        ? request.nextUrl.searchParams.get("next")
+        : null;
       return redirectToRelativePath(
         request,
         getSafeNext(nextParam, "/dashboard"),
@@ -566,11 +870,13 @@ export async function proxy(request: NextRequest) {
     );
   }
 
+  // Portal login → home only on login paths (forgot/reset/callback always render).
   if (
     user &&
-    isPortalPublicPath &&
+    isLesseeLoginPath(pathname) &&
     isLesseePortalUser &&
-    !isAcceptInvitePath(pathname)
+    !isAcceptInvitePath(pathname) &&
+    (await ensureLesseeActive())
   ) {
     const blockRedirect = await shouldBlockLoginAutoRedirect({
       supabase,
@@ -592,9 +898,10 @@ export async function proxy(request: NextRequest) {
 
   if (
     user &&
-    isLandlordPortalPublicPath &&
+    isLandlordLoginPath(pathname) &&
     isLandlordPortalUser &&
-    !isAcceptInvitePath(pathname)
+    !isAcceptInvitePath(pathname) &&
+    (await ensureLandlordActive())
   ) {
     const blockRedirect = await shouldBlockLoginAutoRedirect({
       supabase,
@@ -616,9 +923,10 @@ export async function proxy(request: NextRequest) {
 
   if (
     user &&
-    isFacilityPortalPublicPath &&
+    isFacilityLoginPath(pathname) &&
     isFacilityManagerPortalUser &&
-    !isAcceptInvitePath(pathname)
+    !isAcceptInvitePath(pathname) &&
+    (await ensureFacilityActive())
   ) {
     const blockRedirect = await shouldBlockLoginAutoRedirect({
       supabase,

@@ -52,17 +52,19 @@ export default async function LandlordPortalLayout({
   return (
     <StickyBottomBarProvider>
       <FeedbackShell>
-      <PortalLayoutClient
-        userLabel={session?.fullName ?? null}
-        userPhotoUrl={session?.logoUrl ?? null}
-        landlordType={session?.landlordType ?? null}
-        hasDataAccess={session ? landlordPortalHasDataAccess(session) : false}
-        isAuthenticatedLandlord={Boolean(session)}
-        billingPastDueBanner={billingPastDueBanner}
-      >
-        {children}
-      </PortalLayoutClient>
-      {session ? <AssistantChatWidget persona="landlord" /> : null}
+        <PortalLayoutClient
+          userLabel={session?.fullName ?? null}
+          userPhotoUrl={session?.logoUrl ?? null}
+          landlordType={session?.landlordType ?? null}
+          hasDataAccess={session ? landlordPortalHasDataAccess(session) : false}
+          isAuthenticatedLandlord={Boolean(session)}
+          billingPastDueBanner={billingPastDueBanner}
+          chromeExtra={
+            session ? <AssistantChatWidget persona="landlord" /> : null
+          }
+        >
+          {children}
+        </PortalLayoutClient>
       </FeedbackShell>
     </StickyBottomBarProvider>
   );

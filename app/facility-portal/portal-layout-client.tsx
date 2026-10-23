@@ -9,6 +9,7 @@ const PUBLIC_AUTH_PREFIXES = [
   "/facility-portal/accept-invite",
   "/facility-portal/forgot-password",
   "/facility-portal/reset-password",
+  "/facility-portal/set-password",
 ] as const;
 
 type PortalLayoutClientProps = {
@@ -16,6 +17,8 @@ type PortalLayoutClientProps = {
   userLabel: string | null;
   links: FacilityPortalNavLink[];
   isAuthenticated: boolean;
+  /** Only rendered inside the authenticated shell (not on login / set-password). */
+  chromeExtra?: React.ReactNode;
 };
 
 function isPublicAuthPath(pathname: string): boolean {
@@ -33,6 +36,7 @@ export default function PortalLayoutClient({
   userLabel,
   links,
   isAuthenticated,
+  chromeExtra = null,
 }: PortalLayoutClientProps) {
   const pathname = usePathname();
 
@@ -41,8 +45,11 @@ export default function PortalLayoutClient({
   }
 
   return (
-    <FacilityPortalDashboardShell userLabel={userLabel} links={links}>
-      {children}
-    </FacilityPortalDashboardShell>
+    <>
+      <FacilityPortalDashboardShell userLabel={userLabel} links={links}>
+        {children}
+      </FacilityPortalDashboardShell>
+      {chromeExtra}
+    </>
   );
 }

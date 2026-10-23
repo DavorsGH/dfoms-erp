@@ -27,6 +27,7 @@ import { buildSalesRepDashboardSummary } from "./sales-rep-dashboard-utils";
 import SalesRepDashboard from "./sales-rep-dashboard";
 import { fetchTenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status";
 import { fetchScopedRawMaterialStock } from "@/app/dashboard/inventory/raw-material-bu-stock-utils";
+import { redirectInactiveOrSignedOut } from "@/utils/account-inactive-redirect";
 import {
   DashboardPagePerfMeta,
   readSupabasePerfCallIndex,
@@ -284,12 +285,8 @@ export default async function DashboardPage() {
       getViewAllBusinessUnits(),
     ]);
 
-  if (!tenantId) {
-    throw new Error("Unable to resolve the current workspace.");
-  }
-
-  if (!authUid) {
-    throw new Error("Unable to resolve the current user.");
+  if (!tenantId || !authUid) {
+    return await redirectInactiveOrSignedOut("/login");
   }
 
   const buScope = resolveBusinessUnitReadScope({

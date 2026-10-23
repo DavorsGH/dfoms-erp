@@ -6,6 +6,7 @@ import {
   syncUserBusinessUnitAccess,
 } from "@/utils/admin-user-business-unit-access";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { SELF_ROLE_ACCESS_CHANGE_MESSAGE } from "@/lib/auth/account-inactive-message";
 
 type ReplaceAccessBody = {
   auth_uid?: string;
@@ -81,7 +82,7 @@ async function replaceBusinessUnitAccess(request: Request) {
     return auth.response;
   }
 
-  const { tenantId } = auth;
+  const { tenantId, userId } = auth;
 
   let body: ReplaceAccessBody;
   try {
@@ -93,6 +94,13 @@ async function replaceBusinessUnitAccess(request: Request) {
   const authUid = body.auth_uid?.trim();
   if (!authUid) {
     return NextResponse.json({ error: "auth_uid is required" }, { status: 400 });
+  }
+
+  if (authUid === userId) {
+    return NextResponse.json(
+      { error: SELF_ROLE_ACCESS_CHANGE_MESSAGE },
+      { status: 400 },
+    );
   }
 
   const normalized = normalizeBusinessUnitAccessInput(body);

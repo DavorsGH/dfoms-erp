@@ -13,7 +13,7 @@ export type SuperAdminResult =
   | { ok: false; response: NextResponse };
 
 export type TenantSuperAdminResult =
-  | { ok: true; tenantId: string }
+  | { ok: true; tenantId: string; userId: string }
   | { ok: false; response: NextResponse };
 
 export type LinkedEmployeeAuthResult =
@@ -175,7 +175,7 @@ export async function requireTenantSuperAdmin(): Promise<TenantSuperAdminResult>
     };
   }
 
-  return { ok: true, tenantId: account.tenant_id };
+  return { ok: true, tenantId: account.tenant_id, userId: user.id };
 }
 
 export async function requireTenantRoleIn(
@@ -221,7 +221,7 @@ export async function requireTenantRoleIn(
     };
   }
 
-  return { ok: true, tenantId: account.tenant_id };
+  return { ok: true, tenantId: account.tenant_id, userId: user.id };
 }
 
 export async function requireDavorsPlatformSuperAdmin(): Promise<SuperAdminResult> {

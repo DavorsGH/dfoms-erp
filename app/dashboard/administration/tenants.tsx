@@ -12,6 +12,7 @@ import ScrollableTable, {
 } from "../scrollable-table";
 import { formatProductPrice } from "../crm/products/products-utils";
 import type { CustomerTenantRow } from "@/utils/tenant-management";
+import TenantSuperAdminsLoginSection from "@/components/portal-login-access/tenant-super-admins-login-section";
 
 type TenantManagementProps = {
   initialRows: CustomerTenantRow[];
@@ -89,6 +90,8 @@ export default function TenantManagement({
     useState<CustomerTenantRow | null>(null);
   const [customPriceGhs, setCustomPriceGhs] = useState("");
   const [customPriceReason, setCustomPriceReason] = useState("");
+  const [manageLoginTenant, setManageLoginTenant] =
+    useState<CustomerTenantRow | null>(null);
 
   useEffect(() => {
     setRows(initialRows);
@@ -691,6 +694,14 @@ export default function TenantManagement({
                             Un-waive
                           </button>
                         ) : null}
+                        <button
+                          type="button"
+                          disabled={isLoading}
+                          onClick={() => setManageLoginTenant(row)}
+                          className={primaryActionButtonClassName}
+                        >
+                          Manage login
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -700,6 +711,14 @@ export default function TenantManagement({
           </tbody>
         </table>
       </ScrollableTable>
+
+      {manageLoginTenant ? (
+        <TenantSuperAdminsLoginSection
+          tenantId={manageLoginTenant.tenantId}
+          companyName={manageLoginTenant.companyName}
+          onClose={() => setManageLoginTenant(null)}
+        />
+      ) : null}
     </div>
   );
 }

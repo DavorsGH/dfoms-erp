@@ -3,6 +3,7 @@
 import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAlert, useToast } from "@/components/feedback";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   PASSWORD_MIN_LENGTH,
@@ -26,11 +27,9 @@ import type {
 } from "../user-account-types";
 import RoleAssignmentFields, {
   createEmptyRoleAssignmentForm,
-  roleAssignmentFromAccount,
   type RoleAssignmentFormState,
 } from "./role-assignment-fields";
 import BusinessUnitAccessFields, {
-  businessUnitAccessFromApi,
   emptyBusinessUnitAccessForm,
   type BusinessUnitAccessFormState,
   type BusinessUnitOption,
@@ -38,6 +37,7 @@ import BusinessUnitAccessFields, {
 import PasswordInput from "@/components/password-input";
 
 type UserAccountsProps = {
+  currentUserAuthUid: string | null;
   initialAccounts: UserAccount[];
   initialEmployees: Employee[];
   initialClients: ClientOption[];
@@ -49,14 +49,11 @@ type UserAccountsProps = {
 const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
-const actionButtonClassName =
-  "shrink-0 whitespace-nowrap rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
-
 const deactivateButtonClassName =
   "shrink-0 whitespace-nowrap rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
 
-const deleteButtonClassName =
-  "shrink-0 whitespace-nowrap rounded-md border border-red-300 bg-red-50 px-2 py-1 text-xs font-medium text-red-800 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50";
+const reactivateButtonClassName =
+  "shrink-0 whitespace-nowrap rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
 type CreateFormState = RoleAssignmentFormState & {
   email: string;
@@ -71,35 +68,8 @@ const emptyCreateForm = (): CreateFormState => ({
   password: "",
 });
 
-type EditUserFormState = RoleAssignmentFormState & {
-  email: string;
-  is_active: boolean;
-};
-
-function editUserFromAccount(account: UserAccount): EditUserFormState {
-  return {
-    ...roleAssignmentFromAccount(account),
-    email: account.email,
-    is_active: account.is_active,
-  };
-}
-
 function deactivateConfirmMessage(displayName: string) {
-  return `Deactivate the account for ${displayName}? They will no longer be able to sign in. This is reversible — use Edit User to reactivate later.`;
-}
-
-function deleteConfirmMessage(displayName: string, dependencySummary?: string) {
-  const lines = [
-    `Permanently delete the login account for ${displayName}?`,
-    "",
-    "This will permanently delete this login account. The employee/customer record itself will NOT be deleted. This cannot be undone.",
-    "",
-    "Deactivate is the recommended option for normal offboarding because it can be reversed.",
-  ];
-  if (dependencySummary) {
-    lines.push("", "Related data found:", dependencySummary);
-  }
-  return lines.join("\n");
+  return `Deactivate ${displayName}? They will be signed out and unable to log in until reactivated.`;
 }
 
 function formatRoleLinks(account: UserAccount, sites: SiteOption[]) {
@@ -128,6 +98,7 @@ function formatRoleLinks(account: UserAccount, sites: SiteOption[]) {
 }
 
 export default function UserAccounts({
+  currentUserAuthUid,
   initialAccounts,
   initialEmployees,
   initialClients,
@@ -139,29 +110,16 @@ export default function UserAccounts({
   const { alertError } = useAlert();
   const { toast } = useToast();
   const createSubmitGuardRef = useRef(false);
-  const updateSubmitGuardRef = useRef(false);
   const [accounts, setAccounts] = useState(initialAccounts);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createMode, setCreateMode] = useState<CreateUserMode>("password");
   const [createForm, setCreateForm] = useState(emptyCreateForm);
-  const [editingUid, setEditingUid] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<EditUserFormState>({
-    ...createEmptyRoleAssignmentForm(),
-    email: "",
-    is_active: true,
-  });
-  const [resettingUid, setResettingUid] = useState<string | null>(null);
-  const [resetPassword, setResetPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [businessUnitAccessForm, setBusinessUnitAccessForm] =
-    useState<BusinessUnitAccessFormState>(emptyBusinessUnitAccessForm());
   const [createBusinessUnitAccessForm, setCreateBusinessUnitAccessForm] =
     useState<BusinessUnitAccessFormState>(emptyBusinessUnitAccessForm());
-  const [businessUnitAccessLoading, setBusinessUnitAccessLoading] =
-    useState(false);
 
   const showBusinessUnitAccess = initialBusinessUnits.length >= 2;
 
@@ -174,89 +132,6 @@ export default function UserAccounts({
       void alertError(fetchError, { title: "Could not complete action" });
     }
   }, [alertError, fetchError]);
-
-  async function loadBusinessUnitAccess(authUid: string) {
-    if (!showBusinessUnitAccess) {
-      setBusinessUnitAccessForm(emptyBusinessUnitAccessForm());
-      return;
-    }
-
-    setBusinessUnitAccessLoading(true);
-    setBusinessUnitAccessForm(emptyBusinessUnitAccessForm());
-
-    try {
-      const response = await fetch(
-        `/api/admin/users/business-unit-access?auth_uid=${encodeURIComponent(authUid)}`,
-      );
-
-      if (!response.ok) {
-        setError(
-          await parseApiErrorResponse(
-            response,
-            "Failed to load business unit access",
-          ),
-        );
-        return;
-      }
-
-      const payload = (await response.json()) as {
-        unrestricted?: boolean;
-        business_unit_ids?: string[];
-        default_business_unit_id?: string | null;
-      };
-
-      setBusinessUnitAccessForm(businessUnitAccessFromApi(payload));
-    } finally {
-      setBusinessUnitAccessLoading(false);
-    }
-  }
-
-  function closeEditUser() {
-    setEditingUid(null);
-  }
-
-  function closeResetPassword() {
-    setResettingUid(null);
-    setResetPassword("");
-  }
-
-  function openEditUser(account: UserAccount) {
-    setEditingUid(account.auth_uid);
-    setEditForm(editUserFromAccount(account));
-    closeResetPassword();
-    setError(null);
-    setSuccess(null);
-    void loadBusinessUnitAccess(account.auth_uid);
-  }
-
-  function openResetPassword(account: UserAccount) {
-    setResettingUid(account.auth_uid);
-    setResetPassword("");
-    setEditingUid(null);
-    setError(null);
-    setSuccess(null);
-  }
-
-  useEffect(() => {
-    if (!editingUid && !resettingUid) {
-      return;
-    }
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") {
-        return;
-      }
-      event.preventDefault();
-      if (resettingUid) {
-        closeResetPassword();
-      } else {
-        closeEditUser();
-      }
-    }
-
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [editingUid, resettingUid]);
 
   const assignedEmployeeIds = useMemo(
     () =>
@@ -276,13 +151,6 @@ export default function UserAccounts({
           .filter((clientId): clientId is string => Boolean(clientId)),
       ),
     [accounts],
-  );
-
-  const editingAccount = accounts.find(
-    (account) => account.auth_uid === editingUid,
-  );
-  const resettingAccount = accounts.find(
-    (account) => account.auth_uid === resettingUid,
   );
 
   async function syncBusinessUnitAccess(
@@ -391,106 +259,12 @@ export default function UserAccounts({
     router.refresh();
   }
 
-  async function handleUpdateUser(
-    e: React.FormEvent,
-    authUid: string,
-    displayName: string,
-  ) {
-    e.preventDefault();
-    if (updateSubmitGuardRef.current || actionId === authUid) {
-      return;
-    }
-
-    const originalAccount = accounts.find((account) => account.auth_uid === authUid);
-    if (originalAccount?.is_active && !editForm.is_active) {
-      if (!(await confirmDialog({ message: deactivateConfirmMessage(displayName) }))) {
-        return;
-      }
-    }
-
-    updateSubmitGuardRef.current = true;
-    setActionId(authUid);
-    setError(null);
-    setSuccess(null);
-
-    const response = await fetch("/api/admin/users/update", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        auth_uid: authUid,
-        ...editForm,
-      }),
-    });
-
-    if (!response.ok) {
-      void alertError(
-        await parseApiErrorResponse(response, "Failed to update user"),
-        { title: "Could not complete action" },
-      );
-      updateSubmitGuardRef.current = false;
-      setActionId(null);
-      return;
-    }
-
-    if (showBusinessUnitAccess) {
-      const accessSaved = await syncBusinessUnitAccess(
-        authUid,
-        businessUnitAccessForm,
-        "User saved, but business unit access failed to update",
-      );
-      if (!accessSaved) {
-        void alertError("User saved, but business unit access failed to update.", {
-          title: "Could not complete action",
-        });
-        updateSubmitGuardRef.current = false;
-        setActionId(null);
-        return;
-      }
-    }
-
-    closeEditUser();
-    toast(
-      originalAccount?.is_active && !editForm.is_active
-        ? "User account deactivated."
-        : !originalAccount?.is_active && editForm.is_active
-          ? "User account reactivated."
-          : "User account updated.",
-    );
-    updateSubmitGuardRef.current = false;
-    setActionId(null);
-    router.refresh();
-  }
-
-  async function handleResetPassword(
-    e: React.FormEvent,
-    authUid: string,
-    displayName: string,
-  ) {
-    e.preventDefault();
-    setActionId(authUid);
-    setError(null);
-    setSuccess(null);
-
-    const response = await fetch("/api/admin/users/reset-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ auth_uid: authUid, password: resetPassword }),
-    });
-
-    if (!response.ok) {
-      setError(
-        await parseApiErrorResponse(response, "Failed to reset password"),
-      );
-      setActionId(null);
-      return;
-    }
-
-    closeResetPassword();
-    toast(`Password updated for ${displayName}`);
-    setActionId(null);
-  }
-
   async function handleDeactivate(authUid: string, displayName: string) {
+    if (authUid === currentUserAuthUid) {
+      setError("You cannot deactivate your own account.");
+      return;
+    }
+
     if (!(await confirmDialog({ message: deactivateConfirmMessage(displayName) }))) {
       return;
     }
@@ -513,87 +287,31 @@ export default function UserAccounts({
       return;
     }
 
-    setSuccess("User account deactivated.");
+    toast("User account deactivated.");
     setActionId(null);
     router.refresh();
   }
 
-  async function handleDeleteUser(authUid: string, displayName: string) {
+  async function handleReactivate(authUid: string) {
     setActionId(authUid);
     setError(null);
     setSuccess(null);
 
-    const dependencyResponse = await fetch(
-      `/api/admin/users/delete-dependencies?auth_uid=${encodeURIComponent(authUid)}`,
-    );
-
-    if (!dependencyResponse.ok) {
-      setError(
-        await parseApiErrorResponse(
-          dependencyResponse,
-          "Failed to inspect user dependencies",
-        ),
-      );
-      setActionId(null);
-      return;
-    }
-
-    const dependencyPayload = (await dependencyResponse.json().catch(() => null)) as {
-      error?: string;
-      summary?: string;
-      canDelete?: boolean;
-      blockMessage?: string;
-    } | null;
-
-    if (!dependencyPayload) {
-      setError("Failed to inspect user dependencies (empty response).");
-      setActionId(null);
-      return;
-    }
-
-    if (!dependencyPayload?.canDelete) {
-      setError(
-        dependencyPayload?.blockMessage ??
-          "This user account cannot be permanently deleted.",
-      );
-      setActionId(null);
-      return;
-    }
-
-    if (
-      !(await confirmDialog({
-        message: deleteConfirmMessage(displayName, dependencyPayload.summary),
-        tone: "danger",
-        confirmLabel: "Delete",
-      }))
-    ) {
-      setActionId(null);
-      return;
-    }
-
-    const response = await fetch("/api/admin/users/delete", {
+    const response = await fetch("/api/admin/users/reactivate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ auth_uid: authUid }),
     });
 
     if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as {
-        error?: string;
-        dependencySummary?: string;
-      } | null;
-      const baseMessage =
-        payload?.error?.trim() ||
-        `Failed to delete user (HTTP ${response.status}).`;
-      const detail = payload?.dependencySummary
-        ? `${baseMessage}\n\n${payload.dependencySummary}`
-        : baseMessage;
-      setError(detail);
+      setError(
+        await parseApiErrorResponse(response, "Failed to reactivate user"),
+      );
       setActionId(null);
       return;
     }
 
-    setSuccess("User account permanently deleted.");
+    toast("User account reactivated.");
     setActionId(null);
     router.refresh();
   }
@@ -608,8 +326,6 @@ export default function UserAccounts({
             setShowCreateForm((current) => !current);
             setCreateMode("password");
             setCreateBusinessUnitAccessForm(emptyBusinessUnitAccessForm());
-            closeEditUser();
-            closeResetPassword();
             setError(null);
             setSuccess(null);
           }}
@@ -619,23 +335,86 @@ export default function UserAccounts({
         </button>
       </div>
 
-      {error && (
-        <p className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+      {error ? (
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 whitespace-pre-line">
           {error}
-        </p>
-      )}
-
-      {success && (
-        <p className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        </div>
+      ) : null}
+      {success ? (
+        <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           {success}
-        </p>
-      )}
+        </div>
+      ) : null}
 
-      {showCreateForm && (
+      {showCreateForm ? (
         <form
           onSubmit={handleCreate}
           className="mb-6 space-y-4 rounded-md border border-slate-200 bg-slate-50 p-4"
         >
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setCreateMode("password")}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                createMode === "password"
+                  ? "bg-[#0f2744] text-white"
+                  : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              Set password
+            </button>
+            <button
+              type="button"
+              onClick={() => setCreateMode("invite")}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                createMode === "invite"
+                  ? "bg-[#0f2744] text-white"
+                  : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              Send invite
+            </button>
+          </div>
+
+          <div className="max-w-md">
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Email
+            </label>
+            <input
+              type="email"
+              required
+              value={createForm.email}
+              onChange={(e) =>
+                setCreateForm((current) => ({
+                  ...current,
+                  email: e.target.value,
+                }))
+              }
+              className={inputClassName}
+            />
+          </div>
+
+          {createMode === "password" ? (
+            <div className="max-w-md">
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Password
+              </label>
+              <PasswordInput
+                required
+                minLength={PASSWORD_MIN_LENGTH}
+                value={createForm.password}
+                onChange={(e) =>
+                  setCreateForm((current) => ({
+                    ...current,
+                    password: e.target.value,
+                  }))
+                }
+                className={inputClassName}
+              />
+              <p className="mt-1 text-xs text-slate-500">{PASSWORD_POLICY_HINT}</p>
+            </div>
+          ) : null}
+
           <RoleAssignmentFields
             form={createForm}
             employees={initialEmployees}
@@ -643,81 +422,14 @@ export default function UserAccounts({
             sites={initialSites}
             assignedEmployeeIds={assignedEmployeeIds}
             assignedClientIds={assignedClientIds}
-            onChange={(next) => setCreateForm((current) => ({ ...current, ...next }))}
+            onChange={(next) =>
+              setCreateForm((current) => ({
+                ...current,
+                ...next,
+              }))
+            }
             idPrefix="create"
           />
-
-          <fieldset className="space-y-2">
-            <legend className="text-sm font-medium text-slate-700">
-              Onboarding method
-            </legend>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="radio"
-                name="create-user-mode"
-                checked={createMode === "password"}
-                onChange={() => setCreateMode("password")}
-                className="h-4 w-4 border-slate-300 text-[#0f2744] focus:ring-[#0f2744]"
-              />
-              Set password now (default)
-            </label>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="radio"
-                name="create-user-mode"
-                checked={createMode === "invite"}
-                onChange={() => setCreateMode("invite")}
-                className="h-4 w-4 border-slate-300 text-[#0f2744] focus:ring-[#0f2744]"
-              />
-              Send invite email
-            </label>
-          </fieldset>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Email
-              </label>
-              <input
-                type="email"
-                required
-                value={createForm.email}
-                onChange={(e) =>
-                  setCreateForm((current) => ({
-                    ...current,
-                    email: e.target.value,
-                  }))
-                }
-                className={inputClassName}
-              />
-            </div>
-            {createMode === "password" ? (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Temporary Password
-                </label>
-                <PasswordInput
-                  required
-                  minLength={PASSWORD_MIN_LENGTH}
-                  value={createForm.password}
-                  onChange={(e) =>
-                    setCreateForm((current) => ({
-                      ...current,
-                      password: e.target.value,
-                    }))
-                  }
-                  className={inputClassName}
-                />
-              </div>
-            ) : (
-              <div className="flex items-end">
-                <p className="text-sm text-slate-600">
-                  An email with a link to set their password will be sent to this
-                  address. The link expires in 7 days.
-                </p>
-              </div>
-            )}
-          </div>
 
           {showBusinessUnitAccess ? (
             <BusinessUnitAccessFields
@@ -742,7 +454,7 @@ export default function UserAccounts({
                 : "Create User"}
           </button>
         </form>
-      )}
+      ) : null}
 
       <FilteredListCount
         filteredCount={accounts.length}
@@ -780,293 +492,101 @@ export default function UserAccounts({
                 </td>
               </tr>
             ) : (
-              accounts.map((account, index) => (
-                <tr
-                  key={account.auth_uid}
-                  className={
-                    index % 2 === 1
-                      ? "bg-slate-50 text-slate-700"
-                      : "text-slate-700"
-                  }
-                >
-                  <td className={scrollableTableBodyCellClassNameForHeading("Name")}>
-                    {account.full_name}
-                  </td>
-                  <td className={scrollableTableBodyCellClassNameForHeading("Email")}>
-                    {account.email}
-                  </td>
-                  <td
-                    className={scrollableTableBodyCellClassNameForHeading("Role")}
+              accounts.map((account, index) => {
+                const isSelf = account.auth_uid === currentUserAuthUid;
+                return (
+                  <tr
+                    key={account.auth_uid}
+                    className={
+                      index % 2 === 1
+                        ? "bg-slate-50 text-slate-700"
+                        : "text-slate-700"
+                    }
                   >
-                    {getRoleLabel(account.role)}
-                  </td>
-                  <td
-                    className={`${scrollableTableBodyCellClassNameForHeading("Role Links")} text-sm`}
-                  >
-                    {formatRoleLinks(account, initialSites)}
-                  </td>
-                  <td
-                    className={`${scrollableTableBodyCellClassNameForHeading("Active")} ${scrollableTableCompactCellClassName}`}
-                  >
-                    {account.is_active ? "Yes" : "No"}
-                  </td>
-                  <td
-                    className={`${scrollableTableBodyCellClassNameForHeading("Actions")} whitespace-nowrap ${scrollableTableCompactCellClassName}`}
-                  >
-                    <div className="inline-flex flex-nowrap items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => openEditUser(account)}
-                        disabled={actionId === account.auth_uid}
-                        className={actionButtonClassName}
+                    <td
+                      className={scrollableTableBodyCellClassNameForHeading(
+                        "Name",
+                      )}
+                    >
+                      <Link
+                        href={`/dashboard/user-accounts/${account.auth_uid}`}
+                        className="font-medium text-[#0f2744] hover:underline"
                       >
-                        Edit User
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openResetPassword(account)}
-                        disabled={
-                          !account.is_active || actionId === account.auth_uid
-                        }
-                        className={actionButtonClassName}
-                      >
-                        Reset Password
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleDeactivate(account.auth_uid, account.full_name)
-                        }
-                        disabled={
-                          !account.is_active || actionId === account.auth_uid
-                        }
-                        className={deactivateButtonClassName}
-                      >
-                        {actionId === account.auth_uid
-                          ? "Working…"
-                          : "Deactivate"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleDeleteUser(account.auth_uid, account.full_name)
-                        }
-                        disabled={actionId === account.auth_uid}
-                        className={deleteButtonClassName}
-                      >
-                        Delete User
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+                        {account.full_name}
+                      </Link>
+                    </td>
+                    <td
+                      className={scrollableTableBodyCellClassNameForHeading(
+                        "Email",
+                      )}
+                    >
+                      {account.email}
+                    </td>
+                    <td
+                      className={scrollableTableBodyCellClassNameForHeading(
+                        "Role",
+                      )}
+                    >
+                      {getRoleLabel(account.role)}
+                    </td>
+                    <td
+                      className={`${scrollableTableBodyCellClassNameForHeading("Role Links")} text-sm`}
+                    >
+                      {formatRoleLinks(account, initialSites)}
+                    </td>
+                    <td
+                      className={`${scrollableTableBodyCellClassNameForHeading("Active")} ${scrollableTableCompactCellClassName}`}
+                    >
+                      {account.is_active ? "Yes" : "No"}
+                    </td>
+                    <td
+                      className={`${scrollableTableBodyCellClassNameForHeading("Actions")} whitespace-nowrap ${scrollableTableCompactCellClassName}`}
+                    >
+                      <div className="inline-flex flex-nowrap items-center gap-1.5">
+                        {account.is_active ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleDeactivate(
+                                account.auth_uid,
+                                account.full_name,
+                              )
+                            }
+                            disabled={
+                              isSelf || actionId === account.auth_uid
+                            }
+                            title={
+                              isSelf
+                                ? "You cannot deactivate your own account"
+                                : undefined
+                            }
+                            className={deactivateButtonClassName}
+                          >
+                            {actionId === account.auth_uid
+                              ? "Working…"
+                              : "Deactivate"}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleReactivate(account.auth_uid)}
+                            disabled={actionId === account.auth_uid}
+                            className={reactivateButtonClassName}
+                          >
+                            {actionId === account.auth_uid
+                              ? "Working…"
+                              : "Reactivate"}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </ScrollableTable>
-
-      {editingAccount ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="edit-user-title"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              closeEditUser();
-            }
-          }}
-        >
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-slate-200 bg-white p-6 shadow-xl">
-            <h3
-              id="edit-user-title"
-              className="text-lg font-semibold text-[#0f2744]"
-            >
-              Edit User
-            </h3>
-            <p className="mt-1 text-sm text-slate-600">
-              {editingAccount.full_name}
-              <span className="text-slate-400"> · </span>
-              {editingAccount.email}
-            </p>
-            <form
-              onSubmit={(e) =>
-                handleUpdateUser(
-                  e,
-                  editingAccount.auth_uid,
-                  editingAccount.full_name,
-                )
-              }
-              className="mt-4 space-y-4"
-            >
-              <div className="max-w-md">
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={editForm.email}
-                  onChange={(e) =>
-                    setEditForm((current) => ({
-                      ...current,
-                      email: e.target.value,
-                    }))
-                  }
-                  className={inputClassName}
-                />
-              </div>
-              <div>
-                <span className="mb-1 block text-sm font-medium text-slate-700">
-                  Account Status
-                </span>
-                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={editForm.is_active}
-                    onChange={(e) =>
-                      setEditForm((current) => ({
-                        ...current,
-                        is_active: e.target.checked,
-                      }))
-                    }
-                    className="h-4 w-4 rounded border-slate-300 text-[#0f2744] focus:ring-[#0f2744]"
-                  />
-                  {editForm.is_active ? "Active" : "Inactive"}
-                </label>
-                {!editForm.is_active && (
-                  <p className="mt-1 text-xs text-slate-500">
-                    Inactive users are signed out on their next request and
-                    cannot access the portal.
-                  </p>
-                )}
-              </div>
-              <RoleAssignmentFields
-                form={editForm}
-                employees={initialEmployees}
-                clients={initialClients}
-                sites={initialSites}
-                assignedEmployeeIds={assignedEmployeeIds}
-                assignedClientIds={assignedClientIds}
-                currentEmployeeId={editingAccount.employee_id}
-                currentClientId={editingAccount.client_id}
-                onChange={(next) =>
-                  setEditForm((current) => ({
-                    ...current,
-                    ...next,
-                  }))
-                }
-                idPrefix={`edit-${editingAccount.auth_uid}`}
-              />
-              {showBusinessUnitAccess ? (
-                <BusinessUnitAccessFields
-                  form={businessUnitAccessForm}
-                  businessUnits={initialBusinessUnits}
-                  onChange={setBusinessUnitAccessForm}
-                  loading={businessUnitAccessLoading}
-                  idPrefix={`edit-bu-${editingAccount.auth_uid}`}
-                />
-              ) : null}
-              <div className="flex flex-wrap justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={closeEditUser}
-                  className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={actionId === editingAccount.auth_uid}
-                  className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {actionId === editingAccount.auth_uid
-                    ? "Saving…"
-                    : "Save changes"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
-
-      {resettingAccount ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="reset-password-title"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              closeResetPassword();
-            }
-          }}
-        >
-          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-xl">
-            <h3
-              id="reset-password-title"
-              className="text-lg font-semibold text-[#0f2744]"
-            >
-              Reset password
-            </h3>
-            <p className="mt-1 text-sm text-slate-600">
-              {resettingAccount.full_name}
-              <span className="text-slate-400"> · </span>
-              {resettingAccount.email}
-            </p>
-            <form
-              onSubmit={(e) =>
-                handleResetPassword(
-                  e,
-                  resettingAccount.auth_uid,
-                  resettingAccount.full_name,
-                )
-              }
-              className="mt-4 space-y-4"
-            >
-              <div>
-                <label
-                  htmlFor="reset-password-field"
-                  className="mb-1 block text-sm font-medium text-slate-700"
-                >
-                  New password
-                </label>
-                <PasswordInput
-                  id="reset-password-field"
-                  required
-                  autoFocus
-                  minLength={PASSWORD_MIN_LENGTH}
-                  value={resetPassword}
-                  onChange={(e) => setResetPassword(e.target.value)}
-                  className={inputClassName}
-                  autoComplete="new-password"
-                />
-                <p className="mt-2 text-xs text-slate-500">
-                  {PASSWORD_POLICY_HINT}
-                </p>
-              </div>
-              <div className="flex flex-wrap justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={closeResetPassword}
-                  className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={actionId === resettingAccount.auth_uid}
-                  className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {actionId === resettingAccount.auth_uid
-                    ? "Saving…"
-                    : "Save password"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 }

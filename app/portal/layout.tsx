@@ -2,6 +2,7 @@ import AssistantChatWidget from "@/components/ai-assistant/assistant-chat-widget
 import { StickyBottomBarProvider } from "@/components/sticky-bottom-bar";
 import { FeedbackShell } from "@/components/feedback";
 import { ensureSecurityNotifications } from "@/utils/security-notifications";
+import PortalChromeGate from "./portal-chrome-gate";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,11 @@ export default async function PortalLayout({
     <StickyBottomBarProvider>
       <FeedbackShell>
         {children}
-        {session ? <AssistantChatWidget persona="tenant" /> : null}
+        {session ? (
+          <PortalChromeGate>
+            <AssistantChatWidget persona="tenant" />
+          </PortalChromeGate>
+        ) : null}
       </FeedbackShell>
     </StickyBottomBarProvider>
   );

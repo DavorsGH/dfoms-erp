@@ -80,11 +80,36 @@ export function mapSupabasePasswordError(error: unknown): string {
     return PASSWORD_POLICY_HINT;
   }
 
-  if (e.code === "same_password") {
-    return "Choose a different password than your current one.";
+  if (e.code === "same_password" || isSamePasswordMessage(e.message)) {
+    return SAME_PASSWORD_USER_MESSAGE;
   }
 
   return e.message?.trim() || "Could not update password. Please try again.";
+}
+
+/** User-facing copy when Auth rejects reusing the current / temporary password. */
+export const SAME_PASSWORD_USER_MESSAGE =
+  "You can't reuse the temporary password you were given. Please choose a new password that only you know.";
+
+export const SAME_PASSWORD_ALERT_TITLE = "Choose a new password";
+
+export function isSamePasswordAuthError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return typeof error === "string" && isSamePasswordMessage(error);
+  }
+  const e = error as PasswordErrorLike;
+  return e.code === "same_password" || isSamePasswordMessage(e.message);
+}
+
+function isSamePasswordMessage(message: string | undefined): boolean {
+  if (!message) return false;
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("same_password") ||
+    lower.includes("same password") ||
+    lower.includes("different from the old password") ||
+    lower.includes("should be different from the old password")
+  );
 }
 
 /** Policy rollout cutoff — users with password_updated_at before this get a nudge. */

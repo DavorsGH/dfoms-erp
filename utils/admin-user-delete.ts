@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { revokeAuthUserSessions } from "@/utils/auth-session-revoke";
 
 type AdminClient = SupabaseClient;
 
@@ -290,6 +291,9 @@ export async function deleteUserAccount(
       return { ok: false, error: configDeleteError.message };
     }
   }
+
+  // Revoke sessions while the Auth user still exists, then remove app + Auth rows.
+  await revokeAuthUserSessions(admin, authUid, { ban: true });
 
   const { error: accountDeleteError } = await admin
     .from("user_accounts")

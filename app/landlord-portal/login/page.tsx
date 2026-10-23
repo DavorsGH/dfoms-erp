@@ -2,8 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ACCOUNT_NO_LONGER_ACTIVE_MESSAGE } from "@/lib/auth/account-inactive-message";
 import StayLoggedInCheckbox, {
   DEFAULT_STAY_LOGGED_IN,
 } from "@/components/auth/stay-logged-in-checkbox";
@@ -18,13 +19,18 @@ import {
 import { landlordPortalLoginWithPassword } from "./actions";
 import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 
-export default function LandlordPortalLoginPage() {
+function LandlordPortalLoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [stayLoggedIn, setStayLoggedIn] = useState(DEFAULT_STAY_LOGGED_IN);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const notice =
+    searchParams.get("notice") === "account_inactive"
+      ? ACCOUNT_NO_LONGER_ACTIVE_MESSAGE
+      : null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -111,6 +117,9 @@ export default function LandlordPortalLoginPage() {
             onChange={setStayLoggedIn}
           />
 
+          {notice && !error ? (
+            <p className="text-sm text-amber-800">{notice}</p>
+          ) : null}
           {error ? <p className="text-sm text-red-700">{error}</p> : null}
 
           <button
@@ -154,5 +163,19 @@ export default function LandlordPortalLoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LandlordPortalLoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-[#0F2744] px-4">
+          <p className="text-sm text-white">Loading sign-in…</p>
+        </div>
+      }
+    >
+      <LandlordPortalLoginForm />
+    </Suspense>
   );
 }

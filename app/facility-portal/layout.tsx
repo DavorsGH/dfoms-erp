@@ -23,9 +23,13 @@ export default async function FacilityPortalLayout({
           userLabel={session?.fullName ?? null}
           links={links}
           isAuthenticated={Boolean(session)}
+          chromeExtra={
+            session ? (
+              <AssistantChatWidget persona="facility_manager" />
+            ) : null
+          }
         >
           {children}
-          {session ? <AssistantChatWidget persona="facility_manager" /> : null}
         </PortalLayoutClient>
       </FeedbackShell>
     </StickyBottomBarProvider>

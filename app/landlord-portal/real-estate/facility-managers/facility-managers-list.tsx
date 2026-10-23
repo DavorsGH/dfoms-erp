@@ -1,6 +1,7 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
@@ -532,7 +533,12 @@ export default function LandlordPortalFacilityManagersList({
                     className={getStripedRowClassName(index)}
                   >
                     <td className="px-4 py-3 font-medium text-slate-900">
-                      {row.full_name}
+                      <Link
+                        href={`/landlord-portal/real-estate/facility-managers/${row.facility_manager_id}`}
+                        className="text-[#0f2744] hover:underline"
+                      >
+                        {row.full_name}
+                      </Link>
                     </td>
                     <td className="px-4 py-3 text-slate-700">{row.email}</td>
                     <td className="px-4 py-3 text-slate-700">
