@@ -1797,8 +1797,9 @@ commissions, and forecasting are built on.
 # **Section 8 --- HR Management**
 
 HR Management is organised into groups: Employees, Payroll, HR
-Operations, Leave Approvals (when you are an assigned approver), and
-Employee Announcements.
+Operations, and Employee Announcements. Leave and attendance approval
+inboxes live under Self-Service → Approvals when you are an assigned
+approver (or a director / super admin for attendance).
 
 ## **8.1 Employees**
 
@@ -1934,7 +1935,7 @@ blocked** until rates are available.
 
 ## **8.3a Leave Approvals**
 
-If you are set up as a leave approver, HR Management → Leave Approvals
+If you are set up as a leave approver, Self-Service → Approvals → Leave
 is your inbox for leave requests waiting on you. The table shows each
 **Employee** by name (staff ID and name). Approve or reject from there
 --- this is separate from Self-Service, which only shows your own leave.
@@ -2152,8 +2153,8 @@ Staff allowed to work remotely use **Self-Service → My Attendance** (or
 Working from home, Head office, Client site / contract site, Client or
 supplier meeting, Field visit / inspection, Travelling, or Other (type
 it in) --- and may add an optional reason. Requests that need approval
-go to **Attendance Approvals**, where the approver gets an in-app badge
-and a push notification.
+go to **Self-Service → Approvals → Attendance**, where the approver gets
+an in-app badge and a push notification.
 
 ### **Remote work arrangements**
 
@@ -2644,8 +2645,8 @@ The four tabs are:
 
 -   **My Roster** --- your duty roster assignments
 
-Leave requests that need **your approval as a manager** appear under HR
-Management → Leave Approvals (Section 8.3a), not under Self-Service.
+Leave requests that need **your approval as a manager** appear under
+Self-Service → Approvals → Leave (Section 8.3a), not under My Leave.
 
 # **Section 12 --- Reports**
 

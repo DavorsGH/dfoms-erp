@@ -150,7 +150,7 @@ export async function notifyAttendanceApprovers(input: {
       recipient_user_id,
       title: input.title,
       body: input.body,
-      action_url: "/dashboard/attendance-approvals",
+      action_url: "/dashboard/self-service/approvals?tab=attendance",
     })),
   });
 }

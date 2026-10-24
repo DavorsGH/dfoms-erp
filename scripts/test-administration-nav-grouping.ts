@@ -130,25 +130,18 @@ function run() {
     ],
   );
 
-  const hrWithLeave = getHrManagementSidebarLinks({ showLeaveApprovals: true });
+  const hrLinks = getHrManagementSidebarLinks();
   assert.deepEqual(
-    hrWithLeave.map((l) => l.label),
-    [
-      "Employees",
-      "Payroll",
-      "HR Operations",
-      "Leave Approvals",
-      "Employee Announcements",
-    ],
+    hrLinks.map((l) => l.label),
+    ["Employees", "Payroll", "HR Operations", "Employee Announcements"],
   );
+  assert(!hrLinks.some((l) => l.groupId === LEAVE_APPROVALS_GROUP_ID));
+  assert(!hrLinks.some((l) => l.label === "Attendance Approvals"));
 
-  const hrWithoutLeave = getHrManagementSidebarLinks({ showLeaveApprovals: false });
-  assert(!hrWithoutLeave.some((l) => l.groupId === LEAVE_APPROVALS_GROUP_ID));
-
-  assert(isHrManagementPath(LEAVE_APPROVALS_HREF));
+  assert(!isHrManagementPath(LEAVE_APPROVALS_HREF));
   assert(!isAdministrationPath(LEAVE_APPROVALS_HREF));
   assert(
-    isHrManagementGroupActive(LEAVE_APPROVALS_HREF, LEAVE_APPROVALS_GROUP_ID),
+    !isHrManagementGroupActive(LEAVE_APPROVALS_HREF, LEAVE_APPROVALS_GROUP_ID),
   );
 
   const groups = getPlatformAdministrationGroups();

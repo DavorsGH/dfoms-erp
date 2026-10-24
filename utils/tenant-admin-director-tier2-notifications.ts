@@ -197,7 +197,7 @@ export async function notifyAdminsDirectorsLeaveRequestSubmitted(
       employee.tenant_id,
       "New leave request submitted",
       `${employeeName} — ${leaveTypeName}, ${dates}`,
-      "/dashboard/leave-approvals",
+      "/dashboard/self-service/approvals?tab=leave",
     );
   } catch (error) {
     console.error(

@@ -40,6 +40,7 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableHeadingClassName,
+  scrollableTableNoTruncateCellClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
 import { useTenantDeviceSettings } from "@/hooks/use-tenant-device-settings";
@@ -78,11 +79,15 @@ import {
 } from "@/lib/device-pin";
 import CollapsibleDeviceSection from "./collapsible-device-section";
 import ScannerSimulatorPanel from "./scanner-simulator-panel";
+import {
+  generatePushTokenClient,
+  hashPushTokenClient,
+} from "@/lib/hikvision/push-token-client";
 
 type AttendanceDeviceRow = {
   id: string;
   tenant_id: string;
-  serial_number: string;
+  serial_number: string | null;
   device_name: string | null;
   site_code: string | null;
   contract_project: string | null;
@@ -91,7 +96,86 @@ type AttendanceDeviceRow = {
   status: string;
   last_seen_at: string | null;
   firmware_info: string | null;
+  brand: string | null;
+  protocol: string | null;
+  mac_address: string | null;
+  push_token_hash: string | null;
 };
+
+type HikvisionTokenSetup = {
+  deviceLabel: string;
+  token: string;
+  urlPath: string;
+};
+
+const ADMS_BRANDS = ["zkteco", "essl", "anviz"] as const;
+type AdmsBrand = (typeof ADMS_BRANDS)[number];
+type DeviceBrand = AdmsBrand | "hikvision";
+
+function normalizeDeviceBrand(
+  brand: string | null | undefined,
+  protocol?: string | null,
+): DeviceBrand {
+  if (protocol === "isapi") {
+    return "hikvision";
+  }
+  const key = (brand ?? "").trim().toLowerCase();
+  if (key === "hikvision") {
+    return "hikvision";
+  }
+  if (key === "essl" || key === "e-ssl") {
+    return "essl";
+  }
+  if (key === "anviz") {
+    return "anviz";
+  }
+  return "zkteco";
+}
+
+function deviceBrandLabel(brand: DeviceBrand): string {
+  if (brand === "hikvision") {
+    return "Hikvision";
+  }
+  if (brand === "essl") {
+    return "eSSL";
+  }
+  if (brand === "anviz") {
+    return "Anviz";
+  }
+  return "ZKTeco";
+}
+
+function isHikvisionDevice(device: {
+  protocol?: string | null;
+  brand?: string | null;
+}): boolean {
+  return normalizeDeviceBrand(device.brand, device.protocol) === "hikvision";
+}
+
+function isAdmsBrand(brand: string): brand is AdmsBrand {
+  return (ADMS_BRANDS as readonly string[]).includes(brand);
+}
+
+function portalPublicHost(): { host: string; origin: string } {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (configured) {
+    try {
+      const url = new URL(
+        /^https?:\/\//i.test(configured) ? configured : `https://${configured}`,
+      );
+      return { host: url.hostname, origin: url.origin.replace(/\/$/, "") };
+    } catch {
+      /* fall through */
+    }
+  }
+  if (typeof window !== "undefined") {
+    return {
+      host: window.location.hostname,
+      origin: window.location.origin.replace(/\/$/, ""),
+    };
+  }
+  return { host: "your-domain.com", origin: "https://your-domain.com" };
+}
 
 type BiometricPinRow = {
   id: string;
@@ -141,18 +225,21 @@ function statusLabel(status: string): string {
   return status === "disabled" ? "Disabled" : "Active";
 }
 
-function ZktecoSetupCard({
-  title,
+function AdmsSetupCard({
+  brand,
   serialNumber,
   serverHost,
 }: {
-  title: string;
-  serialNumber?: string;
+  brand: AdmsBrand;
+  serialNumber?: string | null;
   serverHost: string;
 }) {
+  const label = deviceBrandLabel(brand);
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-      <h3 className="text-base font-semibold text-[#0f2744]">{title}</h3>
+      <h3 className="text-base font-semibold text-[#0f2744]">
+        {label} ADMS setup
+      </h3>
       {serialNumber ? (
         <p className="mt-1 font-mono text-sm text-slate-600">{serialNumber}</p>
       ) : null}
@@ -160,6 +247,13 @@ function ZktecoSetupCard({
         Server address: <span className="font-mono">{serverHost}</span>, port{" "}
         <span className="font-mono">443</span>, HTTPS on.
       </p>
+      {brand === "anviz" || brand === "essl" ? (
+        <p className="mt-2 text-sm text-slate-700">
+          Your device must have an ADMS / Cloud Server / Push setting in its Comm
+          or Network menu. Models that only connect to the maker&apos;s own cloud
+          app will not work.
+        </p>
+      ) : null}
       <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-700">
         <li>On the device, open Comm → Cloud Server / ADMS.</li>
         <li>Enter the domain name above and enable domain name mode.</li>
@@ -169,6 +263,80 @@ function ZktecoSetupCard({
         </li>
       </ol>
     </section>
+  );
+}
+
+function HikvisionOneTimeSetupCard({
+  setup,
+  host,
+  onCopy,
+  onDismiss,
+}: {
+  setup: HikvisionTokenSetup;
+  host: string;
+  onCopy: (label: string, value: string) => void;
+  onDismiss: () => void;
+}) {
+  const fields = [
+    { label: "Protocol", value: "HTTPS" },
+    { label: "Host", value: host },
+    { label: "Port", value: "443" },
+    { label: "URL path", value: setup.urlPath },
+  ];
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-lg">
+        <h3 className="text-lg font-semibold text-[#0f2744]">
+          Hikvision HTTP Listening setup
+        </h3>
+        <p className="mt-1 text-sm font-medium text-amber-800">
+          Shown once — copy now. The raw link is not stored and cannot be recovered.
+        </p>
+        <p className="mt-2 text-sm text-slate-600">{setup.deviceLabel}</p>
+        <div className="mt-4 space-y-3">
+          {fields.map((field) => (
+            <div
+              key={field.label}
+              className="flex items-start justify-between gap-3 rounded border border-slate-200 px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  {field.label}
+                </p>
+                <p className="break-all font-mono text-sm text-slate-900">
+                  {field.value}
+                </p>
+              </div>
+              <DashboardButton
+                type="button"
+                variant="secondary"
+                onClick={() => onCopy(field.label, field.value)}
+              >
+                Copy
+              </DashboardButton>
+            </div>
+          ))}
+        </div>
+        <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-slate-700">
+          <li>
+            On the scanner&apos;s web page go to Network → Advanced → HTTP Listening
+            (some models: Event → Alarm Linkage / HTTP Host).
+          </li>
+          <li>Enter the values above.</li>
+          <li>Turn off picture upload if the option exists.</li>
+          <li>Set the scanner&apos;s time zone and time correctly.</li>
+          <li>
+            Enrol each person on the scanner with Employee No. = their staff number
+            without letters or leading zeros (DF0020 → 20).
+          </li>
+        </ol>
+        <div className="mt-6 flex justify-end">
+          <DashboardButton type="button" onClick={onDismiss}>
+            Done
+          </DashboardButton>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -205,8 +373,12 @@ export default function AttendanceDevicesTab({
   const [formOpen, setFormOpen] = useState(false);
   const [simulatorDevice, setSimulatorDevice] = useState<AttendanceDeviceRow | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [hikvisionSetup, setHikvisionSetup] = useState<HikvisionTokenSetup | null>(
+    null,
+  );
   const [form, setForm] = useState({
     device_name: "",
+    brand: "zkteco",
     serial_number: "",
     staff_group: "",
     site_code: "",
@@ -219,8 +391,10 @@ export default function AttendanceDevicesTab({
   const formRef = useRef<HTMLFormElement | null>(null);
 
   const [nameFilter, setNameFilter] = useState<RegisterColumnFilterValue>(null);
+  const [brandFilter, setBrandFilter] = useState<RegisterColumnFilterValue>(null);
   const [serialFilter, setSerialFilter] =
     useState<RegisterColumnFilterValue>(null);
+  const [macFilter, setMacFilter] = useState<RegisterColumnFilterValue>(null);
   const [staffGroupFilter, setStaffGroupFilter] =
     useState<RegisterColumnFilterValue>(null);
   const [siteFilter, setSiteFilter] = useState<RegisterColumnFilterValue>(null);
@@ -301,7 +475,7 @@ export default function AttendanceDevicesTab({
         supabase
           .from("attendance_devices")
           .select(
-            "id, tenant_id, serial_number, device_name, site_code, contract_project, company_wide, business_unit_id, status, last_seen_at, firmware_info",
+            "id, tenant_id, serial_number, device_name, site_code, contract_project, company_wide, business_unit_id, status, last_seen_at, firmware_info, brand, protocol, mac_address, push_token_hash",
           ),
         buReadScope,
       ).order("device_name", { ascending: true }),
@@ -538,9 +712,14 @@ export default function AttendanceDevicesTab({
       const buName = device.business_unit_id
         ? (buNameById.get(device.business_unit_id) ?? "")
         : "";
+      const brandLabel = deviceBrandLabel(
+        normalizeDeviceBrand(device.brand, device.protocol),
+      );
       return (
         columnValuePassesFilter(device.device_name, nameFilter) &&
+        columnValuePassesFilter(brandLabel, brandFilter) &&
         columnValuePassesFilter(device.serial_number, serialFilter) &&
+        columnValuePassesFilter(device.mac_address, macFilter) &&
         columnValuePassesFilter(staffGroup, staffGroupFilter) &&
         columnValuePassesFilter(siteName, siteFilter) &&
         columnValuePassesFilter(buName, buFilter) &&
@@ -556,8 +735,14 @@ export default function AttendanceDevicesTab({
     });
     return sortRegisterRows(rows, deviceSort, (device) => {
       switch (deviceSort?.columnId) {
+        case "brand":
+          return deviceBrandLabel(
+            normalizeDeviceBrand(device.brand, device.protocol),
+          );
         case "serial":
           return device.serial_number;
+        case "mac":
+          return device.mac_address;
         case "staff_group":
           return deviceStaffGroupLabel(device, groupedProjects);
         case "site":
@@ -585,7 +770,9 @@ export default function AttendanceDevicesTab({
   }, [
     devices,
     nameFilter,
+    brandFilter,
     serialFilter,
+    macFilter,
     staffGroupFilter,
     siteFilter,
     buFilter,
@@ -643,6 +830,7 @@ export default function AttendanceDevicesTab({
     setEditingId(null);
     setForm({
       device_name: "",
+      brand: "zkteco",
       serial_number: prefillSerial ?? "",
       staff_group: "",
       site_code: "",
@@ -656,7 +844,8 @@ export default function AttendanceDevicesTab({
     setEditingId(device.id);
     setForm({
       device_name: device.device_name ?? "",
-      serial_number: device.serial_number,
+      brand: normalizeDeviceBrand(device.brand, device.protocol),
+      serial_number: device.serial_number ?? "",
       staff_group: device.company_wide
         ? COMPANY_WIDE_STAFF_GROUP
         : (staffGroupKeyForProject(device.contract_project, groupedProjects) ?? ""),
@@ -682,17 +871,26 @@ export default function AttendanceDevicesTab({
       return;
     }
 
+    const selectedBrand = normalizeDeviceBrand(form.brand);
+    const isHikvision = selectedBrand === "hikvision";
     const serial = form.serial_number.trim();
-    const duplicate = devices.find(
-      (device) =>
-        device.serial_number === serial && device.id !== editingId,
-    );
-    if (duplicate) {
-      serialInputRef.current?.setCustomValidity(
-        "This serial number is already registered.",
-      );
+    if (!isHikvision && !serial) {
+      serialInputRef.current?.setCustomValidity("Enter the device serial number.");
       serialInputRef.current?.reportValidity();
       return;
+    }
+    if (serial) {
+      const duplicate = devices.find(
+        (device) =>
+          (device.serial_number ?? "") === serial && device.id !== editingId,
+      );
+      if (duplicate) {
+        serialInputRef.current?.setCustomValidity(
+          "This serial number is already registered.",
+        );
+        serialInputRef.current?.reportValidity();
+        return;
+      }
     }
 
     let scopedTenantId: string;
@@ -711,10 +909,27 @@ export default function AttendanceDevicesTab({
       void alertError("Choose a staff group.", { title: "Could not save device" });
       return;
     }
-    const payload = {
+
+    if (!canWriteDevices) {
+      void alertError("You do not have permission to change attendance devices.", {
+        title: "Could not save device",
+      });
+      return;
+    }
+
+    let pushToken: string | null = null;
+    let pushTokenHash: string | null = null;
+    if (isHikvision && !editingId) {
+      pushToken = generatePushTokenClient();
+      pushTokenHash = await hashPushTokenClient(pushToken);
+    }
+
+    const payload: Record<string, unknown> = {
       tenant_id: scopedTenantId,
       device_name: form.device_name.trim() || null,
-      serial_number: serial,
+      serial_number: serial || null,
+      brand: selectedBrand,
+      protocol: isHikvision ? "isapi" : "adms",
       company_wide: companyWide,
       contract_project: companyWide ? null : selectedGroup!.anchorProjectCode,
       site_code: companyWide ? null : form.site_code.trim() || null,
@@ -722,12 +937,8 @@ export default function AttendanceDevicesTab({
       status: form.status === "disabled" ? "disabled" : "active",
       updated_at: new Date().toISOString(),
     };
-
-    if (!canWriteDevices) {
-      void alertError("You do not have permission to change attendance devices.", {
-        title: "Could not save device",
-      });
-      return;
+    if (pushTokenHash) {
+      payload.push_token_hash = pushTokenHash;
     }
 
     if (editingId) {
@@ -784,18 +995,75 @@ export default function AttendanceDevicesTab({
         void alertError(insertError.message, { title: "Could not save device" });
         return;
       }
-      await clearUnclaimedIfOwned(serial);
+      if (serial) {
+        await clearUnclaimedIfOwned(serial);
+      }
     }
 
     setFormOpen(false);
     toast("Device saved");
+    if (pushToken) {
+      setHikvisionSetup({
+        deviceLabel: form.device_name.trim() || "Hikvision terminal",
+        token: pushToken,
+        urlPath: `/api/attendance/hikvision/${pushToken}`,
+      });
+    }
     await refresh();
+  }
+
+  async function regenerateHikvisionToken(device: AttendanceDeviceRow) {
+    if (!canWriteDevices) {
+      void alertError("You do not have permission to change attendance devices.", {
+        title: "Could not regenerate link",
+      });
+      return;
+    }
+    const confirmed = await confirm({
+      title: "Regenerate HTTP Listening link",
+      message:
+        "The old URL stops working immediately. You will need to paste the new path into the scanner. Continue?",
+      confirmLabel: "Regenerate",
+      destructive: true,
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const scopedTenantId = assertTenantIdForMutation(tenantId);
+      const token = generatePushTokenClient();
+      const pushTokenHash = await hashPushTokenClient(token);
+      const { error } = await tenantScopedUpdate(
+        supabase,
+        "attendance_devices",
+        scopedTenantId,
+        {
+          push_token_hash: pushTokenHash,
+          updated_at: new Date().toISOString(),
+        },
+        { id: device.id },
+      );
+      if (error) {
+        void alertError(error.message, { title: "Could not regenerate link" });
+        return;
+      }
+      setHikvisionSetup({
+        deviceLabel: device.device_name?.trim() || device.serial_number || "Hikvision terminal",
+        token,
+        urlPath: `/api/attendance/hikvision/${token}`,
+      });
+      toast("New listening link ready — copy it now");
+      await refresh();
+    } catch (error) {
+      void alertError(error, { title: "Could not regenerate link" });
+    }
   }
 
   async function disableDevice(device: AttendanceDeviceRow) {
     const confirmed = await confirm({
       title: "Disable device",
-      message: `Disable ${device.device_name?.trim() || device.serial_number}? Punches already recorded are kept.`,
+      message: `Disable ${device.device_name?.trim() || device.serial_number || "this device"}? Punches already recorded are kept.`,
       confirmLabel: "Disable",
       destructive: true,
     });
@@ -836,7 +1104,7 @@ export default function AttendanceDevicesTab({
 
     const confirmed = await confirm({
       title: "Delete device",
-      message: `Permanently delete ${device.device_name?.trim() || device.serial_number}? This is only allowed because no punches exist.`,
+      message: `Permanently delete ${device.device_name?.trim() || device.serial_number || "this device"}? This is only allowed because no punches exist.`,
       confirmLabel: "Delete",
       destructive: true,
     });
@@ -1071,11 +1339,13 @@ export default function AttendanceDevicesTab({
     await refresh();
   }
 
-  const serverHost =
-    typeof window !== "undefined" ? window.location.hostname : "your-domain.com";
+  const portalHost = portalPublicHost();
+  const serverHost = portalHost.host;
   const deviceFiltersActive = anyRegisterColumnFiltersActive(
     nameFilter,
+    brandFilter,
     serialFilter,
+    macFilter,
     staffGroupFilter,
     siteFilter,
     buFilter,
@@ -1223,6 +1493,46 @@ export default function AttendanceDevicesTab({
                       )}
                     />
                   </th>
+                  <th
+                    className={`${scrollableTableHeadingClassName("Brand")} ${scrollableTableNoTruncateCellClassName}`}
+                  >
+                    <RegisterColumnFilterHeader
+                      label="Brand"
+                      options={collectDistinctColumnValues(
+                        devices.map((device) =>
+                          deviceBrandLabel(
+                            normalizeDeviceBrand(device.brand, device.protocol),
+                          ),
+                        ),
+                      )}
+                      applied={brandFilter}
+                      onApply={setBrandFilter}
+                      sort={registerColumnSortConfig(
+                        "brand",
+                        "text",
+                        deviceSort,
+                        setDeviceSort,
+                      )}
+                    />
+                  </th>
+                  <th
+                    className={`${scrollableTableHeadingClassName("MAC address")} ${scrollableTableNoTruncateCellClassName}`}
+                  >
+                    <RegisterColumnFilterHeader
+                      label="MAC address"
+                      options={collectDistinctColumnValues(
+                        devices.map((device) => device.mac_address),
+                      )}
+                      applied={macFilter}
+                      onApply={setMacFilter}
+                      sort={registerColumnSortConfig(
+                        "mac",
+                        "text",
+                        deviceSort,
+                        setDeviceSort,
+                      )}
+                    />
+                  </th>
                   <th className={scrollableTableHeadingClassName("Staff group")}>
                     <RegisterColumnFilterHeader
                       label="Staff group"
@@ -1348,7 +1658,7 @@ export default function AttendanceDevicesTab({
               <tbody>
                 {filteredDevices.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-6 text-center text-sm text-slate-500">
+                    <td colSpan={12} className="px-4 py-6 text-center text-sm text-slate-500">
                       No attendance devices
                     </td>
                   </tr>
@@ -1358,7 +1668,21 @@ export default function AttendanceDevicesTab({
                     <td className="px-4 py-3">
                       {device.device_name?.trim() || "—"}
                     </td>
-                    <td className="px-4 py-3 font-mono">{device.serial_number}</td>
+                    <td className="px-4 py-3 font-mono">
+                      {device.serial_number?.trim() || "—"}
+                    </td>
+                    <td
+                      className={`px-4 py-3 ${scrollableTableNoTruncateCellClassName}`}
+                    >
+                      {deviceBrandLabel(
+                        normalizeDeviceBrand(device.brand, device.protocol),
+                      )}
+                    </td>
+                    <td
+                      className={`px-4 py-3 font-mono text-sm ${scrollableTableNoTruncateCellClassName}`}
+                    >
+                      {device.mac_address?.trim() || "—"}
+                    </td>
                     <td className="px-4 py-3">
                       {deviceStaffGroupLabel(device, groupedProjects) || "—"}
                     </td>
@@ -1395,13 +1719,22 @@ export default function AttendanceDevicesTab({
                     <td className="px-4 py-3">{device.firmware_info || "—"}</td>
                     <td className={scrollableTableActionsTdClassName}>
                       <div className="flex flex-wrap gap-2">
-                        {showScannerSimulator ? (
+                        {showScannerSimulator && !isHikvisionDevice(device) ? (
                           <button
                             type="button"
                             onClick={() => setSimulatorDevice(device)}
                             className="text-[#0f2744] underline"
                           >
                             Simulate…
+                          </button>
+                        ) : null}
+                        {canWriteDevices && isHikvisionDevice(device) ? (
+                          <button
+                            type="button"
+                            onClick={() => void regenerateHikvisionToken(device)}
+                            className="text-[#0f2744] underline"
+                          >
+                            Regenerate link
                           </button>
                         ) : null}
                         {canWriteDevices ? (
@@ -1444,24 +1777,50 @@ export default function AttendanceDevicesTab({
       <CollapsibleDeviceSection
         storageKey="device-setup"
         title="Setup"
-        summary="ZKTeco ADMS cloud server"
+        summary="ADMS cloud server (ZKTeco / eSSL / Anviz)"
         defaultOpen={false}
       >
       <div className="grid gap-4 lg:grid-cols-2">
-        {devices.length === 0 ? (
-          <ZktecoSetupCard title="ZKTeco ADMS setup" serverHost={serverHost} />
+        {devices.filter((device) => !isHikvisionDevice(device)).length === 0 ? (
+          <AdmsSetupCard brand="zkteco" serverHost={serverHost} />
         ) : (
-          devices.map((device) => (
-            <ZktecoSetupCard
-              key={device.id}
-              title={device.device_name?.trim() || "Attendance device"}
-              serialNumber={device.serial_number}
-              serverHost={serverHost}
-            />
-          ))
+          devices
+            .filter((device) => !isHikvisionDevice(device))
+            .map((device) => {
+              const brand = normalizeDeviceBrand(device.brand, device.protocol);
+              return (
+                <AdmsSetupCard
+                  key={device.id}
+                  brand={isAdmsBrand(brand) ? brand : "zkteco"}
+                  serialNumber={device.serial_number}
+                  serverHost={serverHost}
+                />
+              );
+            })
         )}
       </div>
+      <p className="mt-4 text-sm text-slate-600">
+        Hikvision terminals use HTTP Listening. After you add a Hikvision device, copy
+        the one-time URL from the setup card (or use Regenerate link on the device row).
+      </p>
       </CollapsibleDeviceSection>
+
+      {hikvisionSetup ? (
+        <HikvisionOneTimeSetupCard
+          setup={hikvisionSetup}
+          host={serverHost}
+          onCopy={(label, value) => {
+            void navigator.clipboard.writeText(value).then(
+              () => toast(`${label} copied`),
+              () =>
+                void alertError("Could not copy to the clipboard.", {
+                  title: "Copy failed",
+                }),
+            );
+          }}
+          onDismiss={() => setHikvisionSetup(null)}
+        />
+      ) : null}
 
       {formOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -1491,7 +1850,36 @@ export default function AttendanceDevicesTab({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Serial number
+                  Brand
+                </label>
+                <select
+                  className={inputClassName}
+                  value={form.brand}
+                  required
+                  disabled={Boolean(editingId)}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      brand: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="zkteco">ZKTeco</option>
+                  <option value="essl">eSSL</option>
+                  <option value="anviz">Anviz</option>
+                  <option value="hikvision">Hikvision</option>
+                </select>
+                {!editingId && form.serial_number.trim() ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Claiming an unclaimed serial — pick the brand if it is not ZKTeco.
+                  </p>
+                ) : null}
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  {form.brand === "hikvision"
+                    ? "Device serial (optional, for your reference)"
+                    : "Serial number"}
                 </label>
                 <input
                   ref={serialInputRef}
@@ -1504,8 +1892,8 @@ export default function AttendanceDevicesTab({
                       serial_number: event.target.value,
                     }));
                   }}
-                  required
-                  disabled={Boolean(editingId)}
+                  required={form.brand !== "hikvision"}
+                  disabled={Boolean(editingId) && form.brand !== "hikvision"}
                 />
               </div>
               <div>
@@ -1926,7 +2314,9 @@ export default function AttendanceDevicesTab({
           </table>
         </ScrollableTable>
       </CollapsibleDeviceSection>
-      {showScannerSimulator && simulatorDevice ? (
+      {showScannerSimulator &&
+      simulatorDevice &&
+      simulatorDevice.serial_number ? (
         <ScannerSimulatorPanel
           deviceId={simulatorDevice.id}
           deviceLabel={simulatorDevice.device_name?.trim() || "Attendance device"}

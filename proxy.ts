@@ -249,6 +249,11 @@ export async function proxy(request: NextRequest) {
     return proxyPassthrough(request);
   }
 
+  // Hikvision ISAPI HTTP Listening — public POST; device identified by path token.
+  if (pathname.startsWith("/api/attendance/hikvision/")) {
+    return proxyPassthrough(request);
+  }
+
   if (process.env.LEGACY_DOMAIN_REDIRECT === "on" && !pathname.startsWith("/api/")) {
     const rawHost =
       request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";

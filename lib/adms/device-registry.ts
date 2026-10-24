@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export type AttendanceDeviceRow = {
   id: string;
   tenant_id: string;
-  serial_number: string;
+  serial_number: string | null;
   status: string;
   timezone: string | null;
   site_code: string | null;

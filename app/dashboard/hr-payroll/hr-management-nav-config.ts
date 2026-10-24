@@ -9,10 +9,12 @@ export type HrManagementNavGroup = {
   items: readonly HrManagementNavItem[];
 };
 
+/** @deprecated Approvals moved to Self-Service; kept for redirect/bookmark helpers. */
 export const LEAVE_APPROVALS_GROUP_ID = "leave-approvals";
 export const LEAVE_APPROVALS_HREF = "/dashboard/leave-approvals";
 export const ATTENDANCE_APPROVALS_GROUP_ID = "attendance-approvals";
 export const ATTENDANCE_APPROVALS_HREF = "/dashboard/attendance-approvals";
+export const SELF_SERVICE_APPROVALS_HREF = "/dashboard/self-service/approvals";
 
 export const HR_MANAGEMENT_GROUPS: readonly HrManagementNavGroup[] = [
   {
@@ -76,18 +78,6 @@ export const HR_MANAGEMENT_GROUPS: readonly HrManagementNavGroup[] = [
     ],
   },
   {
-    id: LEAVE_APPROVALS_GROUP_ID,
-    label: "Leave Approvals",
-    items: [{ label: "Leave Approvals", href: LEAVE_APPROVALS_HREF }],
-  },
-  {
-    id: ATTENDANCE_APPROVALS_GROUP_ID,
-    label: "Attendance Approvals",
-    items: [
-      { label: "Attendance Approvals", href: ATTENDANCE_APPROVALS_HREF },
-    ],
-  },
-  {
     id: "employee-announcements",
     label: "Employee Announcements",
     items: [
@@ -102,9 +92,7 @@ export const HR_MANAGEMENT_GROUPS: readonly HrManagementNavGroup[] = [
 export function isHrManagementPath(pathname: string): boolean {
   return (
     pathname.startsWith("/dashboard/hr-payroll") ||
-    pathname.startsWith("/dashboard/employees") ||
-    pathname.startsWith(LEAVE_APPROVALS_HREF) ||
-    pathname.startsWith(ATTENDANCE_APPROVALS_HREF)
+    pathname.startsWith("/dashboard/employees")
   );
 }
 
@@ -140,22 +128,6 @@ export function getActiveHrManagementGroup(
     return HR_MANAGEMENT_GROUPS[0];
   }
 
-  if (pathname.startsWith(LEAVE_APPROVALS_HREF)) {
-    return (
-      HR_MANAGEMENT_GROUPS.find(
-        (group) => group.id === LEAVE_APPROVALS_GROUP_ID,
-      ) ?? HR_MANAGEMENT_GROUPS[0]
-    );
-  }
-
-  if (pathname.startsWith(ATTENDANCE_APPROVALS_HREF)) {
-    return (
-      HR_MANAGEMENT_GROUPS.find(
-        (group) => group.id === ATTENDANCE_APPROVALS_GROUP_ID,
-      ) ?? HR_MANAGEMENT_GROUPS[0]
-    );
-  }
-
   return HR_MANAGEMENT_GROUPS[0];
 }
 
@@ -174,38 +146,18 @@ export const HR_MANAGEMENT_SIDEBAR_LINKS = HR_MANAGEMENT_GROUPS.map(
 );
 
 export function getHrManagementSidebarLinks(
-  options: {
+  _options: {
     showLeaveApprovals?: boolean;
     showAttendanceApprovals?: boolean;
   } = {},
 ) {
-  const { showLeaveApprovals = false, showAttendanceApprovals = false } =
-    options;
-
-  return HR_MANAGEMENT_SIDEBAR_LINKS.filter((link) => {
-    if (link.groupId === LEAVE_APPROVALS_GROUP_ID) {
-      return showLeaveApprovals;
-    }
-    if (link.groupId === ATTENDANCE_APPROVALS_GROUP_ID) {
-      return showAttendanceApprovals;
-    }
-
-    return true;
-  });
+  return [...HR_MANAGEMENT_SIDEBAR_LINKS];
 }
 
 export function isHrManagementGroupActive(
   pathname: string,
   groupId: string,
 ): boolean {
-  if (groupId === LEAVE_APPROVALS_GROUP_ID) {
-    return pathname.startsWith(LEAVE_APPROVALS_HREF);
-  }
-
-  if (groupId === ATTENDANCE_APPROVALS_GROUP_ID) {
-    return pathname.startsWith(ATTENDANCE_APPROVALS_HREF);
-  }
-
   const group = HR_MANAGEMENT_GROUPS.find((entry) => entry.id === groupId);
   if (!group) {
     return false;

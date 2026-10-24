@@ -23,10 +23,9 @@ import {
   getHrManagementSidebarLinks,
   isHrManagementGroupActive,
   isHrManagementPath,
-  ATTENDANCE_APPROVALS_GROUP_ID,
-  LEAVE_APPROVALS_GROUP_ID,
+  SELF_SERVICE_APPROVALS_HREF,
 } from "./hr-payroll/hr-management-nav-config";
-import AttendanceApprovalsCountBadge from "./attendance-approvals/attendance-approvals-count-badge";
+import ApprovalsCountBadge from "./self-service/approvals/approvals-count-badge";
 import {
   getAdministrationSidebarLinks,
   isAdministrationGroupActive,
@@ -160,7 +159,8 @@ function useSidebarExpandableSection(isActive: boolean) {
 }
 
 type SidebarExpandableNavSectionProps = {
-  label: string;
+  label: React.ReactNode;
+  labelText?: string;
   icon: React.ReactNode;
   collapsed: boolean;
   isActive: boolean;
@@ -171,6 +171,7 @@ type SidebarExpandableNavSectionProps = {
 
 function SidebarExpandableNavSection({
   label,
+  labelText,
   icon,
   collapsed,
   isActive,
@@ -178,13 +179,15 @@ function SidebarExpandableNavSection({
   onToggle,
   children,
 }: SidebarExpandableNavSectionProps) {
+  const accessibleLabel =
+    labelText ?? (typeof label === "string" ? label : undefined);
   const button = (
     <button
       type="button"
       onClick={onToggle}
       aria-expanded={collapsed ? false : isExpanded}
-      aria-label={collapsed ? label : undefined}
-      title={collapsed ? label : undefined}
+      aria-label={collapsed ? accessibleLabel : undefined}
+      title={collapsed ? accessibleLabel : undefined}
       className={`flex min-h-10 w-full items-center gap-2 rounded-md py-2.5 text-left text-sm font-medium transition-colors ${
         collapsed ? "justify-center px-2" : "justify-between px-3"
       } ${
@@ -312,17 +315,7 @@ export default function Sidebar({
     isExpanded: reportsExpanded,
     handleToggle: handleReportsToggle,
   } = useSidebarExpandableSection(reportsActive);
-  const hrManagementLinks = getHrManagementSidebarLinks({
-    showLeaveApprovals,
-    showAttendanceApprovals,
-  }).filter((link) => {
-    if (
-      link.groupId === LEAVE_APPROVALS_GROUP_ID ||
-      link.groupId === ATTENDANCE_APPROVALS_GROUP_ID
-    ) {
-      return true;
-    }
-
+  const hrManagementLinks = getHrManagementSidebarLinks().filter((link) => {
     if (link.groupId === "employees") {
       return canAccessEmployeesSection(userRole);
     }
@@ -334,6 +327,17 @@ export default function Sidebar({
     isExpanded: hrManagementExpanded,
     handleToggle: handleHrManagementToggle,
   } = useSidebarExpandableSection(hrManagementActive);
+  const showApprovalsNav = showLeaveApprovals || showAttendanceApprovals;
+  const hasSelfServiceHome = Boolean(linkedEmployeeId?.trim());
+  const selfServiceApprovalsActive = pathname.startsWith(
+    SELF_SERVICE_APPROVALS_HREF,
+  );
+  const selfServiceActive =
+    pathname.startsWith("/dashboard/self-service") || selfServiceApprovalsActive;
+  const {
+    isExpanded: selfServiceExpanded,
+    handleToggle: handleSelfServiceToggle,
+  } = useSidebarExpandableSection(selfServiceActive && showApprovalsNav);
   const administrationActive = isAdministrationPath(pathname);
   const {
     isExpanded: administrationExpanded,
@@ -446,10 +450,74 @@ export default function Sidebar({
                       : "text-white/70 hover:bg-white/10 hover:text-white"
                   }`}
                 >
+                  {link.label}
+                </SidebarLink>
+              );
+            })}
+          </SidebarExpandableNavSection>
+        </div>
+      );
+    }
+
+    if (item.href === "/dashboard/self-service" && showApprovalsNav) {
+      const selfServiceChildren: { label: string; href: string }[] = [];
+      if (hasSelfServiceHome) {
+        selfServiceChildren.push({
+          label: "My Self-Service",
+          href: "/dashboard/self-service",
+        });
+      }
+      selfServiceChildren.push({
+        label: "Approvals",
+        href: SELF_SERVICE_APPROVALS_HREF,
+      });
+
+      return (
+        <div key={item.href}>
+          <SidebarExpandableNavSection
+            label={
+              <span className="inline-flex items-center gap-1">
+                {item.label}
+                <ApprovalsCountBadge
+                  showLeave={showLeaveApprovals}
+                  showAttendance={showAttendanceApprovals}
+                />
+              </span>
+            }
+            labelText={item.label}
+            icon={<SidebarOutlineIcon name={sidebarIconName(item.href)} />}
+            collapsed={iconOnly}
+            isActive={selfServiceActive}
+            isExpanded={selfServiceExpanded}
+            onToggle={() =>
+              openSection(selfServiceExpanded, handleSelfServiceToggle)
+            }
+          >
+            {selfServiceChildren.map((link) => {
+              const childActive =
+                link.href === SELF_SERVICE_APPROVALS_HREF
+                  ? selfServiceApprovalsActive
+                  : pathname.startsWith("/dashboard/self-service") &&
+                    !selfServiceApprovalsActive;
+
+              return (
+                <SidebarLink
+                  key={link.href}
+                  href={link.href}
+                  onClick={handleNavigate}
+                  className={`block rounded-md px-2 py-1.5 text-xs font-medium leading-snug transition-colors ${
+                    childActive
+                      ? "bg-white/15 text-white"
+                      : "text-white/70 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
                   <span className="inline-flex items-center gap-1">
                     {link.label}
-                    {link.groupId === ATTENDANCE_APPROVALS_GROUP_ID ? (
-                      <AttendanceApprovalsCountBadge />
+                    {link.href === SELF_SERVICE_APPROVALS_HREF ? (
+                      <ApprovalsCountBadge
+                        showLeave={showLeaveApprovals}
+                        showAttendance={showAttendanceApprovals}
+                      />
                     ) : null}
                   </span>
                 </SidebarLink>

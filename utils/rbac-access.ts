@@ -700,7 +700,10 @@ export function getSidebarNavItems(
   return items;
 }
 
-/** Approvers who cannot open HR still need the Leave / Attendance Approvals links. */
+/**
+ * Approvers who have no linked employee (so Self-Service is normally hidden)
+ * still need Self-Service → Approvals in the sidebar.
+ */
 export function withApproverInboxNav(
   items: SidebarNavItem[],
   options: {
@@ -711,17 +714,16 @@ export function withApproverInboxNav(
   if (!options.showLeaveApprovals && !options.showAttendanceApprovals) {
     return items;
   }
-  if (items.some((item) => item.href === "/dashboard/hr-payroll")) {
+  if (items.some((item) => item.href === "/dashboard/self-service")) {
     return items;
   }
 
   const next = [...items];
-  const selfServiceIndex = next.findIndex(
-    (item) => item.href === "/dashboard/self-service",
-  );
-  next.splice(selfServiceIndex >= 0 ? selfServiceIndex : next.length, 0, {
-    label: "HR Management",
-    href: "/dashboard/hr-payroll",
+  const hrIndex = next.findIndex((item) => item.href === "/dashboard/hr-payroll");
+  const insertAt = hrIndex >= 0 ? hrIndex + 1 : next.length;
+  next.splice(insertAt, 0, {
+    label: "Self-Service",
+    href: "/dashboard/self-service",
   });
   return next;
 }

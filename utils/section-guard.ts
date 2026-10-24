@@ -85,7 +85,32 @@ export async function guardSelfServiceAccess(): Promise<void> {
     getCurrentUserEmployeeId(),
   ]);
 
-  if (!canAccessSelfServiceSection(role as AppRole | null, employeeId)) {
+  if (canAccessSelfServiceSection(role as AppRole | null, employeeId)) {
+    return;
+  }
+
+  const { hasAttendanceApprovalInbox, hasLeaveApprovalInbox } = await import(
+    "@/utils/dashboard-auth"
+  );
+  const [showLeave, showAttendance] = await Promise.all([
+    hasLeaveApprovalInbox(),
+    hasAttendanceApprovalInbox(),
+  ]);
+  if (!showLeave && !showAttendance) {
     redirect("/dashboard");
   }
+
+  // Approver without a linked employee: only the Approvals inbox is allowed.
+  const pathname = await getRequestPathname();
+  if (
+    pathname.includes("/dashboard/self-service/approvals") ||
+    pathname === ""
+  ) {
+    if (pathname === "") {
+      redirect("/dashboard/self-service/approvals");
+    }
+    return;
+  }
+
+  redirect("/dashboard/self-service/approvals");
 }

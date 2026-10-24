@@ -565,7 +565,11 @@ async function executeAttlog(input: {
     staffIds,
     dates,
   );
-  const posted = await postAttlog(input.origin, input.device.serial_number, body);
+  const posted = await postAttlog(
+    input.origin,
+    input.device.serial_number ?? "",
+    body,
+  );
   const afterPunches = await punchesForLines(
     input.admin,
     input.device.tenant_id,
@@ -666,12 +670,19 @@ export async function runScannerScenario(input: {
   if (!device) {
     return failedCard(input.scenario, "This attendance device was not found.");
   }
+  if (!device.serial_number) {
+    return failedCard(
+      input.scenario,
+      "This simulator only works with ZKTeco devices that have a serial number.",
+    );
+  }
   if (device.status === "disabled") {
     return failedCard(
       input.scenario,
       "This device is disabled, so /iclock ignores its uploads.",
     );
   }
+  const serialNumber = device.serial_number;
 
   const today = localDateInZone(new Date().toISOString(), "Africa/Accra");
   const week = input.weekStart ? mondayOf(input.weekStart) : "";
@@ -694,7 +705,7 @@ export async function runScannerScenario(input: {
     for (let index = 0; index < SIMULATOR_HEARTBEAT_CALLS; index += 1) {
       try {
         const response = await fetch(
-          `${input.origin}/iclock/getrequest?SN=${encodeURIComponent(device.serial_number)}`,
+          `${input.origin}/iclock/getrequest?SN=${encodeURIComponent(serialNumber)}`,
           { cache: "no-store" },
         );
         const text = await response.text();
@@ -742,7 +753,7 @@ export async function runScannerScenario(input: {
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", input.tenantId)
       .eq("device_id", device.id);
-    const posted = await postAttlog(input.origin, device.serial_number, body, "OPERLOG");
+    const posted = await postAttlog(input.origin, serialNumber, body, "OPERLOG");
     const { count: afterCount } = await input.admin
       .from("biometric_punches")
       .select("id", { count: "exact", head: true })
@@ -930,7 +941,7 @@ export async function runScannerScenario(input: {
     const punches = planOfflineBatch({
       dates: [addDays(week, 2), addDays(week, 3), addDays(week, 4)],
       pins: employees.map((employee) => employee.pin),
-      seed: device.serial_number.length * 17 + week.length,
+      seed: serialNumber.length * 17 + week.length,
     });
     return executeAttlog({
       admin: input.admin,
